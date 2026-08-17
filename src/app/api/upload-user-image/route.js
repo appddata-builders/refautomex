@@ -21,8 +21,10 @@ const normalizeUserId = (value) => {
   return cleaned || '';
 };
 
-const accessKeyFromEnv = process.env.NEXT_PUBLIC_ACCESS_KEY_S3 || '';
-const secretKeyFromEnv = process.env.NEXT_PUBLIC_SECRET_KEY_S3 || '';
+// Sin prefijo NEXT_PUBLIC_: esta ruta corre en el servidor y no debe exponer
+// las llaves. Con el prefijo, Next las incrustaba en el bundle del navegador.
+const accessKeyFromEnv = process.env.ACCESS_KEY_S3 || '';
+const secretKeyFromEnv = process.env.SECRET_KEY_S3 || '';
 
 const s3Client = new S3Client({
   region: process.env.S3_REGION || 'us-east-1',

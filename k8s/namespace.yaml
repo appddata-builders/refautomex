@@ -1,0 +1,13 @@
+# El Makefile aplica este archivo por separado y antes que el resto:
+# `kubectl apply -f k8s/` procesa en orden alfabetico, asi que intentaria
+# crear el Deployment antes que el Namespace y fallaria.
+#
+# Namespace propio por proyecto: aisla nombres y cuotas, y permite borrar la
+# app entera con un solo `kubectl delete namespace refautomex`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: refautomex
+  labels:
+    project: refautomex
+    managed-by: makefile
