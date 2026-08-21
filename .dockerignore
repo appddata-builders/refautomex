@@ -1,33 +1,20 @@
-# Todo lo que no debe entrar al contexto de build.
-#
-# Importa por dos razones: el contexto viaja entero al daemon de Docker antes
-# de empezar, y cualquier archivo que se cuele queda dentro de la imagen y
-# termina en ECR.
-
-# Dependencias y artefactos: se reinstalan y regeneran dentro del build.
 node_modules
 .next
 out
 build
 
-# Secretos. Nunca horneados en la imagen: van por Secret de k8s.
 .env
 .env.*
-.apirefautomex
 
-# Bases de datos locales de desarrollo.
 *.db
 *.sqlite
 
-# Git y metadatos del editor.
 .git
 .gitignore
 .DS_Store
 
-# Logs.
 npm-debug.log*
 
-# Infra y docs: no los necesita el build de la app.
 k8s
 Dockerfile
 .dockerignore

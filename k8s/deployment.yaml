@@ -6,9 +6,6 @@ metadata:
   labels:
     app: refautomex-admin
 spec:
-  # Una sola replica: el node group tiene un t3.medium (2 vCPU / 4 GB) y ahi
-  # conviven esta app y appddata. Para subir a 2, primero subir desired_size
-  # en nodes.tf o los pods quedan Pending por falta de recursos.
   replicas: 1
 
   selector:
@@ -22,50 +19,24 @@ spec:
     spec:
       containers:
         - name: refautomex-admin
-          # Marcador que `make deploy` sustituye por la imagen con el SHA del
-          # commit. No poner un tag fijo aqui: si el manifiesto no cambia entre
-          # releases, `kubectl apply` no ve diferencia y no despliega nada.
           image: __IMAGE__
-
-          # Cada tag es un SHA y apunta siempre al mismo contenido, asi que no
-          # hace falta volver a bajar una imagen que el nodo ya tiene.
           imagePullPolicy: IfNotPresent
 
           ports:
             - name: http
               containerPort: 3000
 
-          # Secretos de la app (Stripe, Cognito, S3, base de datos). El Secret
-          # se crea fuera de git, porque aqui no van credenciales:
-          #   kubectl create secret generic refautomex-secrets \
-          #     --from-env-file=.env.local -n refautomex
-          #
-          # optional: true deja arrancar el pod sin el Secret, para poder
-          # validar el despliegue antes de tener las credenciales cargadas.
+          env:
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=256
           envFrom:
             - secretRef:
                 name: refautomex-secrets
                 optional: true
 
-            # Conexion a la base, dentro del cluster. Lo crea Terraform
-            # (postgres.tf), no `kubectl create secret`, y trae DATABASE_URL,
-            # DATABASE_URL_UNPOOLED y APPDDATA_DATABASE_URL, esta ultima para
-            # leer la tabla `hydrate` que vive en la base de appddata.
-            #
-            # El ORDEN importa: cuando dos secretRef definen la misma clave,
-            # gana el ultimo. Va despues de refautomex-secrets para que la
-            # conexion del cluster le pase por encima a cualquier DATABASE_URL
-            # que quede en el .env.local (que apunta al servidor viejo).
-            #
-            # Sin optional: si falta, el pod no arranca. Es deliberado: es
-            # preferible un pod que no levanta a uno que arranca en silencio
-            # contra la base equivocada.
             - secretRef:
                 name: postgres-credentials
 
-          # Probes contra `/`. Un redirect a login cuenta como exito: k8s
-          # considera sano cualquier codigo entre 200 y 399. Cuando la app
-          # exponga un endpoint de salud real, apuntarlas ahi.
           readinessProbe:
             httpGet:
               path: /
@@ -73,8 +44,6 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
 
-          # Mas holgada que la readiness: un arranque lento saca el pod del
-          # balanceo, pero no debe reiniciarlo en un bucle.
           livenessProbe:
             httpGet:
               path: /
@@ -82,12 +51,10 @@ spec:
             initialDelaySeconds: 30
             periodSeconds: 15
 
-          # Un server de Next arranca en ~300 MB. El limite deja margen para
-          # picos sin permitir que un leak se coma el nodo entero.
           resources:
             requests:
-              cpu: 200m
-              memory: 512Mi
+              cpu: 98m
+              memory: 240Mi
             limits:
-              cpu: "1"
-              memory: 1Gi
+              cpu: 450m
+              memory: 384Mi

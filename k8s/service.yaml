@@ -6,9 +6,6 @@ metadata:
   labels:
     app: refautomex-admin
 spec:
-  # NodePort y no LoadBalancer: evita el costo de un ELB y deja el cluster sin
-  # recursos AWS creados fuera de Terraform, que son los que despues cuelgan
-  # un `terraform destroy`. A cambio, la URL depende de la IP del nodo.
   type: NodePort
 
   selector:
@@ -18,7 +15,4 @@ spec:
     - name: http
       port: 80
       targetPort: http
-      # 30081 porque 30080 ya lo ocupa appddata: un nodePort es unico en todo
-      # el cluster, no por namespace. Debe existir su regla de ingress en
-      # security.tf o el puerto responde solo desde dentro de la VPC.
       nodePort: 30081
