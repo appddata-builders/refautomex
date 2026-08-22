@@ -9,8 +9,8 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
  * `i18n.changeLanguage`) para no tener que reescribir las ~268 llamadas repartidas
  * en los componentes: solo cambia de donde se importa `useTranslation`.
  *
- * No hay diccionario en el codigo: si la base no responde, `resources` llega
- * vacio y `t` devuelve la key. La base es la unica fuente de verdad.
+ * La base es la fuente principal. Si no responde o no tiene filas para el
+ * proyecto, el servidor entrega el JSON local de respaldo.
  */
 
 const LOCALES = ['es', 'en'];

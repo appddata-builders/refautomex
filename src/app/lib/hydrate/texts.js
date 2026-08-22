@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 
 import { getHydrateDb } from './db';
 import { hydrate } from './schema';
+import fallbackContent from './fallback.refautomex.json';
 
 /**
  * Lee los overrides de texto de la tabla `hydrate` y los expande al arbol que
@@ -21,6 +22,11 @@ const CACHE_TTL_MS = Number(process.env.HYDRATE_CACHE_TTL_MS ?? 10_000);
 let cache = null;
 let cachedAt = 0;
 
+const fallbackRows = Object.entries(fallbackContent).map(([contentKey, contentValue]) => ({
+  contentKey,
+  contentValue,
+}));
+
 const setDeep = (root, segments, value) => {
   let node = root;
 
@@ -38,24 +44,7 @@ const setDeep = (root, segments, value) => {
   node[segments[segments.length - 1]] = value;
 };
 
-export const getHydratedResources = async () => {
-  const now = Date.now();
-  if (cache && now - cachedAt < CACHE_TTL_MS) return cache;
-
-  const db = getHydrateDb();
-  if (!db) return {};
-
-  let rows;
-  try {
-    rows = await db
-      .select({ contentKey: hydrate.contentKey, contentValue: hydrate.contentValue })
-      .from(hydrate)
-      .where(eq(hydrate.projectSlug, PROJECT_SLUG));
-  } catch (error) {
-    console.error('No se pudieron leer los textos de hidratacion:', error.message);
-    return {};
-  }
-
+const rowsToResources = (rows) => {
   const resources = {};
 
   for (const row of rows) {
@@ -66,6 +55,33 @@ export const getHydratedResources = async () => {
 
     setDeep(resources, segments, row.contentValue);
   }
+
+  return resources;
+};
+
+const getFallbackResources = () => rowsToResources(fallbackRows);
+
+export const getHydratedResources = async () => {
+  const now = Date.now();
+  if (cache && now - cachedAt < CACHE_TTL_MS) return cache;
+
+  const db = getHydrateDb();
+  let rows = [];
+
+  if (db) {
+    try {
+      rows = await db
+        .select({ contentKey: hydrate.contentKey, contentValue: hydrate.contentValue })
+        .from(hydrate)
+        .where(eq(hydrate.projectSlug, PROJECT_SLUG));
+    } catch (error) {
+      console.info('Textos de hidratacion no disponibles; se usara el JSON local:', error.message);
+    }
+  }
+
+  const resources = rows.length > 0
+    ? rowsToResources(rows)
+    : getFallbackResources();
 
   cache = resources;
   cachedAt = now;

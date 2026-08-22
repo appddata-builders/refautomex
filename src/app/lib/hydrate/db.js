@@ -9,8 +9,7 @@ import * as schemaSqlite from './schema.sqlite';
  *
  * En produccion es Postgres (159.203.90.92, base `appstract`); en local, el
  * archivo SQLite que appdda usa como `local.db`. Si ninguna de las dos esta
- * disponible devuelve null y el sitio se queda con los textos hardcodeados de
- * src/app/translations, sin romperse.
+ * disponible devuelve null y el sitio usa el JSON local de respaldo.
  */
 
 const DEFAULT_SQLITE_PATH = path.join(process.cwd(), '..', 'appstract', 'local.db');
@@ -47,7 +46,7 @@ export const getHydrateDb = () => {
     cachedDb = isPgRuntime() ? openPg() : openSqlite();
     return cachedDb;
   } catch (error) {
-    console.error('No se pudo conectar a la base de hidratacion:', error.message);
+    console.info('Base de hidratacion no disponible; se usara el JSON local:', error.message);
     return null;
   }
 };
