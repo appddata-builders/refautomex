@@ -14,6 +14,28 @@ import { buildApiUrl } from '@/app/lib/refautomex-api';
 
 const HeicToJpgUploader = dynamic(() => import('@/app/components/productivity/stock/heic-to-jpg-uploader'), { ssr: false });
 
+// La misma clase estaba copiada en los seis campos. Al centrarla se puede
+// pintar el estado de error sin repetir la cadena una septima vez.
+const inputClass = (isEditable, hasError) => [
+    // El preflight de Tailwind deja los inputs sin padding: sin px-3 el texto
+    // iba pegado al borde, y py-2.5 da un area tactil usable en telefono.
+    'block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset',
+    'placeholder:text-gray-400 focus:ring-2 focus:ring-inset sm:text-sm sm:leading-6',
+    hasError
+        ? 'ring-red-400 focus:ring-red-500'
+        : 'ring-gray-300 focus:ring-indigo-600',
+    isEditable ? 'bg-white' : 'bg-gray-100',
+].join(' ');
+
+// Los mensajes por campo se calculaban desde el primer dia y nunca se pintaban:
+// al fallar la validacion el boton no hacia nada y no se decia por que.
+const FieldError = ({ id, message }) =>
+    message ? (
+        <p id={id} role="alert" className="mt-1 text-xs font-medium text-red-600">
+            {message}
+        </p>
+    ) : null;
+
 export default function Settings() {
     const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
@@ -36,13 +58,14 @@ export default function Settings() {
     const [isLoading, setLoading] = useState(false);
     const [mediaUploading, setMediaUploading] = useState(false);
     const [profile, setProfile] = useState(null);
+    const [profilePreview, setProfilePreview] = useState('');
     const [imageError, setImageError] = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
     const [errorMessages, setErrorMessages] = useState({
         nombre: '',
         last_name: '',
-        birthday: '',
+        birthDate: '',
         phone: '',
         rfc: '',
         gender: '',
@@ -60,6 +83,32 @@ export default function Settings() {
     const handleImageError = () => {
         setImageError(true);
     }
+
+    // createObjectURL se llamaba dentro del render: cada re-render creaba una
+    // URL nueva y ninguna se liberaba.
+    useEffect(() => {
+        if (!profile) {
+            setProfilePreview('');
+            return;
+        }
+        const url = URL.createObjectURL(profile);
+        setProfilePreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [profile]);
+
+    useEffect(() => {
+        if (!successMessage && !profileSuccess) return;
+        const id = setTimeout(() => {
+            setSuccessMessage('');
+            setProfileSuccess('');
+        }, 5000);
+        return () => clearTimeout(id);
+    }, [successMessage, profileSuccess]);
+
+    // El error de un campo desaparece en cuanto el usuario lo corrige, no
+    // hasta el siguiente envio.
+    const clearFieldError = (field) =>
+        setErrorMessages((prev) => (prev[field] ? { ...prev, [field]: '' } : prev));
 
     const toggleEdit = (event) => {
         event.preventDefault();
@@ -118,6 +167,7 @@ export default function Settings() {
             last_name: '',
             birthDate: '',
             phone: '',
+            rfc: '',
             gender: ''
         };
 
@@ -148,6 +198,16 @@ export default function Settings() {
 
         const hasErrors = Object.values(newErrors).some(error => error !== '');
         if (hasErrors) {
+            const idPorCampo = {
+                nombre: 'name',
+                last_name: 'lastname',
+                phone: 'phone',
+                rfc: 'rfc',
+                birthDate: 'birthDate',
+                gender: 'gender',
+            };
+            const primero = Object.keys(idPorCampo).find(campo => newErrors[campo]);
+            document.getElementById(idPorCampo[primero])?.focus();
             return;
         }
 
@@ -216,7 +276,7 @@ export default function Settings() {
             setName(userData?.nombre || '');
             setLastName(userData?.apellido || '');
             setPhone(userData?.telefono || '');
-            setGender(userData?.genero || 'Selecciona...');
+            setGender(userData?.genero || '');
             setBirthDate(formattedBirthDate);
             setPlaceId(userData?.domicilio || '');
             setCognitoId(userData?.cognitoid || '');
@@ -228,20 +288,24 @@ export default function Settings() {
     return (
         <div className="relative">
             {isSaving && (
-                <div className="fixed inset-0 flex items-center justify-center bg-black opacity-50 z-50">
+                <div
+                    role="status"
+                    aria-live="polite"
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6"
+                >
                     <div className="flex flex-col items-center">
-                        <FaStarHalfAlt className="animate-spin text-white text-6xl" />
-                        <p className="text-white mt-4">Guardando...</p>
+                        <FaStarHalfAlt className="animate-spin text-white text-5xl sm:text-6xl" />
+                        <p className="text-white mt-4 text-center">Guardando...</p>
                     </div>
                 </div>
             )}
             <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-galaxy))] backdrop-blur-md pt-28">
                 <form className="space-y-8" onSubmit={patchUserInfo}>
-                    <div className="mx-auto max-w-6xl px-6 pb-16">
-                        <div className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))]/60 p-6 shadow-lg">
+                    <div className="mx-auto max-w-6xl px-3 sm:px-6 pb-16">
+                        <div className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))]/60 p-3 sm:p-6 shadow-lg">
                             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                 <div>
-                                    <p className="text-3xl font-bold gradient-text-title">
+                                    <p className="text-2xl sm:text-3xl font-bold gradient-text-title">
                                         {t('account.settingsTitle')}
                                     </p>
                                     <p className="mt-1 text-sm text-[rgb(var(--color-text))]/80">
@@ -251,7 +315,8 @@ export default function Settings() {
                                 <button
                                     type="button"
                                     onClick={toggleEdit}
-                                    className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow transition ${
+                                    aria-pressed={isEditable}
+                                    className={`inline-flex w-full md:w-auto shrink-0 items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow transition ${
                                         isEditable
                                             ? 'bg-slate-200 text-slate-700 hover:bg-slate-300'
                                             : 'bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))]'
@@ -262,25 +327,25 @@ export default function Settings() {
                                 </button>
                             </div>
                             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                                <div role="alert" className="text-sm min-h-[1.5rem]">
+                                <div role="alert" aria-live="polite" className="text-sm empty:hidden">
                                     {errorMessage && <p className="text-red-800 bg-red-50 rounded-md shadow text-center animate-up px-3 py-2">{errorMessage}</p>}
                                     {successMessage && <p className="text-green-800 bg-green-50 rounded-md shadow text-center animate-up px-3 py-2">{successMessage}</p>}
                                 </div>
                                 <Link
                                     href={dashboardHref}
-                                    className="inline-flex items-center justify-center gap-2 rounded-full border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-4 py-2 text-xs font-semibold text-[rgb(var(--color-text))] shadow hover:bg-[rgb(var(--color-amber))]/20 transition"
+                                    className="inline-flex w-full sm:w-auto shrink-0 items-center justify-center gap-2 rounded-full border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-4 py-2 text-xs font-semibold text-[rgb(var(--color-text))] shadow hover:bg-[rgb(var(--color-amber))]/20 transition"
                                 >
                                     <IoHome className="h-4 w-4 text-[rgb(var(--color-text))]" aria-hidden="true" />
                                     {t('account.backToDashboard')}
                                 </Link>
                             </div>
-                            <section className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-6 shadow-md my-5">
+                            <section className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 shadow-md my-5">
                                 <div className="flex flex-col gap-6 md:flex-row md:items-center">
                                     <div className="flex justify-center md:justify-start">
-                                        <div className="flex h-40 w-40 items-center justify-center bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] shadow-lg rounded-full overflow-hidden">
-                                            {profile ? (
+                                        <div className="flex h-28 w-28 sm:h-36 sm:w-36 md:h-40 md:w-40 shrink-0 items-center justify-center bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] shadow-lg rounded-full overflow-hidden">
+                                            {profilePreview ? (
                                                 <img
-                                                    src={URL.createObjectURL(profile)}
+                                                    src={profilePreview}
                                                     alt="Profile preview"
                                                     className="w-full h-full object-cover"
                                                 />
@@ -293,7 +358,7 @@ export default function Settings() {
                                                         onError={handleImageError}
                                                     />
                                                 ) : (
-                                                    <BiSolidUserCircle className="w-24 h-24 my-auto animate-up text-[rgb(var(--color-text))]" />
+                                                    <BiSolidUserCircle className="w-16 h-16 sm:w-24 sm:h-24 my-auto animate-up text-[rgb(var(--color-text))]" />
                                                 )
                                             )}
                                         </div>
@@ -331,7 +396,7 @@ export default function Settings() {
                                         {profile && (
                                             <p className="mt-2 text-xs text-[rgb(var(--color-text))]/80">
                                                 {t('account.photoSelected')}{' '}
-                                                <span className="font-semibold">{profile.name}</span>
+                                                <span className="font-semibold break-all">{profile.name}</span>
                                             </p>
                                         )}
                                         {profileError && (
@@ -348,7 +413,7 @@ export default function Settings() {
                                 </div>
                             </section>
 
-                            <section className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-6 shadow-md">
+                            <section className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 shadow-md">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <p className="text-lg font-semibold text-[rgb(var(--color-text))]">
                                         {t('account.info')}
@@ -374,10 +439,13 @@ export default function Settings() {
                                         required
                                         placeholder={t('account.name')}
                                         value={name}
-                                        onChange={(e) => setName(e.target.value)}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        onChange={(e) => { setName(e.target.value); clearFieldError('nombre'); }}
+                                        className={inputClass(isEditable, Boolean(errorMessages.nombre))}
+                                        aria-invalid={Boolean(errorMessages.nombre)}
+                                        aria-describedby={errorMessages.nombre ? "name-error" : undefined}
                                         disabled={!isEditable}
                                     />
+                                    <FieldError id="name-error" message={errorMessages.nombre} />
                                 </div>
                             </div>
                             <div className="sm:col-span-1">
@@ -392,10 +460,13 @@ export default function Settings() {
                                         required
                                         placeholder={t('account.lastname')}
                                         value={lastName}
-                                        onChange={(e) => setLastName(e.target.value)}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        onChange={(e) => { setLastName(e.target.value); clearFieldError('last_name'); }}
+                                        className={inputClass(isEditable, Boolean(errorMessages.last_name))}
+                                        aria-invalid={Boolean(errorMessages.last_name)}
+                                        aria-describedby={errorMessages.last_name ? "lastname-error" : undefined}
                                         disabled={!isEditable}
                                     />
+                                    <FieldError id="lastname-error" message={errorMessages.last_name} />
                                 </div>
                             </div>
                             <div className="sm:col-span-1">
@@ -410,10 +481,13 @@ export default function Settings() {
                                         required
                                         placeholder={t('account.phone')}
                                         value={phone}
-                                        onChange={(e) => setPhone(e.target.value)}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        onChange={(e) => { setPhone(e.target.value); clearFieldError('phone'); }}
+                                        className={inputClass(isEditable, Boolean(errorMessages.phone))}
+                                        aria-invalid={Boolean(errorMessages.phone)}
+                                        aria-describedby={errorMessages.phone ? "phone-error" : undefined}
                                         disabled={!isEditable}
                                     />
+                                    <FieldError id="phone-error" message={errorMessages.phone} />
                                 </div>
                             </div>
                             <div className="sm:col-span-1">
@@ -428,10 +502,13 @@ export default function Settings() {
                                         required
                                         placeholder='RFC'
                                         value={rfc}
-                                        onChange={(e) => setRfc(e.target.value)}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        onChange={(e) => { setRfc(e.target.value); clearFieldError('rfc'); }}
+                                        className={inputClass(isEditable, Boolean(errorMessages.rfc))}
+                                        aria-invalid={Boolean(errorMessages.rfc)}
+                                        aria-describedby={errorMessages.rfc ? "rfc-error" : undefined}
                                         disabled={!isEditable}
                                     />
+                                    <FieldError id="rfc-error" message={errorMessages.rfc} />
                                 </div>
                             </div>
                             <div className="sm:col-span-1">
@@ -441,11 +518,14 @@ export default function Settings() {
                                 <div className="mt-2">
                                     <input type="date" name="birthDate" id="birthDate"
                                         value={birthDate}
-                                        onChange={(e) => setBirthDate(e.target.value)}
+                                        onChange={(e) => { setBirthDate(e.target.value); clearFieldError('birthDate'); }}
                                         placeholder={t('account.birthdate')}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        className={inputClass(isEditable, Boolean(errorMessages.birthDate))}
+                                        aria-invalid={Boolean(errorMessages.birthDate)}
+                                        aria-describedby={errorMessages.birthDate ? "birthDate-error" : undefined}
                                         disabled={!isEditable}
                                     />
+                                    <FieldError id="birthDate-error" message={errorMessages.birthDate} />
                                 </div>
                             </div>
                             <div className="sm:col-span-1">
@@ -457,9 +537,10 @@ export default function Settings() {
                                         name="gender"
                                         id="gender"
                                         value={gender}
-                                        onChange={(e) => setGender(e.target.value)}
-                                        placeholder={t('account.gener')}
-                                        className={`block w-full rounded-md border-0 py-1.5 mt-2 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        onChange={(e) => { setGender(e.target.value); clearFieldError('gender'); }}
+                                        className={`mt-2 ${inputClass(isEditable, Boolean(errorMessages.gender))}`}
+                                        aria-invalid={Boolean(errorMessages.gender)}
+                                        aria-describedby={errorMessages.gender ? "gender-error" : undefined}
                                         disabled={!isEditable}
                                     >
                                         <option id="gender_0" value="" disabled>{t('account.gener')}</option>
@@ -467,6 +548,7 @@ export default function Settings() {
                                         <option id="gender_2" value="F">Femenino</option>
                                         <option id="gender_3" value="O">Otro</option>
                                     </select>
+                                    <FieldError id="gender-error" message={errorMessages.gender} />
                                 </div>
                             </div>
                             <div className="sm:col-span-2">
@@ -478,9 +560,9 @@ export default function Settings() {
                                         name="email"
                                         id="email"
                                         value={email}
-                                        onChange={(event) => setEmail(event.target.value)}
+                                        onChange={(e) => setEmail(e.target.value)}
                                         placeholder={t('account.mail')}
-                                        className={`block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 ${isEditable ? 'bg-white' : 'bg-gray-100'}`}
+                                        className={inputClass(isEditable, false)}
                                         disabled={!isEditable}
                                     />
                                 </div>
@@ -489,7 +571,7 @@ export default function Settings() {
                             </section>
 
                             {isEditable && (
-                            <section className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-6 mt-5 shadow-md">
+                            <section className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 mt-5 shadow-md">
                                 <p className="text-lg font-semibold text-[rgb(var(--color-text))]">
                                     {t('account.address')}
                                 </p>
@@ -506,8 +588,9 @@ export default function Settings() {
                         <div className='mt-8 flex items-center justify-center'>
                             <button
                                 type="submit"
-                                disabled={isLoading || isSaving}
-                                className='cursor-pointer bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 px-6 py-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 disabled:cursor-not-allowed disabled:opacity-70'
+                                disabled={isLoading || isSaving || !isEditable}
+                                title={!isEditable ? t('account.settingsLocked') : undefined}
+                                className='w-full sm:w-auto cursor-pointer bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 px-6 py-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 disabled:cursor-not-allowed disabled:opacity-70'
                             >
                                 {isLoading ? t('account.btnUpdating') : t('account.btnUpdate')}
                             </button>

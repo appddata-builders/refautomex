@@ -1,45 +1,12 @@
 import { NextResponse } from 'next/server';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
-const resolveBucketName = () => {
-  if (process.env.S3_BUCKET) return process.env.S3_BUCKET;
-  if (process.env.NEXT_PUBLIC_S3_BUCKET) return process.env.NEXT_PUBLIC_S3_BUCKET;
-  const baseUrl = process.env.NEXT_PUBLIC_S3;
-  if (baseUrl) {
-    try {
-      const host = new URL(baseUrl).hostname;
-      return host.split('.')[0];
-    } catch {
-      return 'refautomex';
-    }
-  }
-  return 'refautomex';
-};
+import { bucketName, claveDeObjeto, s3Client } from '@/app/lib/s3-storage';
 
 const sanitizeFileName = (name = '') => {
   const cleaned = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9._-]/g, '');
   return cleaned || 'imagen.jpg';
 };
-
-// Sin prefijo NEXT_PUBLIC_: esta ruta corre en el servidor y no debe exponer
-// las llaves. Con el prefijo, Next las incrustaba en el bundle del navegador.
-const accessKeyFromEnv = process.env.ACCESS_KEY_S3 || '';
-const secretKeyFromEnv = process.env.SECRET_KEY_S3 || '';
-
-// console.log('[upload-product-image] S3 keys loaded?', {
-//   accessKey: accessKeyFromEnv ? 'present' : 'missing',
-//   secretKey: secretKeyFromEnv ? 'present' : 'missing',
-// });
-
-const s3Client = new S3Client({
-  region: process.env.S3_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: accessKeyFromEnv,
-    secretAccessKey: secretKeyFromEnv,
-  },
-});
-
-const bucketName = resolveBucketName();
 
 export async function POST(request) {
   try {
@@ -55,12 +22,15 @@ export async function POST(request) {
     const arrayBuffer = await file.arrayBuffer();
     const body = Buffer.from(arrayBuffer);
     const filename = sanitizeFileName(providedFilename || file.name || 'imagen.jpg');
+
+    // `key` es lo que se guarda en la base y lo que el front pega despues de
+    // NEXT_PUBLIC_S3: relativa. El objeto en S3 va con el prefijo del bucket.
     const key = `productos/${refaccion}/${Date.now()}-${filename}`;
 
     await s3Client.send(
       new PutObjectCommand({
         Bucket: bucketName,
-        Key: key,
+        Key: claveDeObjeto(key),
         Body: body,
         ContentType: file.type || 'application/octet-stream',
       })
@@ -94,7 +64,9 @@ export async function DELETE(request) {
     await s3Client.send(
       new DeleteObjectCommand({
         Bucket: bucketName,
-        Key: key,
+        // Llega la llave relativa que guarda la base; claveDeObjeto tolera que
+        // venga ya con prefijo, asi que ambas formas borran el objeto correcto.
+        Key: claveDeObjeto(key),
       })
     );
 

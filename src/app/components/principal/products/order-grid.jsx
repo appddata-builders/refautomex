@@ -10,24 +10,15 @@ import Link from 'next/link';
 import { useCart } from '@/app/lib/shopping-context';
 import { FaBullseye } from "react-icons/fa6";
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import {
+  parseProductRoutes,
+  resolveMainProductImage,
+  resolveProductImage,
+} from '@/app/lib/product-images';
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
-const parseRoutes = (raw) => {
-    if (!raw) return [];
-    try {
-        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (Array.isArray(parsed)) {
-            return parsed.filter(Boolean);
-        }
-        return [];
-    } catch {
-        return [];
-    }
-};
-
 export default function OrderGrid() {
-    const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const cognitoUserSession = getStorageValue('CognitoUserSession');
     const username = cognitoUserSession?.idToken.payload["cognito:username"];
     const userData = getStorageValue(`user_${username}`);
@@ -108,11 +99,14 @@ export default function OrderGrid() {
                     throw new Error(`Error ${response.status}: ${response.statusText}`);
                 }
                 const payload = await response.json();
+                // /getProducts responde [[filas]] - un CALL de MySQL devolvia
+                // el result set anidado y el endpoint conserva esa forma.
+                const rows = payload?.[0] ?? [];
                 const groupsMap = {};
-                (payload || []).forEach((product) => {
+                rows.forEach((product) => {
                     const groupId = product.idgrupo || 'N/A';
                     const key = `${groupId}-${product.grupo || 'Sin grupo'}`;
-                    const routes = parseRoutes(product.rutas);
+                    const routes = parseProductRoutes(product.rutas);
                     const normalizedProduct = {
                         ...product,
                         rutas: routes,
@@ -288,11 +282,7 @@ export default function OrderGrid() {
                                                     className="w-16 h-16 rounded-xl overflow-hidden border border-slate-100 bg-slate-50 flex items-center justify-center"
                                                 >
                                                     <img
-                                                        src={
-                                                            product.mainImage
-                                                                ? `${multimediaSrc}${product.mainImage}`
-                                                                : `${multimediaSrc}productos/no-img.png`
-                                                        }
+                                                        src={resolveProductImage(product.mainImage)}
                                                         alt={product.descripcion}
                                                         className="object-cover w-full h-full"
                                                     />
@@ -332,7 +322,7 @@ export default function OrderGrid() {
                                     )}
                                     <img
                                         className="h-full w-32 my-auto object-cover object-center group-hover:opacity-75"
-                                        src={item.ruta ? `${multimediaSrc}${item.ruta}` : `${multimediaSrc}productos/no-img.png`}
+                                        src={resolveMainProductImage(item)}
                                         alt={item.descripcion}
                                     />
                                     <div className="flex-1 px-4 ">

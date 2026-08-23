@@ -1,40 +1,12 @@
 import { NextResponse } from 'next/server';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 
-const resolveBucketName = () => {
-  if (process.env.S3_BUCKET) return process.env.S3_BUCKET;
-  if (process.env.NEXT_PUBLIC_S3_BUCKET) return process.env.NEXT_PUBLIC_S3_BUCKET;
-  const baseUrl = process.env.NEXT_PUBLIC_S3;
-  if (baseUrl) {
-    try {
-      const host = new URL(baseUrl).hostname;
-      return host.split('.')[0];
-    } catch {
-      return 'refautomex';
-    }
-  }
-  return 'refautomex';
-};
+import { bucketName, claveDeObjeto, s3Client } from '@/app/lib/s3-storage';
 
 const normalizeUserId = (value) => {
   const cleaned = String(value || '').replace(/[^0-9]/g, '');
   return cleaned || '';
 };
-
-// Sin prefijo NEXT_PUBLIC_: esta ruta corre en el servidor y no debe exponer
-// las llaves. Con el prefijo, Next las incrustaba en el bundle del navegador.
-const accessKeyFromEnv = process.env.ACCESS_KEY_S3 || '';
-const secretKeyFromEnv = process.env.SECRET_KEY_S3 || '';
-
-const s3Client = new S3Client({
-  region: process.env.S3_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: accessKeyFromEnv,
-    secretAccessKey: secretKeyFromEnv,
-  },
-});
-
-const bucketName = resolveBucketName();
 
 export async function POST(request) {
   try {
@@ -55,12 +27,15 @@ export async function POST(request) {
 
     const arrayBuffer = await file.arrayBuffer();
     const body = Buffer.from(arrayBuffer);
+
+    // El avatar se lee como `${NEXT_PUBLIC_S3}usr/<id>.jpg`, asi que la llave
+    // relativa es esa y el objeto vive bajo el prefijo del bucket.
     const key = `usr/${userId}.jpg`;
 
     await s3Client.send(
       new PutObjectCommand({
         Bucket: bucketName,
-        Key: key,
+        Key: claveDeObjeto(key),
         Body: body,
         ContentType: file.type || 'application/octet-stream',
         CacheControl: 'no-cache',

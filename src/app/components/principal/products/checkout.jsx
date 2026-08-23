@@ -15,6 +15,7 @@ import {
 } from 'react-icons/fa6';
 import { useCart } from '@/app/lib/shopping-context';
 import { getStorageValue } from '@/app/lib/storage-values';
+import { resolveMainProductImage } from '@/app/lib/product-images';
 
 let stripePromise;
 const getStripe = () => {
@@ -31,8 +32,6 @@ const currencyFormatter = new Intl.NumberFormat('es-MX', {
   currency: 'MXN',
 });
 
-const DEFAULT_IMAGE = `${process.env.NEXT_PUBLIC_S3 || ''}productos/no-img.png`;
-
 const fulfillmentLabels = {
   en_proceso: { label: 'En proceso', icon: FaClock },
   pedido_confirmado: { label: 'Pedido confirmado', icon: FaCheckToSlot },
@@ -42,12 +41,9 @@ const fulfillmentLabels = {
 const normalizeCartItem = (item) => {
   const price = Number(item.precio ?? item.price ?? 0) || 0;
   const quantity = Number(item.quantity ?? item.qty ?? 1) || 1;
-  const image =
-    item.image ||
-    item.mainImage ||
-    (Array.isArray(item.rutasParsed) && item.rutasParsed[0]
-      ? `${process.env.NEXT_PUBLIC_S3 || ''}${item.rutasParsed[0]}`
-      : DEFAULT_IMAGE);
+  // Un carrito guardado en localStorage antes del arreglo de `rutas` trae
+  // rutasParsed vacio y el rutas bueno: resolveMainProductImage mira ambos.
+  const image = resolveMainProductImage(item);
   return {
     ...item,
     normalizedPrice: price,

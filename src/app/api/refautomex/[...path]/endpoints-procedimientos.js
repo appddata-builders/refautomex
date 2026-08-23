@@ -37,10 +37,14 @@ const faltan = (detalle) => ({
 // ---------------------------------------------------------------------------
 
 // webProducts()
+//
+// El FILTER no es cosmetico: con el LEFT JOIN a `imagenes`, un producto sin
+// fotos hacia que json_agg devolviera [null] en vez de []. El frontend tomaba
+// ese null como la ruta principal y pedia a S3 `.../undefined`.
 const getProducts = async () => ({
   cuerpo: await llamar(
     `SELECT p.num_parte, p.descripcion, d.precio, g.grupo, g.idgrupo, d.existencia,
-            json_agg(i.ruta) AS rutas
+            COALESCE(json_agg(i.ruta) FILTER (WHERE i.ruta IS NOT NULL), '[]'::json) AS rutas
        FROM producto p
        INNER JOIN grupo g USING (idgrupo)
        INNER JOIN detalle d USING (num_parte)
@@ -99,7 +103,8 @@ const getAllProducts = async ({ body }) => {
       `SELECT p.num_parte, p.descripcion, d.precio, d.costo, g.grupo, g.idgrupo,
               c.idcategoria, c.categoria, d.existencia, l.localizacion,
               s.sucursal, s.idsucursal, p.mod_ini, p.mod_fin, ma.marca, ma.idmarca,
-              d.utilidad, pr.empresa AS ultimo, json_agg(i.ruta) AS rutas
+              d.utilidad, pr.empresa AS ultimo,
+              COALESCE(json_agg(i.ruta) FILTER (WHERE i.ruta IS NOT NULL), '[]'::json) AS rutas
          FROM producto p
          INNER JOIN detalle d USING (num_parte)
          INNER JOIN localizacion l USING (idlocalizacion)

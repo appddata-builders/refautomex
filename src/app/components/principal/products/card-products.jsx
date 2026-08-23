@@ -11,6 +11,10 @@ import Spinner from '@/app/components/principal/spinner';
 import ProductOverview from '@/app/components/principal/products/product-overview';
 import { useCart } from '@/app/lib/shopping-context';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import {
+  parseProductRoutes,
+  resolveProductImage,
+} from '@/app/lib/product-images';
 
 const GROUP_PAGE_SIZE = 16;
 
@@ -75,7 +79,6 @@ function useCategories(products) {
 }
 
 export default function CardProducts({ showSearchBar = true }) {
-  const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
   const { t } = useTranslation();
 
   const [products, setProducts] = useState([]);
@@ -117,16 +120,11 @@ export default function CardProducts({ showSearchBar = true }) {
         const payload = await response.json();
         if (!isMounted) return;
         const raw = payload?.[0] ?? [];
+        // `rutas` llega como array desde Postgres (json_agg) y como string
+        // JSON desde el MySQL original: parseProductRoutes acepta las dos.
         const parsed = raw.map(p => ({
           ...p,
-          rutasParsed: (() => {
-            try {
-              const arr = JSON.parse(p.rutas || '[]');
-              return Array.isArray(arr) ? arr : [];
-            } catch {
-              return [];
-            }
-          })(),
+          rutasParsed: parseProductRoutes(p.rutas),
         }));
         setProducts(parsed);
       } catch (err) {
@@ -395,9 +393,7 @@ export default function CardProducts({ showSearchBar = true }) {
                   const inputValue = productInCart
                     ? (productInCart.quantity || MIN_QTY)
                     : (storedValue === undefined ? MIN_QTY : storedValue);
-                  const img = product.rutasParsed?.[0]
-                    ? `${multimediaSrc}${product.rutasParsed[0]}`
-                    : `${multimediaSrc}productos/no-img.png`;
+                  const img = resolveProductImage(product.rutasParsed?.[0]);
                   const inCart = Boolean(productInCart);
                   const cardIndex = animationCounter++;
                   const groupLabel = displayGrupo(product.grupo);

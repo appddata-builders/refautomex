@@ -3,23 +3,25 @@ import { motion } from 'framer-motion';
 import { BiSearchAlt2 } from 'react-icons/bi';
 import { FaExpand } from 'react-icons/fa';
 import { createPortal } from 'react-dom';
+import {
+  PRODUCT_FALLBACK_IMAGE,
+  resolveProductImages,
+} from '@/app/lib/product-images';
 
 export default function ProductOverview({ prodOverview }) {
-  const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
-  const fallbackImage = `${multimediaSrc}productos/no-img.png`;
+  const fallbackImage = PRODUCT_FALLBACK_IMAGE;
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [zoomOrigin, setZoomOrigin] = useState({ x: 50, y: 50 });
   const [expandedImage, setExpandedImage] = useState(null);
   const [isMounted, setIsMounted] = useState(false);
   const descriptionText = prodOverview?.descripcion_larga || prodOverview?.descripcion;
 
-  const imageList = useMemo(() => {
-    const raw = Array.isArray(prodOverview?.images) ? prodOverview.images : [];
-    const parsed = raw
-      .map((img) => (img?.startsWith('http') ? img : `${multimediaSrc}${img}`))
-      .filter(Boolean);
-    return parsed.length ? parsed : [fallbackImage];
-  }, [prodOverview, multimediaSrc, fallbackImage]);
+  // `images` viene de card-products ya normalizado, pero el modal tambien se
+  // abre con productos que traen `rutas` crudo del API.
+  const imageList = useMemo(
+    () => resolveProductImages(prodOverview?.images ?? prodOverview?.rutas),
+    [prodOverview]
+  );
 
   useEffect(() => {
     setSelectedIndex(0);
