@@ -121,13 +121,13 @@ export default function Settings() {
         setProfileError('');
         setProfileSuccess('');
         if (!profile) {
-            setProfileError('Selecciona una imagen antes de guardar.');
+            setProfileError(t('account.photoPickFirst'));
             setMediaUploading(false);
             setIsSaving(false);
             return;
         }
         if (!idUsuario) {
-            setProfileError('No se encontró el usuario para guardar la imagen.');
+            setProfileError(t('account.photoNoUser'));
             setMediaUploading(false);
             setIsSaving(false);
             return;
@@ -145,13 +145,13 @@ export default function Settings() {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || 'Error al subir imagen. Por favor intenta de nuevo.');
+                throw new Error(errorData.message || t('account.photoUploadError'));
             }
 
-            setProfileSuccess('Imagen guardada correctamente.');
+            setProfileSuccess(t('account.photoSaved'));
             setImageError(false);
         } catch (err) {
-            setProfileError(err.message || 'Error al subir imagen. Por favor intenta de nuevo.');
+            setProfileError(err.message || t('account.photoUploadError'));
             console.error('Error al subir imagen:', err);
         } finally {
             setMediaUploading(false);
@@ -179,19 +179,19 @@ export default function Settings() {
         };
 
         if (!name || !regexGeneral.nombre.test(name)) {
-            newErrors.nombre = 'Por favor, ingresa un nombre válido.';
+            newErrors.nombre = t('validation.name');
         }
 
         if (!lastName || !regexGeneral.last_name.test(lastName)) {
-            newErrors.last_name = 'Por favor, ingresa un apellido válido.';
+            newErrors.last_name = t('validation.lastname');
         }
 
         if (!birthDate || !regexGeneral.birthDate.test(birthDate)) {
-            newErrors.birthDate = 'Por favor, ingresa una fecha de nacimiento válida.';
+            newErrors.birthDate = t('validation.birthdate');
         }
 
         if (!phone || !regexGeneral.phone.test(phone)) {
-            newErrors.phone = 'Por favor, ingresa un teléfono válido.';
+            newErrors.phone = t('validation.phone');
         }
 
         setErrorMessages(newErrors);
@@ -244,7 +244,7 @@ export default function Settings() {
 
             const data = await response.json().catch(() => null);
             console.log('Respuesta del servidor:', data);
-            setSuccessMessage("Usuario actualizado correctamente.");
+            setSuccessMessage(t('account.updateOk'));
             let updatedUserData = { ...userData };
             updatedUserData.idusuario = idUsuario;
             updatedUserData.cognitoid = cognitoid;
@@ -260,7 +260,7 @@ export default function Settings() {
             setStorageValue(`user_${username}`, updatedUserData);
         } catch (error) {
             console.error('Error al actualizar usuario:', error);
-            setErrorMessage("Imposible actualizar usuario.");
+            setErrorMessage(t('account.updateError'));
         } finally {
             setLoading(false);
             setIsSaving(false);
@@ -295,7 +295,7 @@ export default function Settings() {
                 >
                     <div className="flex flex-col items-center">
                         <FaStarHalfAlt className="animate-spin text-white text-5xl sm:text-6xl" />
-                        <p className="text-white mt-4 text-center">Guardando...</p>
+                        <p className="text-white mt-4 text-center">{t('account.photoSaving')}</p>
                     </div>
                 </div>
             )}
@@ -346,14 +346,14 @@ export default function Settings() {
                                             {profilePreview ? (
                                                 <img
                                                     src={profilePreview}
-                                                    alt="Profile preview"
+                                                    alt={t('account.photoPreview')}
                                                     className="w-full h-full object-cover"
                                                 />
                                             ) : (
                                                 userData && !imageError ? (
                                                     <img
                                                         src={`${multimediaSrc}usr/${userData.idusuario}.jpg`}
-                                                        alt="profile"
+                                                        alt={t('account.photo')}
                                                         className="w-full h-full object-cover"
                                                         onError={handleImageError}
                                                     />
@@ -544,9 +544,9 @@ export default function Settings() {
                                         disabled={!isEditable}
                                     >
                                         <option id="gender_0" value="" disabled>{t('account.gener')}</option>
-                                        <option id="gender_1" value="M">Masculino</option>
-                                        <option id="gender_2" value="F">Femenino</option>
-                                        <option id="gender_3" value="O">Otro</option>
+                                        <option id="gender_1" value="M">{t('account.genderMale')}</option>
+                                        <option id="gender_2" value="F">{t('account.genderFemale')}</option>
+                                        <option id="gender_3" value="O">{t('account.genderOther')}</option>
                                     </select>
                                     <FieldError id="gender-error" message={errorMessages.gender} />
                                 </div>

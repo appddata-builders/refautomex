@@ -8,8 +8,10 @@ import { AiFillEye } from 'react-icons/ai';
 import { TbWorldWww } from "react-icons/tb";
 import Link from 'next/link';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function LogIn() {
+    const { t } = useTranslation();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [passwordVisible, setPasswordVisible] = useState(false);
@@ -23,12 +25,12 @@ export default function LogIn() {
 
     useEffect(() => {
         if (userStatus && userStatus.includes('new')) {
-            setSuccessMessage('Se ha enviado un correo de confirmación a tu correo.');
-            setIndicationMessage('Por favor, verifica tu bandeja de entrada y sigue las instrucciones para validar tu cuenta.');
+            setSuccessMessage(t('account.confirmationSent'));
+            setIndicationMessage(t('account.checkInbox'));
         } else if (userStatus && userStatus.includes('password-reset')) {
-            setSuccessMessage('Se ha restablecido su contraseña con éxito.');
+            setSuccessMessage(t('account.passwordReset'));
         } else if (userStatus && userStatus.includes('error')) {
-            setDangerMessage('Por favor, inténtalo de nuevo más tarde.');
+            setDangerMessage(t('common.tryLater'));
         }
     }, []);
 
@@ -54,20 +56,20 @@ export default function LogIn() {
                     if (isEmployee) {
                         window.location.href = '/productivity';
                     } else {
-                        setAlertMessage('No fue posible ingresar a Refautomex Calidad con este usuario.');
+                        setAlertMessage(t('panel.login.notEmployee'));
                         cognitoUser.signOut();
                         setLoading(false);
                     }
                 }).catch(() => {
-                    setAlertMessage('Error al verificar el estado de empleado.');
+                    setAlertMessage(t('panel.login.statusError'));
                     setLoading(false);
                 });
             },
             onFailure: function (err) {
                 if (err.code === 'UserNotConfirmedException') {
-                    setAlertMessage('Tu cuenta no ha sido confirmada.');
+                    setAlertMessage(t('account.errorUnconfirmed'));
                 } else {
-                    setAlertMessage('Correo electrónico o contraseña inválidos.');
+                    setAlertMessage(t('account.errorCredentials'));
                 }
                 setLoading(false);
             }
@@ -93,7 +95,7 @@ export default function LogIn() {
             return data.empleado;
         } catch (error) {
             console.error('Error al verificar empleado:', error);
-            setAlertMessage('Imposible verificar empleado.');
+            setAlertMessage(t('panel.login.checkError'));
             return false;
         }
     };
@@ -104,20 +106,20 @@ export default function LogIn() {
                 <div className="relative bg-[rgb(var(--color-card))]/50 w-full md:w-[500px] md:rounded-xl shadow shadow-[rgb(var(--color-text))]/10 lg:pt-10 pt-0">
                     <Link href='/' className="bg-[rgb(var(--color-gray))] text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-card))] cursor-pointer absolute top-4 left-3 items-center leading-none rounded-full flex lg:inline-flex" role="alert">
                         <span className="flex rounded-full bg-[rgb(var(--color-galaxy))] uppercase p-1 text-xs font-bold mr-3 shadow-md"><TbWorldWww size={30}/></span>
-                        <span className="font-semibold mr-2 text-left flex-auto">Refautomex.com</span>
+                        <span className="font-semibold mr-2 text-left flex-auto">{t('footer.copyrightSite')}</span>
                     </Link>
                     <div className="flex min-h-full flex-1 flex-col justify-center px-6 py-12 lg:pb-10 lg:px-8">
                         <div className="sm:mx-auto sm:w-full sm:max-w-sm">
                             <RefautomexLogo classAttr={"h-24 md:h-32 w-auto object-contain p-2 md:p-3 mx-auto"} />
                             <h2 className="text-center text-2xl leading-9 tracking-tight text-[rgb(var(--color-text))] text-shadow">
-                                Sistema de CALIDAD
+                                {t('panel.login.title')}
                             </h2>
                         </div>
                         <div className="mt-10 sm:mx-auto sm:w-full sm:max-w-sm">
                             <form className="space-y-6" method="POST" onSubmit={onSubmit}>
                                 <div>
                                     <label htmlFor="email" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Correo electrónico
+                                    {t('account.mail')}
                                     </label>
                                     <div className="mt-2">
                                     <input
@@ -134,11 +136,11 @@ export default function LogIn() {
                                 <div>
                                     <div className="flex items-center justify-between">
                                     <label htmlFor="password" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                        Contraseña
+                                        {t('account.password')}
                                     </label>
                                     <div className="text-sm">
                                         <a href="section/account?load=recovery&lang=es" className="font-semibold text-[rgb(var(--color-refautomex))] text-shadow">
-                                        Olvidé mi contraseña
+                                        {t('account.forgot')}
                                         </a>
                                     </div>
                                     </div>
@@ -164,7 +166,7 @@ export default function LogIn() {
                                     type="submit"
                                     className="bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer -mt-2"
                                     >
-                                        {isLoading ? 'Ingresando...' : 'Ingresar'}
+                                        {isLoading ? t('panel.login.signingIn') : t('account.login')}
                                     </button>
                                 </div>
                             </form>
@@ -173,7 +175,7 @@ export default function LogIn() {
                     {alertMessage && (
                         <div className="md:rounded-xl bg-gradient-to-br from-[rgb(var(--color-galaxy))] to-[rgb(var(--color-amber))] text-center py-4 lg:px-4">
                             <div className="px-6 md:px-4 p-2 bg-transparent items-center text-[rgb(var(--color-text))] leading-none lg:rounded-full flex lg:inline-flex md:animate-out" role="alert">
-                                <span className="flex rounded-full bg-red-400 uppercase px-2 py-1 text-xs font-bold mr-3 shadow">Error</span>
+                                <span className="flex rounded-full bg-red-400 uppercase px-2 py-1 text-xs font-bold mr-3 shadow">{t('common.error')}</span>
                                 <span className="font-semibold mr-2 text-left flex-auto">{alertMessage}</span>
                             </div>
                         </div>
@@ -181,7 +183,7 @@ export default function LogIn() {
                     {alertSuccess && (
                         <div className="md:rounded-xl bg-gradient-to-br from-[rgb(var(--color-galaxy))] to-[rgb(var(--color-amber))] text-center py-4 lg:px-4">
                             <div className="px-6 md:px-4 p-2 bg-transparent items-center text-[rgb(var(--color-text))] leading-none lg:rounded-full flex lg:inline-flex" role="alert">
-                                <span className="flex rounded-full bg-amber-500 text-white uppercase px-2 py-1 text-xs font-bold mr-3 shadow">Warning</span>
+                                <span className="flex rounded-full bg-amber-500 text-white uppercase px-2 py-1 text-xs font-bold mr-3 shadow">{t('common.warning')}</span>
                                 <span className="inline-block m-2 text-justify italic">
                                     <b>{alertSuccess}</b>
                                 </span>

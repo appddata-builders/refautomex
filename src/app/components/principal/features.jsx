@@ -49,7 +49,7 @@ export default function Features() {
                     </div>
                 <img
                     src={`${multimediaSrc}place.jpg`}
-                    alt="Product screenshot"
+                    alt={t('alt.place')}
                     className="w-[40rem] max-w-none rounded-xl shadow-xl sm:w-[57rem]"
                     width={2432}
                     height={1442}

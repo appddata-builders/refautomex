@@ -5,8 +5,10 @@ import { FaBoxesPacking } from 'react-icons/fa6';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import Title from '../title';
 import AddRegister from './add-register';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Inventories() {
+    const { t } = useTranslation();
     const { userData } = useContext(AuthContext);
     const [resetKey, setResetKey] = useState(0);
     const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
@@ -19,14 +21,14 @@ export default function Inventories() {
         return (
             <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-transparent to-[rgb(var(--color-card))] backdrop-blur-md py-28">
                 <Title
-                    title="Inventarios"
+                    title={t('panel.inventories.title')}
                     icon={FaBoxesPacking}
-                    back="Volver al panel"
+                    back={t('panel.common.back')}
                     path="/productivity"
                 />
                 <div className="mx-auto max-w-4xl px-6 lg:px-8">
                     <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
-                        Solo administradores pueden acceder a este modulo.
+                        {t('panel.common.adminOnly')}
                     </div>
                 </div>
             </div>
@@ -36,9 +38,9 @@ export default function Inventories() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-transparent to-[rgb(var(--color-card))] backdrop-blur-md py-28">
             <Title
-                title="Inventarios"
+                title={t('panel.inventories.title')}
                 icon={FaBoxesPacking}
-                back="Volver al panel"
+                back={t('panel.common.back')}
                 path="/productivity"
             />
             <div className="mx-auto max-w-6xl px-6 lg:px-8">

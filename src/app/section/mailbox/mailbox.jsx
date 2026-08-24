@@ -98,7 +98,7 @@ export default function Mailbox() {
 
     return (
         <div className="isolate bg-[rgb(var(--color-bg))] px-6 py-24 sm:py-32 lg:px-8">
-            <MetaHead title="Mailbox"/>
+            <MetaHead title={t('mailbox.title')}/>
             <div
                 className="absolute inset-x-0 top-[-10rem] -z-10 transform-gpu overflow-hidden blur-3xl sm:top-[-20rem]"
                 aria-hidden="true"
@@ -167,7 +167,7 @@ export default function Mailbox() {
                     />
                     </div>
                 </div>
-                <Switch.Group as="div" className="flex gap-x-4 sm:col-span-2">
+                <Field as="div" className="flex gap-x-4 sm:col-span-2">
                     <div className="flex h-6 items-center">
                     <Switch
                         checked={agreed}
@@ -189,10 +189,10 @@ export default function Mailbox() {
                         />
                     </Switch>
                     </div>
-                    <Switch.Label className="text-sm leading-6 text-[rgb(var(--color-text))] font-bold">
+                    <Label className="text-sm leading-6 text-[rgb(var(--color-text))] font-bold">
                     {t('mailbox.agree')}
-                    </Switch.Label>
-                </Switch.Group>
+                    </Label>
+                </Field>
                 </div>
                 {!isSuccessfull ? (
                 <div className="mt-10 md:flex md:items-center md:justify-between mx-auto">

@@ -74,7 +74,7 @@ export default function VideoComponent() {
                 onPause={() => setIsPlaying(false)}
             >
                 <source src={`${multimediaSrc}refautomex.mp4`} type="video/mp4" />
-                <p className='my-8 font-bold'>Your browser does not support the video tag.</p>
+                <p className='my-8 font-bold'>{t('index.video.unsupported')}</p>
             </video>
             <button
                 type="button"

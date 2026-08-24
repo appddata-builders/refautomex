@@ -20,6 +20,7 @@ import {
 } from 'react-icons/fi';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { getStorageValue } from '@/app/lib/storage-values';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const isLikelyPlaceId = (val) => {
     if (typeof val !== 'string') return false;
@@ -30,6 +31,7 @@ const isLikelyPlaceId = (val) => {
 };
 
 export default function Personal() {
+    const { t } = useTranslation();
     const [users, setUsers] = useState([]);
     const [searchEmail, setSearchEmail] = useState('');
     const [imgErrors, setImgErrors] = useState({});
@@ -257,19 +259,19 @@ export default function Personal() {
         if (!isAdmin) return;
         if (!userId) {
             if (typeof window !== 'undefined') {
-                window.alert('No se pudo identificar al usuario.');
+                window.alert(t('panel.personal.noUser'));
             }
             return;
         }
         if (currentUserId != null && String(userId) === String(currentUserId)) {
             if (typeof window !== 'undefined') {
-                window.alert('No puedes remover tu propia cuenta.');
+                window.alert(t('panel.personal.cantRemoveSelf'));
             }
             return;
         }
         const confirmRemoval = typeof window === 'undefined'
             ? true
-            : window.confirm('¿Quieres remover a este empleado?');
+            : window.confirm(t('panel.personal.confirmRemove'));
         if (!confirmRemoval) return;
 
         try {
@@ -283,7 +285,7 @@ export default function Personal() {
         } catch (error) {
             console.error('Error removing employee:', error);
             if (typeof window !== 'undefined') {
-                window.alert('No fue posible remover al empleado.');
+                window.alert(t('panel.personal.removeError'));
             }
         }
     };
@@ -303,7 +305,7 @@ export default function Personal() {
         if (!isAdmin) return;
         if (!userId) {
             if (typeof window !== 'undefined') {
-                window.alert('No se pudo identificar al usuario.');
+                window.alert(t('panel.personal.noUser'));
             }
             return;
         }
@@ -312,7 +314,7 @@ export default function Personal() {
         const branch = branches.find((item) => String(item.id) === String(selectedId));
         if (!branch) {
             if (typeof window !== 'undefined') {
-                window.alert('Selecciona una sucursal válida.');
+                window.alert(t('panel.personal.pickValidBranch'));
             }
             return;
         }
@@ -338,7 +340,7 @@ export default function Personal() {
         } catch (error) {
             console.error('Error activating employee:', error);
             if (typeof window !== 'undefined') {
-                window.alert('No fue posible activar al usuario.');
+                window.alert(t('panel.personal.activateError'));
             }
         }
     };
@@ -348,13 +350,13 @@ export default function Personal() {
         if (!isAdmin) return;
         if (!userId) {
             if (typeof window !== 'undefined') {
-                window.alert('No se pudo identificar al usuario.');
+                window.alert(t('panel.personal.noUser'));
             }
             return;
         }
         const confirmPromotion = typeof window === 'undefined'
             ? true
-            : window.confirm('¿Quieres hacer administrador a este empleado?');
+            : window.confirm(t('panel.personal.confirmPromote'));
         if (!confirmPromotion) return;
 
         try {
@@ -367,7 +369,7 @@ export default function Personal() {
         } catch (error) {
             console.error('Error promoting admin:', error);
             if (typeof window !== 'undefined') {
-                window.alert('No fue posible actualizar el rol del empleado.');
+                window.alert(t('panel.personal.roleError'));
             }
         }
     };
@@ -377,19 +379,19 @@ export default function Personal() {
         if (!isAdmin) return;
         if (!userId) {
             if (typeof window !== 'undefined') {
-                window.alert('No se pudo identificar al usuario.');
+                window.alert(t('panel.personal.noUser'));
             }
             return;
         }
         if (currentUserId != null && String(userId) === String(currentUserId)) {
             if (typeof window !== 'undefined') {
-                window.alert('No puedes quitarte permisos de administrador.');
+                window.alert(t('panel.personal.cantDemoteSelf'));
             }
             return;
         }
         const confirmDemotion = typeof window === 'undefined'
             ? true
-            : window.confirm('¿Quieres quitar permisos de administrador?');
+            : window.confirm(t('panel.personal.confirmDemote'));
         if (!confirmDemotion) return;
 
         try {
@@ -402,7 +404,7 @@ export default function Personal() {
         } catch (error) {
             console.error('Error demoting admin:', error);
             if (typeof window !== 'undefined') {
-                window.alert('No fue posible actualizar el rol del empleado.');
+                window.alert(t('panel.personal.roleError'));
             }
         }
     };
@@ -432,7 +434,7 @@ export default function Personal() {
     const groupOptions = [
         {
             value: 1,
-            label: 'Empleado activo',
+            label: t('panel.personal.activeEmployee'),
             icon: FiUserCheck,
             activeClass: 'bg-emerald-500 text-white border-emerald-400',
             softClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -440,7 +442,7 @@ export default function Personal() {
         },
         {
             value: 0,
-            label: 'Usuario externo',
+            label: t('panel.personal.externalUser'),
             icon: FiUserX,
             activeClass: 'bg-rose-500 text-white border-rose-400',
             softClass: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -492,16 +494,16 @@ export default function Personal() {
         const isWebBranch = branchName && String(branchName).toLowerCase().includes('web');
         const branchDisplay = isWebBranch ? '' : branchName;
         const primaryDetails = [
-            { label: 'Correo', value: user.email, icon: FiMail },
-            { label: 'Telefono', value: user.telefono, icon: FiPhone, field: 'telefono' },
-            { label: 'Sucursal', value: branchDisplay, icon: FiMapPin, field: 'branch' },
+            { label: t('panel.personal.email'), value: user.email, icon: FiMail },
+            { label: t('panel.personal.phone'), value: user.telefono, icon: FiPhone, field: 'telefono' },
+            { label: t('panel.common.branch'), value: branchDisplay, icon: FiMapPin, field: 'branch' },
         ];
 
         const dbDetails = [
-            { label: 'Genero', value: user.genero, icon: FiUser },
-            { label: 'Nacimiento', value: formatBirthDate(user.f_nacimiento), icon: FiCalendar },
-            { label: 'RFC', value: user.rfc, icon: FiTag },
-            { label: 'Domicilio', value: address, icon: FiMapPin },
+            { label: t('panel.personal.gender'), value: user.genero, icon: FiUser },
+            { label: t('panel.personal.birth'), value: formatBirthDate(user.f_nacimiento), icon: FiCalendar },
+            { label: t('invoice.rfc'), value: user.rfc, icon: FiTag },
+            { label: t('panel.personal.address'), value: address, icon: FiMapPin },
         ];
 
         const selectedBranch = activationByUser[userKey]?.branchId || '';
@@ -518,7 +520,7 @@ export default function Personal() {
         const renderInfoItem = (item) => {
             const Icon = item.icon;
             const valueClass =
-                item.label === 'Correo'
+                item.label === t('panel.personal.email')
                     ? 'break-all overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]'
                     : '';
             const isTelefono = item.field === 'telefono';
@@ -547,7 +549,7 @@ export default function Personal() {
                                     className="mt-1 w-full rounded-lg border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
                                 >
                                     <option value="" disabled>
-                                        {branchesLoading ? 'Cargando sucursales...' : 'Selecciona sucursal'}
+                                        {branchesLoading ? t('panel.personal.loadingBranches') : t('panel.common.pickBranch')}
                                     </option>
                                     {branches.map((branch) => (
                                         <option key={branch.id} value={branch.id}>
@@ -608,7 +610,7 @@ export default function Personal() {
                             <div className="space-y-1 min-w-0">
                                 <span className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold shadow-sm ${groupMeta?.softClass || 'bg-slate-50 text-slate-600 border-slate-200'}`}>
                                     <span className={`h-2 w-2 rounded-full ${groupMeta?.dotClass || 'bg-slate-400'}`} />
-                                    {groupMeta?.label || 'Sin estado'}
+                                    {groupMeta?.label || t('panel.personal.noStatus')}
                                 </span>
                                 <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">{fullName}</h3>
                             </div>
@@ -620,7 +622,7 @@ export default function Personal() {
                                     onClick={() => startEditUser(user)}
                                     className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm transition hover:-translate-y-0.5"
                                 >
-                                    Editar
+                                    {t('panel.personal.edit')}
                                 </button>
                             )}
                             {canEdit && isEditing && (
@@ -630,14 +632,14 @@ export default function Personal() {
                                         onClick={() => saveEditUser(userKey)}
                                         className="inline-flex items-center gap-2 rounded-full border border-emerald-400 bg-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
                                     >
-                                        Guardar
+                                        {t('panel.personal.save')}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => cancelEditUser(userKey)}
                                         className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm"
                                     >
-                                        Cancelar
+                                        {t('panel.common.cancel')}
                                     </button>
                                 </>
                             )}
@@ -647,7 +649,7 @@ export default function Personal() {
                                     onClick={() => handleRemoveEmployee(userKey, user.idusuario)}
                                     className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
                                 >
-                                    Remover empleado
+                                    {t('panel.personal.remove')}
                                 </button>
                             )}
                             {canPromoteAdmin && (
@@ -656,7 +658,7 @@ export default function Personal() {
                                     onClick={() => handlePromoteAdmin(userKey, user.idusuario)}
                                     className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 shadow-sm transition hover:-translate-y-0.5"
                                 >
-                                    Hacer admin
+                                    {t('panel.personal.makeAdmin')}
                                 </button>
                             )}
                             {canDemoteAdmin && (
@@ -666,7 +668,7 @@ export default function Personal() {
                                     disabled={isSelf}
                                     className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
                                 >
-                                    Quitar admin
+                                    {t('panel.personal.removeAdmin')}
                                 </button>
                             )}
                             <button
@@ -674,7 +676,7 @@ export default function Personal() {
                                 onClick={() => toggleDetails(userKey)}
                                 className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm transition hover:-translate-y-0.5"
                             >
-                                Detalles
+                                {t('panel.personal.details')}
                                 <FiChevronDown className={`h-4 w-4 transition ${expanded ? 'rotate-180' : ''}`} />
                             </button>
                         </div>
@@ -697,7 +699,7 @@ export default function Personal() {
                                     className="w-full rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70 sm:flex-1"
                                 >
                                     <option value="" disabled>
-                                        {branchesLoading ? 'Cargando sucursales...' : 'Selecciona sucursal'}
+                                        {branchesLoading ? t('panel.personal.loadingBranches') : t('panel.common.pickBranch')}
                                     </option>
                                     {branches.map((branch) => (
                                         <option key={branch.id} value={branch.id}>
@@ -711,11 +713,11 @@ export default function Personal() {
                                     disabled={!canActivate}
                                     className="inline-flex items-center justify-center rounded-xl border border-emerald-400 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
                                 >
-                                    Activar
+                                    {t('panel.personal.activate')}
                                 </button>
                             </div>
                             <p className="mt-2 text-xs text-[rgb(var(--color-text))]">
-                                {branches.length ? 'Asigna sucursal para activar la cuenta.' : 'No hay sucursales disponibles.'}
+                                {branches.length ? t('panel.personal.assignBranch') : t('panel.personal.noBranches')}
                             </p>
                         </div>
                     ) : !showActivation ? (
@@ -763,9 +765,9 @@ export default function Personal() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-transparent to-[rgb(var(--color-card))] backdrop-blur-md py-28">
             <Title
-                title='Personal'
+                title={t('panel.personal.title')}
                 icon={FaUsersViewfinder}
-                back='Volver al panel'
+                back={t('panel.common.back')}
                 path='/productivity'
             />
             <div className="mx-auto max-w-7xl 2xl:max-w-[1900px] px-6 lg:px-8">
@@ -776,7 +778,7 @@ export default function Personal() {
                                 <FiSearch className="absolute left-3 top-3 h-5 w-5 text-[rgb(var(--color-text))]" />
                                 <input
                                     type="text"
-                                    placeholder="Buscar por correo"
+                                    placeholder={t('panel.personal.searchPlaceholder')}
                                     value={searchEmail}
                                     onChange={handleSearchChange}
                                     className="w-full rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] py-2 pl-10 pr-4 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
@@ -785,7 +787,7 @@ export default function Personal() {
                             <div className="flex flex-wrap gap-2">
                                 <span className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm">
                                     <FiUsers className="h-4 w-4 text-[rgb(var(--color-text))]" />
-                                    Total: {filteredUsers.length}
+                                    {t('panel.personal.total')} {filteredUsers.length}
                                 </span>
                             </div>
                         </div>
@@ -794,7 +796,7 @@ export default function Personal() {
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-3 shadow-sm">
                         <div className="flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))]">
                             <FiUsers className="h-4 w-4" />
-                            Vista: {activeTab === 'employees' ? 'Empleados' : 'Otros'}
+                            {t('panel.calendar.view')} {activeTab === 'employees' ? t('panel.personal.tabEmployees') : t('panel.personal.tabOthers')}
                         </div>
                         <div className="flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] p-1">
                             <button
@@ -802,14 +804,14 @@ export default function Personal() {
                                 onClick={() => setActiveTab('employees')}
                                 className={`rounded-full px-4 py-1 text-xs font-semibold transition ${activeTab === 'employees' ? 'bg-emerald-500 text-white shadow' : 'text-[rgb(var(--color-text))]'}`}
                             >
-                                Empleados
+                                {t('panel.personal.tabEmployees')}
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setActiveTab('others')}
                                 className={`rounded-full px-4 py-1 text-xs font-semibold transition ${activeTab === 'others' ? 'bg-rose-500 text-white shadow' : 'text-[rgb(var(--color-text))]'}`}
                             >
-                                Otros
+                                {t('panel.personal.tabOthers')}
                             </button>
                         </div>
                     </div>
@@ -818,30 +820,30 @@ export default function Personal() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                                 <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-                                    {activeTab === 'employees' ? 'Empleados Activos' : 'Otros Usuarios'}
+                                    {activeTab === 'employees' ? t('panel.personal.activeTitle') : t('panel.personal.othersTitle')}
                                 </h2>
                                 <p className="text-sm text-[rgb(var(--color-text))]">
                                     {activeTab === 'employees'
-                                        ? 'Detalle completo y etiquetas de estado por usuario.'
-                                        : 'Activa cuentas asignando sucursal.'}
+                                        ? t('panel.personal.activeSubtitle')
+                                        : t('panel.personal.othersSubtitle')}
                                 </p>
                             </div>
                             {activeTab === 'employees' ? (
                                 <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
                                     <FiUserCheck className="h-4 w-4" />
-                                    {employees.length} activos
+                                    {employees.length} {t('panel.personal.activeCount')}
                                 </span>
                             ) : (
                                 <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
                                     <FiUserX className="h-4 w-4" />
-                                    {nonEmployees.length} externos
+                                    {nonEmployees.length} {t('panel.personal.externalCount')}
                                 </span>
                             )}
                         </div>
                         {activeTab === 'employees' ? (
                             employees.length === 0 ? (
                                 <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
-                                    No hay empleados activos para mostrar.
+                                    {t('panel.personal.emptyEmployees')}
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2 2xl:grid-cols-3 ">
@@ -851,7 +853,7 @@ export default function Personal() {
                         ) : (
                             nonEmployees.length === 0 ? (
                                 <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
-                                    No hay usuarios externos para mostrar.
+                                    {t('panel.personal.emptyOthers')}
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

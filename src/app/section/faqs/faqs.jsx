@@ -60,7 +60,7 @@ export default function FAQs () {
 
   return (
     <section className='bg-[rgb(var(--color-bg))]'>
-      <MetaHead title="FAQs"/>
+      <MetaHead title={t('faqs.sectionOne')}/>
       <div className="container mx-auto py-32 sm:py-40 p-4 ">
         <div className="flex flex-col lg:flex-row">
           <aside className="w-full lg:w-1/4 flex justify-center items-center">

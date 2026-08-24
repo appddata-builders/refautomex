@@ -9,6 +9,7 @@ import FindFolio from './find-folio';
 import Title from '../title';
 import { upperCase } from 'lodash';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const createTooltip = (icon, label, id, visibleTooltip, setVisibleTooltip) => {
     const show = () => setVisibleTooltip(id);
@@ -39,11 +40,12 @@ const isWebBranch = (value) => {
 };
 
 export default function Site() {
+    const { t } = useTranslation();
     const [visibleTooltip, setVisibleTooltip] = useState(null);
-    const findTooltip = createTooltip(FaSearch, 'Buscar pedido', 'find', visibleTooltip, setVisibleTooltip);
-    const findRevertTooltip = createTooltip(FaSearch, 'Quitar filtro', 'find', visibleTooltip, setVisibleTooltip);
-    const order = createTooltip(FaBox, 'Pedidos', 'order', visibleTooltip, setVisibleTooltip);
-    const history = createTooltip(FaMoneyBillTransfer, 'Historial', 'history', visibleTooltip, setVisibleTooltip);
+    const findTooltip = createTooltip(FaSearch, t('panel.site.findOrder'), 'find', visibleTooltip, setVisibleTooltip);
+    const findRevertTooltip = createTooltip(FaSearch, t('panel.site.clearFilter'), 'find', visibleTooltip, setVisibleTooltip);
+    const order = createTooltip(FaBox, t('panel.nav.orders'), 'order', visibleTooltip, setVisibleTooltip);
+    const history = createTooltip(FaMoneyBillTransfer, t('panel.site.history'), 'history', visibleTooltip, setVisibleTooltip);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [requests, setRequests] = useState([]);
     const [error, setError] = useState(null);
@@ -98,7 +100,7 @@ export default function Site() {
                 const detalles = Array.isArray(data[1]) ? data[1] : [];
                 const matchedPedido = pedidos.find(p => p.folio === folio);
                 if (!matchedPedido) {
-                    alert(`No se encontró ningún pedido con el folio ${folio}`);
+                    alert(t('panel.site.orderNotFound', { folio }));
                     return;
                 }
 
@@ -113,12 +115,12 @@ export default function Site() {
                 ]);
                 setCurrentPage(1);
             } else {
-                alert(`No se encontraron datos con el folio ${folio}`);
+                alert(t('panel.site.dataNotFound', { folio }));
                 setRequests([]);
             }
         } catch (error) {
             console.error("Error al buscar por folio:", error);
-            alert("Folio no encontrado.");
+            alert(t('panel.site.folioNotFound'));
             setRequests([]);
         }
     };
@@ -127,7 +129,7 @@ export default function Site() {
         e.preventDefault();
 
         if (!selectedStatus) {
-            alert('Por favor, selecciona un estado.');
+            alert(t('panel.common.pickStatus'));
             return;
         }
 
@@ -179,7 +181,7 @@ export default function Site() {
             setRequests(updatedRequests);
         } catch (error) {
             console.error('Error actualizando el estado:', error);
-            alert('Hubo un error al actualizar el estado. Intenta de nuevo.');
+            alert(t('panel.common.statusUpdateError'));
         } finally {
             setIsUpdatingStatus(false);
         }
@@ -258,7 +260,7 @@ export default function Site() {
             setSelectedRequest(null);
         } catch (error) {
             console.error('Error finalizando pedido:', error);
-            setFinalizeError('No se pudo finalizar el pedido. Intenta de nuevo.');
+            setFinalizeError(t('panel.site.finalizeError'));
         } finally {
             setIsFinalizing(false);
         }
@@ -461,8 +463,8 @@ export default function Site() {
         : visibleRequests.slice(startIndex, startIndex + PAGE_SIZE);
 
     const selectedBranchLabel = activeBranchId
-        ? (branchMap[activeBranchId] || 'la sucursal seleccionada')
-        : (isAdmin ? 'todas las sucursales' : 'sin sucursal asignada');
+        ? (branchMap[activeBranchId] || t('panel.site.selectedBranch'))
+        : (isAdmin ? t('panel.site.allBranches') : t('panel.site.noBranch'));
 
     const handlePrevPage = () => {
         setCurrentPage((prev) => Math.max(1, prev - 1));
@@ -475,15 +477,15 @@ export default function Site() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
             <Title
-                title='Entregas en sucursal'
+                title={t('panel.site.title')}
                 icon={GiAutoRepair}
-                back='Volver al panel'
+                back={t('panel.common.back')}
                 path='/productivity'
             />
             <div className="mx-auto max-w-7xl px-6 lg:px-8 mt-5">
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-4 shadow-sm">
                     <div className="text-xs font-semibold uppercase tracking-[0.25em] text-[rgb(var(--color-text))]">
-                        Sucursal
+                        {t('panel.common.branch')}
                     </div>
                     {isAdmin ? (
                         <select
@@ -494,7 +496,7 @@ export default function Site() {
                         >
                             {branchOptions.length === 0 && (
                                 <option value="" disabled>
-                                    Sin sucursales disponibles
+                                    {t('panel.site.noBranches')}
                                 </option>
                             )}
                             {branchOptions.map((branch) => (
@@ -514,7 +516,7 @@ export default function Site() {
                     <div className="mx-auto grid max-w-4xl grid-cols-1 gap-x-4 gap-y-3 lg:mx-0 lg:max-w-none">
                         {!isSearchingFolio && visibleRequests.length === 0 && (
                             <div className="text-center text-sm text-[rgb(var(--color-text))] py-4">
-                                No se encontraron registros para {selectedBranchLabel}.
+                                {t('panel.site.noRecords', { branch: selectedBranchLabel })}
                             </div>
                         )}
                         {!isSearchingFolio && visibleRequests.length > PAGE_SIZE && (
@@ -525,10 +527,10 @@ export default function Site() {
                                     disabled={currentPage === 1}
                                     className={`px-3 py-1 rounded-full border ${currentPage === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[rgb(var(--color-card))]'}`}
                                 >
-                                    Anterior
+                                    {t('common.prev')}
                                 </button>
                                 <span className="text-sm text-[rgb(var(--color-text))]">
-                                    Página {currentPage} de {totalPages}
+                                    {t('panel.common.pageOf', { page: currentPage, total: totalPages })}
                                 </span>
                                 <button
                                     type="button"
@@ -536,7 +538,7 @@ export default function Site() {
                                     disabled={currentPage === totalPages}
                                     className={`px-3 py-1 rounded-full border ${currentPage === totalPages ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[rgb(var(--color-card))]'}`}
                                 >
-                                    Siguiente
+                                    {t('common.next')}
                                 </button>
                             </div>
                         )}
@@ -603,12 +605,12 @@ export default function Site() {
                                 <table className="w-full lg:w-[1155px] text-sm text-left text-[rgb(var(--color-text))] mx-auto">
                                     <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))] text-center">
                                         <tr>
-                                            <th scope="col" className="p-1.5">STATUS</th>
-                                            <th scope="col" className="py-2 px-8">FOLIO</th>
-                                            <th scope="col" className="py-2 px-8">CLIENTE</th>
-                                            <th scope="col" className="py-2 px-8">TOTAL</th>
-                                            <th scope="col" className="py-2 px-8">ENTREGA</th>
-                                            <th scope="col" className="py-2 px-8">DIA DE VENTA</th>
+                                            <th scope="col" className="p-1.5">{t('panel.table.status')}</th>
+                                            <th scope="col" className="py-2 px-8">{t('panel.table.folio')}</th>
+                                            <th scope="col" className="py-2 px-8">{t('panel.table.client')}</th>
+                                            <th scope="col" className="py-2 px-8">{t('panel.table.total')}</th>
+                                            <th scope="col" className="py-2 px-8">{t('panel.table.delivery')}</th>
+                                            <th scope="col" className="py-2 px-8">{t('panel.table.saleDay')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -635,8 +637,8 @@ export default function Site() {
                                                             : 'bg-[rgb(var(--color-error))] cursor-default'}
                                                             text-sm text-[rgb(var(--color-text-base))] px-1 rounded-md mt-2`}
                                                         >
-                                                            {item.status === 'P' ? 'Pedido'
-                                                            : 'Finalizada'}
+                                                            {item.status === 'P' ? t('panel.site.statusOrder')
+                                                            : t('panel.site.statusFinished')}
                                                         </span>
                                                     </td>
                                                     <td className="py-4 px-1 md:px-3 cursor-pointer font-medium bg-[rgb(var(--color-card))]"
@@ -680,11 +682,11 @@ export default function Site() {
                                                                 <table className="w-full text-sm text-left text-[rgb(var(--color-text))] mt-2 shadow">
                                                                     <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))]">
                                                                         <tr>
-                                                                            <th scope="col" className="py-2 px-4">STATUS</th>
-                                                                            <th scope="col" className="py-2 px-4">NÚMERO DE PARTE</th>
-                                                                            <th scope="col" className="py-2 px-4">DESCRIPCIÓN</th>
-                                                                            <th scope="col" className="py-2 px-4">CANTIDAD</th>
-                                                                            <th scope="col" className="py-2 px-4">PRECIO UNITARIO</th>
+                                                                            <th scope="col" className="py-2 px-4">{t('panel.table.status')}</th>
+                                                                            <th scope="col" className="py-2 px-4">{t('panel.table.partNumber')}</th>
+                                                                            <th scope="col" className="py-2 px-4">{t('panel.table.description')}</th>
+                                                                            <th scope="col" className="py-2 px-4">{t('panel.table.quantity')}</th>
+                                                                            <th scope="col" className="py-2 px-4">{t('panel.table.unitPrice')}</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
@@ -707,9 +709,9 @@ export default function Site() {
                                                                                         : 'bg-[rgb(var(--color-blue))] cursor-pointer hover:opacity-85'}
                                                                                         text-sm text-[rgb(var(--color-text-base))] px-1 shadow rounded-md mt-2`}
                                                                                     >
-                                                                                        {detail.status_producto === 'P' ? 'Pendiente'
-                                                                                        : detail.status_producto === 'E' ? 'Entregado'
-                                                                                        : 'Error en venta'}
+                                                                                        {detail.status_producto === 'P' ? t('panel.common.pending')
+                                                                                        : detail.status_producto === 'E' ? t('panel.common.delivered')
+                                                                                        : t('panel.common.saleError')}
                                                                                     </span>
                                                                                 </td>
                                                                                 <td className="py-2 px-4">{detail.num_parte}</td>
@@ -746,7 +748,7 @@ export default function Site() {
                             </h2>
                             <div className="mb-4">
                                 <label htmlFor="status" className="block text-[rgb(var(--color-text))] mb-2">
-                                    Cambia status del producto seleccionado:
+                                    {t('panel.site.changeStatus')}
                                 </label>
                                 <select
                                     id="status"
@@ -754,8 +756,8 @@ export default function Site() {
                                     onChange={(e) => setSelectedStatus(e.target.value)}
                                     className="w-full px-3 py-2 border border-[rgb(var(--color-border))] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
                                 >
-                                    <option value="P">Pendiente</option>
-                                    <option value="E">Entregado</option>
+                                    <option value="P">{t('panel.common.pending')}</option>
+                                    <option value="E">{t('panel.common.delivered')}</option>
                                 </select>
                             </div>
                             <div className='py-4 px-4 relative flex-col justify-center items-center flex'>
@@ -767,8 +769,8 @@ export default function Site() {
                                     /></span>
                                 <span className={`text-sm text-[rgb(var(--color-text))] px-1 shadow rounded-md mt-2`}
                                 >
-                                    {selectedStatus === 'P' ? 'Pendiente'
-                                    : 'Entregado'}
+                                    {selectedStatus === 'P' ? t('panel.common.pending')
+                                    : t('panel.common.delivered')}
                                 </span>
                             </div>
                             <div className="flex justify-end">
@@ -778,7 +780,7 @@ export default function Site() {
                                     disabled={isUpdatingStatus}
                                     className="px-4 py-2 rounded-full border text-sm mr-2 disabled:opacity-50"
                                 >
-                                    Cancelar
+                                    {t('panel.common.cancel')}
                                 </button>
                                 <button
                                     type="button"
@@ -790,7 +792,7 @@ export default function Site() {
                                             : 'bg-emerald-500 hover:bg-emerald-600'
                                     }`}
                                 >
-                                    {isUpdatingStatus ? 'Actualizando...' : 'Continuar'}
+                                    {isUpdatingStatus ? t('panel.common.updating') : t('panel.common.continue')}
                                 </button>
                             </div>
                         </div>
@@ -801,16 +803,16 @@ export default function Site() {
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgb(var(--color-gray-base))]/70">
                         <div className="bg-[rgb(var(--color-bg))] p-6 rounded-lg shadow-xl w-96 max-w-full">
                             <h2 className="text-xl font-semibold mb-2 text-[rgb(var(--color-text))]">
-                                Finalizar pedido
+                                {t('panel.site.finalizeTitle')}
                             </h2>
                             <p className="text-sm text-[rgb(var(--color-text))] mb-4">
-                                Se marcarán como entregados todos los productos del folio{' '}
+                                {t('panel.site.finalizeHint')}{' '}
                                 <span className="font-bold">{selectedRequest.folio}</span>.
                             </p>
                             <div className="bg-[rgb(var(--color-card))] rounded-lg p-3 mb-4 text-sm">
-                                <p>Total de productos: {selectedRequest.details?.length || 0}</p>
+                                <p>{t('panel.site.totalProducts')} {selectedRequest.details?.length || 0}</p>
                                 <p>
-                                    Pendientes:{' '}
+                                    {t('panel.orders.tabPending')}:{' '}
                                     {selectedRequest.details?.filter((detail) => detail.status_producto !== 'E')
                                         .length || 0}
                                 </p>
@@ -827,7 +829,7 @@ export default function Site() {
                                     className="px-4 py-2 rounded-full border text-sm"
                                     disabled={isFinalizing}
                                 >
-                                    Cancelar
+                                    {t('panel.common.cancel')}
                                 </button>
                                 <button
                                     type="button"
@@ -839,7 +841,7 @@ export default function Site() {
                                     }`}
                                     disabled={isFinalizing}
                                 >
-                                    {isFinalizing ? 'Finalizando...' : 'Finalizar'}
+                                    {isFinalizing ? t('panel.site.finalizing') : t('panel.orders.finish')}
                                 </button>
                             </div>
                         </div>

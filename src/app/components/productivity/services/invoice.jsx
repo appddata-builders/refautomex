@@ -6,6 +6,7 @@ import { FaSearch } from 'react-icons/fa';
 import { IoMdCloudDone } from 'react-icons/io';
 import { GoClockFill } from 'react-icons/go';
 import { BiSolidUserCircle } from 'react-icons/bi';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const normalizeStatus = (invoice) => {
     const emitida = String(invoice?.emitida || '').toUpperCase(); // 'P' | 'F'
@@ -67,6 +68,7 @@ const getDaysSince = (value) => {
 };
 
 export default function Invoice() {
+    const { t } = useTranslation();
     const [invoices, setInvoices] = useState([]);
     const [filter, setFilter] = useState('');
     const [error, setError] = useState(null);
@@ -344,24 +346,24 @@ export default function Invoice() {
                 </div>
                 {isExpanded && (
                     <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-[rgb(var(--color-text))]">
-                        <div className="break-words"><span className="font-semibold">Nombre: </span>{toUpper(invoice.nombre)}</div>
+                        <div className="break-words"><span className="font-semibold">{t('panel.invoice.name')} </span>{toUpper(invoice.nombre)}</div>
                         <div className="flex min-w-0 gap-2">
-                            <span className="font-semibold">Correo:</span>
+                            <span className="font-semibold">{t('panel.invoice.email')}</span>
                             <span className="min-w-0 break-all overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]">
                                 {preserve(invoice.email)}
                             </span>
                         </div>
-                        <div className="break-words"><span className="font-semibold">Teléfono: </span>{invoice.telefono}</div>
-                        <div className="break-words"><span className="font-semibold">RFC: </span>{toUpper(invoice.rfc)}</div>
-                        <div className="break-words"><span className="font-semibold">CFDI: </span>{toUpper(invoice.cfdi)}</div>
-                        <div className="break-words"><span className="font-semibold">Régimen: </span>{toUpper(invoice.regimen)}</div>
-                        <div className="break-words whitespace-pre-wrap"><span className="font-semibold">Domicilio: </span>{toUpper(address)}</div>
-                        <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">Sucursal: </span>{toUpper(branchLabel)}</div>
+                        <div className="break-words"><span className="font-semibold">{t('panel.invoice.phone')} </span>{invoice.telefono}</div>
+                        <div className="break-words"><span className="font-semibold">{t('panel.invoice.rfc')} </span>{toUpper(invoice.rfc)}</div>
+                        <div className="break-words"><span className="font-semibold">{t('panel.invoice.cfdi')} </span>{toUpper(invoice.cfdi)}</div>
+                        <div className="break-words"><span className="font-semibold">{t('panel.invoice.regime')} </span>{toUpper(invoice.regimen)}</div>
+                        <div className="break-words whitespace-pre-wrap"><span className="font-semibold">{t('panel.invoice.address')} </span>{toUpper(address)}</div>
+                        <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">{t('panel.invoice.branch')} </span>{toUpper(branchLabel)}</div>
                         {formattedPurchaseDate && (
-                            <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">Compra: </span>{formattedPurchaseDate}</div>
+                            <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">{t('panel.invoice.purchase')} </span>{formattedPurchaseDate}</div>
                         )}
                         {isPending && Number.isFinite(waitingDays) && (
-                            <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">En espera: </span>{waitingDays} días</div>
+                            <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">{t('panel.invoice.waiting')} </span>{waitingDays} {t('panel.invoice.days')}</div>
                         )}
                         {isPending && (
                             <div className="sm:col-span-2 flex justify-end">
@@ -370,25 +372,25 @@ export default function Invoice() {
                                     disabled={!!finalizingId}
                                     onClick={() => handleFinalize(invoice)}
                                 >
-                                    {finalizingId === (invoice.id ?? invoice.folio) ? 'Guardando...' : 'Finalizar factura'}
+                                    {finalizingId === (invoice.id ?? invoice.folio) ? t('panel.providers.saving') : t('panel.invoice.finalize')}
                                 </button>
                             </div>
                         )}
                         <div className="sm:col-span-2 mt-2">
-                            <div className="text-sm font-semibold text-[rgb(var(--color-text))] mb-2">Productos comprados</div>
-                            {isDetailLoading && <p className="text-xs text-[rgb(var(--color-text))]">Cargando productos...</p>}
+                            <div className="text-sm font-semibold text-[rgb(var(--color-text))] mb-2">{t('panel.invoice.products')}</div>
+                            {isDetailLoading && <p className="text-xs text-[rgb(var(--color-text))]">{t('panel.invoice.loadingProducts')}</p>}
                             {!isDetailLoading && detailList && detailList.length === 0 && (
-                                <p className="text-xs text-[rgb(var(--color-text))]/80">Sin detalles para este folio.</p>
+                                <p className="text-xs text-[rgb(var(--color-text))]/80">{t('panel.invoice.noDetail')}</p>
                             )}
                             {!isDetailLoading && Array.isArray(detailList) && detailList.length > 0 && (
                                 <div className="overflow-x-auto">
                                     <table className="min-w-full text-xs text-left text-[rgb(var(--color-text))] border border-[rgb(var(--color-border))] rounded-lg">
                                         <thead className="bg-[rgb(var(--color-card))]">
                                             <tr>
-                                                <th className="py-2 px-3">No. parte</th>
-                                                <th className="py-2 px-3">Descripción</th>
-                                                <th className="py-2 px-3">Cantidad</th>
-                                                <th className="py-2 px-3">Precio</th>
+                                                <th className="py-2 px-3">{t('panel.invoice.partNumber')}</th>
+                                                <th className="py-2 px-3">{t('panel.capture.descriptionLabel')}</th>
+                                                <th className="py-2 px-3">{t('panel.capture.quantity')}</th>
+                                                <th className="py-2 px-3">{t('panel.invoice.price')}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -416,9 +418,9 @@ export default function Invoice() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
             <Title
-                title="Facturación web"
+                title={t('panel.invoice.title')}
                 icon={FaUsersViewfinder}
-                back="Volver al panel"
+                back={t('panel.common.back')}
                 path="/productivity"
             />
 
@@ -436,7 +438,7 @@ export default function Invoice() {
                                 }`}
                             >
                                 <GoClockFill className="text-[rgb(var(--color-text))]" />
-                                Pendientes
+                                {t('panel.invoice.tabPending')}
                             </button>
                             <button
                                 type="button"
@@ -448,14 +450,14 @@ export default function Invoice() {
                                 }`}
                             >
                                 <IoMdCloudDone className="text-[rgb(var(--color-text))]" />
-                                Finalizadas
+                                {t('panel.invoice.tabFinished')}
                             </button>
                         </div>
                         <div className="flex items-center gap-2 bg-[rgb(var(--color-card))] rounded-full px-3 py-2 shadow border border-[rgb(var(--color-border))] w-full lg:w-auto">
                             <FaSearch className="text-[rgb(var(--color-text))]/70" />
                             <input
                                 type="text"
-                                placeholder="Buscar por folio, correo, nombre..."
+                                placeholder={t('panel.invoice.searchPlaceholder')}
                                 value={filter}
                                 onChange={(e) => setFilter(e.target.value)}
                                 className="bg-transparent outline-none text-sm text-[rgb(var(--color-text))] w-full lg:w-72"
@@ -468,22 +470,22 @@ export default function Invoice() {
                     <div className="flex items-center gap-2 text-[rgb(var(--color-text))] font-semibold mb-4">
                         {activeTab === 'pendientes' ? (
                             <>
-                                <GoClockFill className="text-amber-500" /> Pendientes
+                                <GoClockFill className="text-amber-500" /> {t('panel.invoice.tabPending')}
                             </>
                         ) : (
                             <>
-                                <IoMdCloudDone className="text-green-600" /> Finalizadas
+                                <IoMdCloudDone className="text-green-600" /> {t('panel.invoice.tabFinished')}
                             </>
                         )}
                     </div>
-                    {isLoading && <p className="text-sm text-[rgb(var(--color-text))]">Cargando...</p>}
+                    {isLoading && <p className="text-sm text-[rgb(var(--color-text))]">{t('common.loading')}</p>}
                     {error && <p className="text-sm text-red-600">{error}</p>}
                     {!isLoading && !error && activeTab === 'pendientes' && pending.length === 0 && (
-                        <p className="text-sm text-[rgb(var(--color-text))]">Sin facturas pendientes.</p>
+                        <p className="text-sm text-[rgb(var(--color-text))]">{t('panel.capture.noPendingInvoices')}</p>
                     )}
                     {!isLoading && !error && activeTab === 'pendientes' && paginatedInvoices.map(renderRow)}
                     {!isLoading && !error && activeTab === 'finalizadas' && finished.length === 0 && (
-                        <p className="text-sm text-[rgb(var(--color-text))]">Sin facturas finalizadas.</p>
+                        <p className="text-sm text-[rgb(var(--color-text))]">{t('panel.invoice.noFinished')}</p>
                     )}
                     {!isLoading && !error && activeTab === 'finalizadas' && paginatedInvoices.map(renderRow)}
                     {!isLoading && !error && activeList.length > PAGE_SIZE && (
@@ -498,10 +500,10 @@ export default function Invoice() {
                                         : 'hover:bg-[rgb(var(--color-card-white))]'
                                 }`}
                             >
-                                Anterior
+                                {t('common.prev')}
                             </button>
                             <span>
-                                Página {currentPage} de {totalPages}
+                                {t('panel.common.pageOf', { page: currentPage, total: totalPages })}
                             </span>
                             <button
                                 type="button"
@@ -513,7 +515,7 @@ export default function Invoice() {
                                         : 'hover:bg-[rgb(var(--color-card-white))]'
                                 }`}
                             >
-                                Siguiente
+                                {t('common.next')}
                             </button>
                         </div>
                     )}

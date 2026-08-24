@@ -1,14 +1,12 @@
 import Products from "./products";
+import { getServerT, resolveLocale } from "@/app/lib/text/server-text";
 
 export async function generateMetadata({ searchParams }) {
     const params = await searchParams;
-    const lang = (params && params.lang) || "es";
+    const t = await getServerT(resolveLocale(params && params.lang));
     return {
-        title: lang === "en" ? "Refautomex | Products" : "Refautomex | Productos",
-        description:
-        lang === "en"
-            ? "Products Refautomex"
-            : "Productos Refautomex",
+        title: t("meta.products.title"),
+        description: t("meta.products.description"),
     };
 }
 

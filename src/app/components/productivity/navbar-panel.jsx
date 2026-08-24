@@ -16,6 +16,7 @@ import RefautomexLogo from '@/app/components/refautomex-logo';
 import ShiftModeButton from '../principal/shiftmode-button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const MenuItems = ({ items, closeMenu, lang }) => {
     const [openedSection, setOpenedSection] = useState(null);
@@ -70,6 +71,7 @@ const MenuItems = ({ items, closeMenu, lang }) => {
 };
 
 export default function NavbarPanel() {
+    const { t } = useTranslation();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [imgError, setImgError] = useState(false);
     const [profileImageUrl, setProfileImageUrl] = useState('');
@@ -88,52 +90,52 @@ export default function NavbarPanel() {
 
     const navItems = [
         {
-        name: 'Ventas',
+        name: t('panel.nav.sales'),
         icon: MdSell,
         subNav: [
-            { name: 'Tickets a clientes', href: '/productivity?load=tickets' },
-            { name: 'Devoluciones', href: '/productivity?load=devolution', adminOnly: true },
-            { name: 'Historial de ventas', href: '/productivity?load=history', adminOnly: true },
+            { name: t('panel.nav.tickets'), href: '/productivity?load=tickets' },
+            { name: t('panel.nav.devolution'), href: '/productivity?load=devolution', adminOnly: true },
+            { name: t('panel.nav.history'), href: '/productivity?load=history', adminOnly: true },
         ],
         },
         {
-        name: 'Almacén',
+        name: t('panel.nav.stock'),
         icon: FaBoxesPacking,
         subNav: [
-            { name: 'Inventarios', href: '/productivity?load=inventories', adminOnly: true },
-            { name: 'Gestión de Almacén', href: '/productivity?load=warehouse' },
-            { name: 'Faltantes', href: '/productivity?load=missing' },
+            { name: t('panel.nav.inventories'), href: '/productivity?load=inventories', adminOnly: true },
+            { name: t('panel.nav.warehouse'), href: '/productivity?load=warehouse' },
+            { name: t('panel.nav.missing'), href: '/productivity?load=missing' },
         ],
         },
         {
-        name: 'Compras',
+        name: t('panel.nav.purchases'),
         icon: HiClipboardDocumentList,
         adminOnly: true,
         subNav: [
-            { name: 'Capturación de productos', href: '/productivity?load=capture' },
-            { name: 'Gestión de proveedores', href: '/productivity?load=providers' },
+            { name: t('panel.nav.capture'), href: '/productivity?load=capture' },
+            { name: t('panel.nav.providers'), href: '/productivity?load=providers' },
         ],
         },
         {
-        name: 'Servicios',
+        name: t('panel.nav.services'),
         icon: FaUsersViewfinder,
         adminOnly: true,
         subNav: [
-            { name: 'Calendario', href: '/productivity?load=calendar' },
-            { name: 'Facturación Web', href: '/productivity?load=invoice' },
-            { name: 'Gestión de cuentas activas', href: '/productivity?load=personal' },
+            { name: t('panel.nav.calendar'), href: '/productivity?load=calendar' },
+            { name: t('panel.nav.invoice'), href: '/productivity?load=invoice' },
+            { name: t('panel.nav.personal'), href: '/productivity?load=personal' },
         ],
         },
         {
-        name: 'Pedidos',
+        name: t('panel.nav.orders'),
         icon: GiAutoRepair,
         subNav: [
-            { name: 'En Sucursal', href: '/productivity?load=site' },
-            { name: 'Web (Stripe)', href: '/productivity?load=delivery', adminOnly: true },
+            { name: t('panel.nav.site'), href: '/productivity?load=site' },
+            { name: t('panel.nav.delivery'), href: '/productivity?load=delivery', adminOnly: true },
         ],
         },
-        { name: 'Home', icon: AiOutlineDashboard, href: '/productivity?load=home' },
-        { name: 'Configuración', icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings' },
+        { name: t('panel.nav.home'), icon: AiOutlineDashboard, href: '/productivity?load=home' },
+        { name: t('panel.nav.settings'), icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings' },
     ];
 
     const filteredNavItems = navItems
@@ -164,7 +166,7 @@ export default function NavbarPanel() {
         >
         <nav
             className="flex w-full items-center justify-between max-w-7xl mx-5 transition duration-100 ease-in-out"
-            aria-label="Global"
+            aria-label={t('navbar.ariaGlobal')}
         >
             <div className="flex w-full items-center justify-between">
             <div className="flex flex-row items-center justify-center md:mx-3 md:mt-0">
@@ -188,7 +190,7 @@ export default function NavbarPanel() {
                             src={profileImageUrl}
                             onError={() => setImgError(true)}
                             className="w-full h-full object-cover bg-gray-50"
-                            alt="Profile"
+                            alt={t('account.photo')}
                         />
                         ) : null}
                     </div>
@@ -242,7 +244,7 @@ export default function NavbarPanel() {
                         >
                         <div className="flex items-center py-2">
                             <AiOutlineLogout className="mr-3" />
-                            Salir
+                            {t('panel.nav.logout')}
                         </div>
                         </button>
                     </nav>

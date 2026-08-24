@@ -89,7 +89,7 @@ export default function FormContact() {
     return (
         <>
             <div className="h-[1000px] relative">
-                <img src={`${multimediaSrc}services.jpg`} className="w-full h-full object-cover" alt="Contacto" />
+                <img src={`${multimediaSrc}services.jpg`} className="w-full h-full object-cover" alt={t('contact.title')} />
                 <div className="absolute bg-[rgb(var(--color-slate))]/70 top-0 left-0 w-full h-full flex flex-col justify-center items-center pt-24">
                     <div className='bg-[rgb(var(--color-card))]/70 md:rounded-xl m-6 w-full md:w-[700px] pt-5 p-4 text-[rgb(var(--color-text))]'>
                         <div className='flex flex-col items-start justify-end lg:items-center px-6 lg:justify-center'>
@@ -158,10 +158,10 @@ export default function FormContact() {
                                                     block w-full rounded-md border-0 py-2 p-1.5 text-[rgb(var(--color-text))] shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-[rgb(var(--color-text))] focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6
                                                     `}
                                                 >
-                                                    <option defaultValue='0' disabled>Selecciona...</option>
-                                                    <option>WhatsApp</option>
-                                                    <option>Email</option>
-                                                    <option>Llamada | Call</option>
+                                                    <option defaultValue='0' disabled>{t('common.select')}</option>
+                                                    <option>{t('contact.viaWhatsapp')}</option>
+                                                    <option>{t('contact.viaEmail')}</option>
+                                                    <option>{t('contact.viaCall')}</option>
                                                 </select>
                                             </div>
                                         </div>

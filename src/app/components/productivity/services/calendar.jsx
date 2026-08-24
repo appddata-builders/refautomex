@@ -12,6 +12,7 @@ import { TbTargetArrow } from 'react-icons/tb';
 import { PiMagicWandFill } from 'react-icons/pi';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const palette = [
   {
@@ -125,14 +126,18 @@ const buildLabel = (id, title, description, icon, paletteIndex, isCustom = false
   };
 };
 
-const initialLabels = [
-  buildLabel('revision', 'Revisión general', 'Checklist completo', LuSparkles, 0),
-  buildLabel('preventivo', 'Preventivo', 'Citas programadas', PiMagicWandFill, 1),
-  buildLabel('critico', 'Urgente', 'Atención inmediata', TbTargetArrow, 2),
-  buildLabel('cliente', 'Cliente VIP', 'Seguimiento cercano', FiTag, 3),
+// Las etiquetas base se arman dentro del componente porque su titulo y su
+// descripcion salen de la base.
+const buildInitialLabels = (t) => [
+  buildLabel('revision', t('panel.calendar.labelReview'), t('panel.calendar.labelReviewDesc'), LuSparkles, 0),
+  buildLabel('preventivo', t('panel.calendar.labelPreventive'), t('panel.calendar.labelPreventiveDesc'), PiMagicWandFill, 1),
+  buildLabel('critico', t('panel.calendar.labelUrgent'), t('panel.calendar.labelUrgentDesc'), TbTargetArrow, 2),
+  buildLabel('cliente', t('panel.calendar.labelVip'), t('panel.calendar.labelVipDesc'), FiTag, 3),
 ];
 
 export default function CalendarPlanner() {
+  const { t } = useTranslation();
+  const initialLabels = useMemo(() => buildInitialLabels(t), [t]);
   const calendarRef = useRef(null);
   const dragZoneRef = useRef(null);
 
@@ -160,7 +165,7 @@ export default function CalendarPlanner() {
         const labelId = el.getAttribute('data-id');
         const label = labels.find((item) => item.id === labelId);
         return {
-          title: label?.title || 'Etiqueta',
+          title: label?.title || t('panel.calendar.label'),
           create: true,
           backgroundColor: label?.color,
           borderColor: label?.color,
@@ -481,7 +486,7 @@ export default function CalendarPlanner() {
     const fresh = {
       id: `${newLabel}-${Date.now()}`,
       title: newLabel.trim(),
-      description: 'Etiqueta personalizada',
+      description: t('panel.calendar.customLabel'),
       icon: FiTag,
       isCustom: true,
       color: tone.hex,
@@ -505,31 +510,31 @@ export default function CalendarPlanner() {
               <FiCalendar className="h-6 w-6 text-[rgb(var(--color-text))]" />
             </div>
             <div>
-              <h1 className="text-2xl md:text-3xl font-semibold text-[rgb(var(--color-text))]">CALENDARIO DE ACTIVIDADES</h1>
-              <p className="text-sm text-[rgb(var(--color-text))]">Organiza revisiones y etiquetas con drag & drop, vista mensual o anual.</p>
+              <h1 className="text-2xl md:text-3xl font-semibold text-[rgb(var(--color-text))]">{t('panel.calendar.title')}</h1>
+              <p className="text-sm text-[rgb(var(--color-text))]">{t('panel.calendar.subtitle')}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2 rounded-full bg-[rgb(var(--color-bg))]/80 px-3 py-1 text-sm text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))]/30 border border-[rgb(var(--color-border))]/80">
               <LuSparkles className="text-[rgb(var(--color-accent))]" />
-              Vista: {calendarView === 'dayGridMonth' ? 'Mensual' : 'Anual'}
+              {t('panel.calendar.view')} {calendarView === 'dayGridMonth' ? t('panel.calendar.monthly') : t('panel.calendar.yearly')}
             </div>
             {!isYearView && (
               <div className="flex items-center gap-2 rounded-full bg-[rgb(var(--color-bg))]/80 px-3 py-1 text-sm text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))]/30 border border-[rgb(var(--color-border))]/80">
                 <FiTag className="text-[rgb(var(--color-galaxy))]" />
-                Etiqueta: <span className="font-semibold">{labelMap[activeLabelId]?.title}</span>
+                {t('panel.calendar.label')}: <span className="font-semibold">{labelMap[activeLabelId]?.title}</span>
               </div>
             )}
             <div className="flex items-center gap-2 rounded-full bg-[rgb(var(--color-bg))]/80 px-3 py-1 text-sm text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))]/30 border border-[rgb(var(--color-border))]/80">
               <FiTag className="text-[rgb(var(--color-galaxy))]" />
-              <span className="text-xs uppercase tracking-[0.2em]">Sucursal</span>
+              <span className="text-xs uppercase tracking-[0.2em]">{t('panel.common.branch')}</span>
               <select
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
                 className="min-w-[160px] rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-accent))]/70"
               >
                 <option value="" disabled>
-                  {branchesLoading ? 'Cargando...' : 'Selecciona sucursal'}
+                  {branchesLoading ? t('common.loading') : t('panel.common.pickBranch')}
                 </option>
                 {branches.map((branch) => (
                   <option key={branch.id} value={branch.id}>
@@ -547,8 +552,8 @@ export default function CalendarPlanner() {
             <div className="rounded-2xl bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))]/80 shadow-xl shadow-[rgb(var(--color-galaxy))]/25 p-5">
               <div className="flex items-center justify-between mb-3">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">Etiquetas</p>
-                  <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">Arrastra al calendario</h3>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">{t('panel.calendar.labels')}</p>
+                  <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">{t('panel.calendar.dragHint')}</h3>
                 </div>
                 <LuSparkles className="text-[rgb(var(--color-accent))]" />
               </div>
@@ -578,7 +583,7 @@ export default function CalendarPlanner() {
                 <input
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
-                  placeholder="Agrega etiqueta"
+                  placeholder={t('panel.calendar.addLabel')}
                   className="flex-1 rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-accent))]/70"
                 />
                 <button
@@ -587,14 +592,14 @@ export default function CalendarPlanner() {
                   className="flex items-center gap-1 rounded-xl bg-[rgb(var(--color-text))] p-2 text-sm font-semibold text-[rgb(var(--color-card))] shadow-lg shadow-[rgb(var(--color-galaxy))]/30 transition hover:translate-y-[-1px]"
                 >
                   <FiPlus />
-                  Nueva
+                  {t('panel.calendar.new')}
                 </button>
               </div>
             </div>
 
             <div className="rounded-2xl bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))]/80 shadow-xl shadow-[rgb(var(--color-galaxy))]/25 p-5 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">Categorías Agregadas.</h3>
+                <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">{t('panel.calendar.categories')}</h3>
                 <FiCalendar className="text-[rgb(var(--color-text))]" />
               </div>
               <div className="space-y-2">
@@ -610,7 +615,7 @@ export default function CalendarPlanner() {
               </div>
               {selectedEvent && (
                 <div className="rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] p-3">
-                  <p className="text-xs uppercase tracking-[0.2em] text-[rgb(var(--color-gray))] mb-1">Detalle</p>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[rgb(var(--color-gray))] mb-1">{t('panel.calendar.detail')}</p>
                   <h4 className="text-md font-semibold text-[rgb(var(--color-text))]">{selectedEvent.title}</h4>
                   <p className="text-sm text-[rgb(var(--color-gray))]">{formatDate(selectedEvent.start)}</p>
                   <div className="mt-2 flex items-center gap-2">

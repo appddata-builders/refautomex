@@ -23,7 +23,7 @@ export default function PopTwoSections ({tracking, title, sectionOne, sectionTwo
                 </div>
                 <div className="lg:col-span-2">
                     <div className="h-[50vh] w-full bg-cover bg-center rounded-lg shadow-lg overflow-hidden mt-3 lg:mt-0">
-                        <img src={imageSrc} alt="Workflow" className="w-full h-full object-cover sm:animate-out" />
+                        <img src={imageSrc} alt={t('alt.workflow')} className="w-full h-full object-cover sm:animate-out" />
                     </div>
                 </div>
             </div>

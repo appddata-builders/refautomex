@@ -140,7 +140,7 @@ export default function FormInvoice() {
         <img
           className="absolute inset-0 h-full w-full object-cover"
           src={`${multimediaSrc}invoice.jpg`}
-          alt="Invoice Background"
+          alt={t('alt.invoice')}
         />
       </div>
     </div>

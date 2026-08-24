@@ -18,6 +18,15 @@ const DEFAULT_LOCALE = 'es';
 
 const TextContext = createContext(null);
 
+/** Sustituye los `{{marcadores}}` de un texto con los valores de `options`. */
+const interpolate = (value, options) => {
+  if (!options) return value;
+
+  return value.replace(/\{\{(\w+)\}\}/g, (match, name) =>
+    options[name] === undefined || options[name] === null ? match : String(options[name])
+  );
+};
+
 /** Resuelve una key con puntos ("navbar.home") contra el arbol del locale. */
 const lookup = (tree, key) => {
   let node = tree;
@@ -62,12 +71,17 @@ export function useTranslation() {
       if (typeof key !== 'string') return '';
 
       const value = lookup(resources[locale], key);
-      if (value !== undefined) return value;
+      if (value !== undefined) return interpolate(value, options);
 
-      if (options && typeof options.defaultValue === 'string') {
-        return options.defaultValue;
-      }
+      // El panel de productividad no tiene bandera: sus textos viven solo en
+      // `es`. Sin esta caida, entrar al panel con el sitio en ingles mostraria
+      // las keys crudas.
+      const fallback = lookup(resources[DEFAULT_LOCALE], key);
+      if (fallback !== undefined) return interpolate(fallback, options);
 
+      // Sin texto por defecto a proposito: el contenido vive en la tabla
+      // `hydrate` (o en el JSON de respaldo), nunca en la linea que lo consume.
+      // Devolver la key hace evidente que falta la fila en la base.
       return key;
     },
     [resources, locale]

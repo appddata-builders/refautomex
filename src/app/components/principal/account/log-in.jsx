@@ -37,7 +37,7 @@ export default function Login() {
             await signInWithRedirect({ provider });
         } catch (err) {
             console.error("Error en signInWithRedirect:", err);
-            setAlertMessage('No pudimos iniciar la sesión social, intenta nuevamente.');
+            setAlertMessage(t('account.errorSocial'));
         }
     };
 
@@ -62,10 +62,10 @@ export default function Login() {
             },
             onFailure: function (err) {
                 if (err.code === 'UserNotConfirmedException') {
-                    setAlertMessage('Tu cuenta no ha sido confirmada.');
-                    setConfirmationMessage('Por favor confirma tu correo para ingresar a tu cuenta. ¿No recibiste correo?');
+                    setAlertMessage(t('account.errorUnconfirmed'));
+                    setConfirmationMessage(t('account.errorUnconfirmedHint'));
                 } else {
-                    setAlertMessage('Correo electrónico o contraseña inválidos.');
+                    setAlertMessage(t('account.errorCredentials'));
                 }
                 setLoading(false);
             }
@@ -83,8 +83,8 @@ export default function Login() {
                 setAlertMessage(err.message || JSON.stringify(err));
                 return;
             }
-            setSuccessMessage('Se ha reenviado el correo de confirmación.');
-            setIndicationMessage('Por favor, verifica tu bandeja de entrada y sigue las instrucciones para validar tu cuenta.');
+            setSuccessMessage(t('account.resent'));
+            setIndicationMessage(t('account.checkInbox'));
         });
     };
 
@@ -109,12 +109,12 @@ export default function Login() {
 
     useEffect(() => {
         if (userStatus && userStatus.includes('new')) {
-            setSuccessMessage('Se ha enviado un correo de confirmación a tu correo.');
-            setIndicationMessage('Por favor, verifica tu bandeja de entrada y sigue las instrucciones para validar tu cuenta.');
+            setSuccessMessage(t('account.confirmationSent'));
+            setIndicationMessage(t('account.checkInbox'));
         } else if (userStatus && userStatus.includes('password-reset')) {
-            setSuccessMessage('Se ha restablecido su contraseña con éxito.');
+            setSuccessMessage(t('account.passwordReset'));
         } else if (userStatus && userStatus.includes('error')) {
-            setAlertMessage('Por favor, inténtalo de nuevo más tarde.');
+            setAlertMessage(t('common.tryLater'));
         }
     }, []);
 
@@ -123,7 +123,7 @@ export default function Login() {
             {alertMessage && (
                 <div className="rounded-xl my-1 shadow bg-gradient-to-br from-[rgb(var(--color-galaxy))] to-[rgb(var(--color-bg))] text-center py-4 lg:px-4">
                     <div className="px-4 md:px-2 p-1 bg-transparent items-center text-[rgb(var(--color-text))] leading-none lg:rounded-full flex lg:inline-flex" role="alert">
-                        <span className="flex rounded-full bg-red-600 text-indigo-100 uppercase px-2 py-1 text-xs font-bold mr-3 shadow">Error</span>
+                        <span className="flex rounded-full bg-red-600 text-indigo-100 uppercase px-2 py-1 text-xs font-bold mr-3 shadow">{t('common.error')}</span>
                         <span className="font-semibold mr-2 text-left flex-auto">{alertMessage}</span>
                         <button onClick={closeAlert} className="ml-2">
                             <IoIosCloseCircle className="text-red-500 text-2xl" />
@@ -132,7 +132,7 @@ export default function Login() {
                     {alertConfirmation && (
                         <div>
                             <span className="mx-2.5 italic font-sans text-left text-[rgb(var(--color-text))]">{alertConfirmation}</span>
-                            <button onClick={resendConfirmationCode} className="ml-2 text-blue-500 underline">Reenviar</button>
+                            <button onClick={resendConfirmationCode} className="ml-2 text-blue-500 underline">{t('account.resend')}</button>
                         </div>
                     )}
                 </div>
@@ -140,7 +140,7 @@ export default function Login() {
             {alertSuccess && (
                 <div className="rounded-xl my-1 shadow bg-gradient-to-br from-[rgb(var(--color-galaxy))] to-[rgb(var(--color-bg))] text-center py-4 lg:px-4">
                     <div className="px-4 md:px-2 p-1 bg-transparent items-center text-[rgb(var(--color-text))] leading-none lg:rounded-full flex lg:inline-flex" role="alert">
-                        <span className="flex rounded-full bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))] uppercase px-2 py-1 text-xs font-bold mr-3 shadow">Warning</span>
+                        <span className="flex rounded-full bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))] uppercase px-2 py-1 text-xs font-bold mr-3 shadow">{t('common.warning')}</span>
                         <span className="m-2 text-left font-sans">
                             <b>{alertSuccess}</b>
                         </span>

@@ -46,14 +46,14 @@ export default function Refautomex({ loading, websiteData }) {
 
     const items = [
         {
-        name: 'Historial de Pedidos',
-        description: 'Productos comprados desde tu cuenta y relación de entregas',
+        name: t('account.itemsHistoryTitle'),
+        description: t('account.itemsHistoryDesc'),
         icon: MdWeb,
         path: `/section/refautomex?load=history&lang=${lang}`,
         },
         {
-        name: 'Configuración de la cuenta',
-        description: 'Datos personales, información de la cuenta y domicilio registrado.',
+        name: t('account.itemsSettingsTitle'),
+        description: t('account.itemsSettingsDesc'),
         icon: FaUserCog,
         path: `/section/refautomex?load=settings&lang=${lang}`,
         },
@@ -84,7 +84,7 @@ export default function Refautomex({ loading, websiteData }) {
                                         {profileImageUrl && !imgError ? (
                                             <img
                                                 src={profileImageUrl}
-                                                alt="profile"
+                                                alt={t('account.photo')}
                                                 className="h-full w-full object-cover"
                                                 onError={() => setImgError(true)}
                                             />
@@ -100,7 +100,7 @@ export default function Refautomex({ loading, websiteData }) {
                                         {t('account.dashboardTitle')}
                                     </p>
                                     <p className="mt-1 text-base text-[rgb(var(--color-text))]">
-                                        {name ? `${t('account.services')} ${name}` : 'Cargando...'}
+                                        {name ? `${t('account.services')} ${name}` : t('common.loading')}
                                     </p>
                                     <p className="mt-2 text-sm text-[rgb(var(--color-text))]/70">
                                         {t('account.dashboardSubtitle')}
@@ -123,7 +123,7 @@ export default function Refautomex({ loading, websiteData }) {
                                     {t('account.quickAccess')}
                                 </h3>
                                 <span className="text-xs uppercase tracking-[0.2em] text-[rgb(var(--color-text))]/60">
-                                    Refautomex
+                                    {t('meta.brand')}
                                 </span>
                             </div>
                             <div className="mt-4 grid gap-4 sm:grid-cols-2">

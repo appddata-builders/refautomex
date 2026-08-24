@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { MdPhone } from "react-icons/md";
 import { BsWhatsapp } from "react-icons/bs";
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const formatPhone = (value) => {
     if (!value) return '';
@@ -93,6 +94,7 @@ const ComponentToPrint = React.forwardRef(({
     refreshKey = 0,
     useDefaults = true,
 }, ref) => {
+    const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const logoUrl = `${multimediaSrc}refautomex_n.svg`;
     const [branchData, setBranchData] = useState(() => {
@@ -182,11 +184,11 @@ const ComponentToPrint = React.forwardRef(({
                 `}
             </style>
             <div className="flex justify-center items-center m-4">
-                <img src={logoUrl} alt="Refautomex Logo" className="h-12" />
+                <img src={logoUrl} alt={t('alt.logo')} className="h-12" />
             </div>
 
             <div className="mb-2 text-center text-sm">
-                <p className='font-bold'>Folio: {folio}</p>
+                <p className='font-bold'>{t('panel.print.folio')} {folio}</p>
                 {safeBranchName && (
                     <p className="text-xs uppercase font-semibold tracking-wide">{safeBranchName}</p>
                 )}
@@ -213,10 +215,10 @@ const ComponentToPrint = React.forwardRef(({
 
             <div className="mb-2">
                 <p className="uppercase font-semibold">{currentDate}</p>
-                <p className=''>Agente: {employee}</p>
+                <p className=''>{t('panel.print.agent')} {employee}</p>
             </div>
 
-            <p className="font-semibold">PRODUCTOS:</p>
+            <p className="font-semibold">{t('panel.print.products')}</p>
             {notes && (
                 <p className="font-extrabold border-2 p-1 shadow text-xs uppercase">{notes}</p>
             )}
@@ -224,9 +226,9 @@ const ComponentToPrint = React.forwardRef(({
                 <table className="table-fixed w-full text-xs text-left px-0.5">
                     <thead>
                         <tr>
-                            <th className="w-1/6 p-0.5 border-b text-left text-[9px]">CANT</th>
-                            <th className="w-2/6 p-0.5 border-b text-[9px]">PART</th>
-                            <th className="w-3/6 p-0.5 border-b text-right text-[9px]">IMPORTE</th>
+                            <th className="w-1/6 p-0.5 border-b text-left text-[9px]">{t('panel.print.qty')}</th>
+                            <th className="w-2/6 p-0.5 border-b text-[9px]">{t('panel.print.part')}</th>
+                            <th className="w-3/6 p-0.5 border-b text-right text-[9px]">{t('panel.print.amount')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -267,42 +269,42 @@ const ComponentToPrint = React.forwardRef(({
             <div className="pt-2">
                 {discount < 0 && (
                     <>
-                        <p className="text-right text-xs font-semibold">({discount}%) Descuento: {(subtotal * discount / 100).toFixed(2)} MXN</p>
-                        <p className="text-right text-xs font-semibold">Subtotal: {subtotal.toFixed(2)} MXN</p>
+                        <p className="text-right text-xs font-semibold">({discount}%) {t('panel.capture.discount')}: {(subtotal * discount / 100).toFixed(2)} {t('promotions.currency')}</p>
+                        <p className="text-right text-xs font-semibold">{t('checkout.subtotal')}: {subtotal.toFixed(2)} {t('promotions.currency')}</p>
                     </>
                 )}
-                <span className="text-left font-bold">Total: <span className='text-xl'>{total.toFixed(2)} MXN</span></span>
+                <span className="text-left font-bold">{t('checkout.total')}: <span className='text-xl'>{total.toFixed(2)} {t('promotions.currency')}</span></span>
             </div>
 
             {safeAddress && (
                 <div className='my-2 text-xs text-justify'>
-                    Refacciones Automotrices de México propiedad de FRARISA con domicilio para {safeBranchName} en:
+                    {t('panel.print.legalAddress', { branch: safeBranchName })}
                     <span className="text-xs text-justify mx-1">
                         {safeAddress}
                     </span>
                     <br /><br />
-                    ¡ SÍGENOS EN REDES SOCIALES !
+                    {t('panel.print.followUs')}
                     <br /><br />
-                    Si requieres factura, dejanos tus datos desde nuestro sitio web.
+                    {t('panel.print.invoiceHint')}
                     <br />
                     <span className="text-xs text-justify font-bold">
-                    https://refautomex.com
+                    {t('panel.print.site')}
                     </span>
                 </div>
             )}
 
             {safeWebsite && (
                 <>
-                    <p className="text-xs text-justify">Si requieres factura, visita:</p>
+                    <p className="text-xs text-justify">{t('panel.print.invoiceVisit')}</p>
                     <a href={safeWebsite} className="text-stone-800 font-bold text-xs text-justify mb-2">
                         {safeWebsite}
                     </a>
                 </>
             )}
             <p className="text-xs text-justify mt-2">
-                Cuentas con 15 días naturales. Si necesitas ayuda, contáctanos y con gusto te ayudaremos. NO SE FACTURARÁ EXTEMPORANEAMENTE.
+                {t('panel.print.invoiceDeadline')}
             </p>
-            <p className="font-bold mt-4 text-center text-sm">¡GRACIAS POR TU PREFERENCIA!</p>
+            <p className="font-bold mt-4 text-center text-sm">{t('panel.print.thanks')}</p>
         </div>
     );
 });

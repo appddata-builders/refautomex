@@ -68,7 +68,7 @@ export default function OrderGrid() {
 
             if (!session.sessionId) {
                 console.error('Session ID is undefined. Backend response:', session);
-                alert('Failed to initiate checkout. Please try again.');
+                alert(t('checkout.startError'));
                 return;
             }
 
@@ -82,7 +82,7 @@ export default function OrderGrid() {
             }
         } catch (error) {
             console.error('Checkout error:', error);
-            alert('Error processing checkout. Please try again.');
+            alert(t('checkout.payError'));
         }
     };
 
@@ -105,7 +105,7 @@ export default function OrderGrid() {
                 const groupsMap = {};
                 rows.forEach((product) => {
                     const groupId = product.idgrupo || 'N/A';
-                    const key = `${groupId}-${product.grupo || 'Sin grupo'}`;
+                    const key = `${groupId}-${product.grupo || t('products.noGroup')}`;
                     const routes = parseProductRoutes(product.rutas);
                     const normalizedProduct = {
                         ...product,
@@ -115,7 +115,7 @@ export default function OrderGrid() {
                     if (!groupsMap[key]) {
                         groupsMap[key] = {
                             idgrupo: product.idgrupo,
-                            nombre: product.grupo || 'Sin grupo',
+                            nombre: product.grupo || t('products.noGroup'),
                             productos: [],
                         };
                     }
@@ -129,7 +129,7 @@ export default function OrderGrid() {
                 setGroupCards(groups);
             } catch (error) {
                 console.error('Error al obtener productos web:', error);
-                setProductsError('No pudimos cargar los productos destacados. Intenta más tarde.');
+                setProductsError(t('products.groupsError'));
                 setGroupCards([]);
             } finally {
                 setProductsLoading(false);
@@ -188,9 +188,9 @@ export default function OrderGrid() {
                 email: userData?.email || '',
                 fecha_entrega: deliveryStr,
                 fecha_pedido: todayStr,
-                nombre_cliente: userData?.nombre || 'Cliente web',
+                nombre_cliente: userData?.nombre || t('checkout.webClient'),
                 isOrder: true,
-                notas: 'Pago vía Stripe',
+                notas: t('checkout.stripeNote'),
                 items: itemsPayload,
             };
 
@@ -245,16 +245,16 @@ export default function OrderGrid() {
                     <section className="mb-10">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
                             <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-                                Explora por grupo
+                                {t('products.exploreGroups')}
                             </h2>
                             {groupCards.length > 0 && (
                                 <p className="text-sm text-gray-500">
-                                    {groupCards.reduce((sum, group) => sum + group.total, 0)} productos disponibles
+                                    {t('products.availableCount', { count: groupCards.reduce((sum, group) => sum + group.total, 0) })}
                                 </p>
                             )}
                         </div>
                         {productsLoading ? (
-                            <p className="text-sm text-gray-500">Cargando grupos...</p>
+                            <p className="text-sm text-gray-500">{t('products.loadingGroups')}</p>
                         ) : productsError ? (
                             <p className="text-sm text-red-500">{productsError}</p>
                         ) : (
@@ -266,13 +266,13 @@ export default function OrderGrid() {
                                     >
                                         <div className="flex items-center justify-between mb-4">
                                             <div>
-                                                <p className="text-xs uppercase text-gray-500">Grupo</p>
+                                                <p className="text-xs uppercase text-gray-500">{t('products.group')}</p>
                                                 <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">
                                                     {group.nombre}
                                                 </h3>
                                             </div>
                                             <span className="text-sm font-semibold text-emerald-600 bg-emerald-100 px-3 py-1 rounded-full">
-                                                {group.total} piezas
+                                                {t('products.pieces', { count: group.total })}
                                             </span>
                                         </div>
                                         <div className="flex -space-x-3 mb-4">
@@ -295,12 +295,12 @@ export default function OrderGrid() {
                                             )}
                                         </div>
                                         <p className="text-xs text-gray-500">
-                                            Algunos ejemplos: {group.muestras.map((prod) => prod.descripcion).join(', ') || 'Sin descripción'}
+                                            {t('products.samples')} {group.muestras.map((prod) => prod.descripcion).join(', ') || t('products.noDescription')}
                                         </p>
                                     </div>
                                 ))}
                                 {groupCards.length === 0 && (
-                                    <p className="text-sm text-gray-500">No hay productos para mostrar.</p>
+                                    <p className="text-sm text-gray-500">{t('products.empty')}</p>
                                 )}
                             </div>
                         )}
@@ -332,7 +332,7 @@ export default function OrderGrid() {
                                             {quantity}
                                         </div>
                                         <div className="flex flex-col justify-start items-start sm:flex-row sm:justify-between sm:items-center sm:mt-6">
-                                            <p className="text-lg font-semibold text-cyan-600">{lineTotal.toFixed(2)} MXN</p>
+                                            <p className="text-lg font-semibold text-cyan-600">{lineTotal.toFixed(2)} {t('promotions.currency')}</p>
                                             <p className="text-sm text-gray-500">{t('products.shipments')}</p>
                                         </div>
                                     </div>
@@ -349,7 +349,7 @@ export default function OrderGrid() {
                             </div>
                             <div>
                                 <p className="text-sm font-semibold text-gray-600">{t('account.order')}</p>
-                                <p className="text-2xl font-semibold text-gray-900">${totalAmount.toFixed(2)} MXN</p>
+                                <p className="text-2xl font-semibold text-gray-900">${totalAmount.toFixed(2)} {t('promotions.currency')}</p>
                             </div>
                         </div>
                         {folioWeb && (
@@ -358,7 +358,7 @@ export default function OrderGrid() {
                                     <FaBullseye className="h-8 w-8" />
                                 </div>
                                 <div>
-                                    <p className="text-sm font-semibold text-gray-600">Folio WEB</p>
+                                    <p className="text-sm font-semibold text-gray-600">{t('products.webFolio')}</p>
                                     <p className="text-2xl font-semibold text-gray-900">{folioWeb}</p>
                                 </div>
                             </div>

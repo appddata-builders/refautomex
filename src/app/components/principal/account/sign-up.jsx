@@ -93,40 +93,40 @@ export default function SignUp() {
         const birthDateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
         if (!name || !nameRegex.test(name)) {
-            error += 'Por favor ingrese un nombre válido.' + '\n';
+            error += t('validation.name') + '\n';
         }
         if (!lastName || !nameRegex.test(lastName)) {
-            error += 'Por favor ingrese un apellido válido.' + '\n';
+            error += t('validation.lastname') + '\n';
         }
         if (!phone || !phoneRegex.test(phone)) {
-            error += 'Por favor ingrese un número de teléfono válido.' + '\n';
+            error += t('validation.phone') + '\n';
         }
         if (!rfc || !rfcRegex.test(rfc)) {
-            error += 'Por favor ingrese un RFC válido.' + '\n';
+            error += t('validation.rfc') + '\n';
         }
         if (!birthDate || !birthDateRegex.test(birthDate)) {
-            error += 'Por favor ingrese una fecha de nacimiento válida.' + '\n';
+            error += t('validation.birthdate') + '\n';
         }
         if (!gender) {
-            error += 'Por favor seleccione un género.' + '\n';
+            error += t('validation.gender') + '\n';
         }
         if (!email || !emailRegex.test(email)) {
-            error += 'Por favor ingrese un correo electrónico válido.' + '\n';
+            error += t('validation.email') + '\n';
         }
         if (!password || !passwordRegex.test(password)) {
-            error += 'Por favor ingrese una contraseña válida.' + '\n';
+            error += t('validation.password') + '\n';
         }
         if (verifyPassword !== password) {
-            error += 'Las contraseñas no coinciden.' + '\n';
+            error += t('password.match') + '\n';
         }
         if (!placeId) {
-            error += 'Por favor seleccione una dirección válida.' + '\n';
+            error += t('validation.address') + '\n';
         }
         if (!agreed) {
-            error += 'Debe aceptar la política de privacidad y condiciones.' + '\n';
+            error += t('validation.agree') + '\n';
         }
         if (!recaptchaValue) {
-            error += 'Verifica que no eres un robot.' + '\n';
+            error += t('validation.captcha') + '\n';
         }
 
         recaptchaRef.current.reset();
@@ -139,7 +139,7 @@ export default function SignUp() {
         userPool.signUp(email, password, [], null, async (err, data) => {
             if (err) {
                 if (err.code === 'UsernameExistsException') {
-                    setAlertMessage('La cuenta con el correo electrónico proporcionado ya existe.');
+                    setAlertMessage(t('account.emailExists'));
                 } else {
                     console.error(err);
                 }
@@ -177,11 +177,11 @@ export default function SignUp() {
 
                     const dataResponse = await response.json().catch(() => null);
                     console.log('Data sent successfully:', dataResponse);
-                    setAlertMessage("Información enviada correctamente!");
+                    setAlertMessage(t('account.signUpOk'));
                     window.location.href = '/section/account?load=log-in&user_status=new';
                 } catch (error) {
                     console.log('Error al subir formulario:', error);
-                    setAlertMessage("Error al subir formulario. Revisa la conexión a internet e intentalo más tarde.");
+                    setAlertMessage(t('account.signUpError'));
                 }
             }
         });
@@ -260,7 +260,7 @@ export default function SignUp() {
                             </div>
                             <div className="sm:col-span-3">
                                 <label htmlFor="rfc" className="block font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    RFC
+                                    {t('invoice.rfc')}
                                 </label>
                                 <div className="mt-2">
                                     <input 
@@ -297,9 +297,9 @@ export default function SignUp() {
                                         onChange={(e) => setGender(e.target.value)}
                                         className="mt-2 block w-full rounded-md border-0 p-1.5 text-[rgb(var(--color-text))] shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-[rgb(var(--color-text))] focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
                                         <option id="gender_0" value="" disabled>{t('account.gener')}</option>
-                                        <option id="gender_1" value="M">Masculino</option>
-                                        <option id="gender_2" value="F">Femenino</option>
-                                        <option id="gender_3" value="O">Otro</option>
+                                        <option id="gender_1" value="M">{t('account.genderMale')}</option>
+                                        <option id="gender_2" value="F">{t('account.genderFemale')}</option>
+                                        <option id="gender_3" value="O">{t('account.genderOther')}</option>
                                     </select>
                                 </div>
                             </div>
@@ -358,24 +358,24 @@ export default function SignUp() {
                                 </div>
                                 <div className={`grid grid-cols-2 p-2 leading-3 text-xs mt-1.5 opacity-40 shadow bg-[rgb(var(--color-card))] rounded-md -mx-10 sm:mx-0 ${isFocus ? '' : 'hidden'}`}>
                                     <p className={isValid.minLength ? 'text-green-500' : 'text-red-400'}>
-                                        - {isValid.minLength ? 'La longitud es válida.' : 'Minimo 8 caracteres.'}
+                                        - {isValid.minLength ? t('password.minLengthOk') : t('password.minLength')}
                                     </p>
                                     <p className={isValid.hasNumber ? 'text-green-500' : 'text-red-400'}>
-                                        - {isValid.hasNumber ? 'Un número válido.' : 'Al menos un número.'}
+                                        - {isValid.hasNumber ? t('password.numberOk') : t('password.number')}
                                     </p>
                                     <p className={isValid.hasSpecialChar ? 'text-green-500' : 'text-red-400'}>
-                                        - {isValid.hasSpecialChar ? 'Caracter especial válido.' : 'Al menos un caracter especial.'}
+                                        - {isValid.hasSpecialChar ? t('password.specialOk') : t('password.special')}
                                     </p>
                                     <p className={isValid.hasUppercase ? 'text-green-500' : 'text-red-400'}>
-                                        - {isValid.hasUppercase ? 'Letra mayúscula válida.' : 'Al menos una letra mayúscula.'}
+                                        - {isValid.hasUppercase ? t('password.upperOk') : t('password.upper')}
                                     </p>
                                     <p className={isValid.hasLowercase ? 'text-green-500' : 'text-red-400'}>
-                                        - {isValid.hasLowercase ? 'Letra minúscula válida.' : 'Al menos una letra minúscula.'}
+                                        - {isValid.hasLowercase ? t('password.lowerOk') : t('password.lower')}
                                     </p>
                                     <p className={(password ? (isValid.isSame ? 'text-green-500' : 'text-red-400') : 'text-red-400')}>
                                         - {password
-                                            ? (isValid.isSame ? 'Las contraseñas coinciden.' : 'Las contraseñas no coinciden.')
-                                            : 'El campo contraseña no puede estar vacío.'
+                                            ? (isValid.isSame ? t('password.matchOk') : t('password.match'))
+                                            : t('password.empty')
                                         }
                                     </p>
                                 </div>
@@ -462,7 +462,7 @@ export default function SignUp() {
                                     {t('account.login')}
                                 </Link>
                                 <p className='text-gray-400 text-xs mt-4'>
-                                    {t('account.support')} <a href="mailto:volkspaco@gmail.com" className="text-amber-400">volkspaco@gmail.com</a>
+                                    {t('account.support')} <a href={`mailto:${t('footer.supportMail')}`} className="text-amber-400">{t('footer.supportMail')}</a>
                                 </p>
                             </p>
                         </div>

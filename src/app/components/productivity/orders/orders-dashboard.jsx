@@ -2,31 +2,34 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { FaClock, FaCheckToSlot, FaTruckRampBox, FaWarehouse } from 'react-icons/fa6';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const money = new Intl.NumberFormat('es-MX', {
   style: 'currency',
   currency: 'MXN',
 });
 
+// Estas tablas viven fuera del componente, asi que guardan la key del texto y
+// no el texto: el idioma se resuelve al renderizar.
 const statusStyles = {
   paid: {
     badge: 'bg-cyan-100 text-emerald-800',
-    label: 'Pagado',
+    labelKey: 'panel.orders.statusPaid',
   },
   unpaid: {
     badge: 'bg-amber-100 text-amber-800',
-    label: 'Pendiente de pago',
+    labelKey: 'panel.orders.statusUnpaid',
   },
   canceled: {
     badge: 'bg-rose-100 text-rose-800',
-    label: 'Cancelado',
+    labelKey: 'panel.orders.statusCanceled',
   },
 };
 
 const fulfillmentStages = [
-  { key: 'en_proceso', label: 'En proceso', icon: FaClock },
-  { key: 'pedido_confirmado', label: 'Pedido confirmado', icon: FaCheckToSlot },
-  { key: 'en_camino', label: 'Finalizado', icon: FaWarehouse },
+  { key: 'en_proceso', labelKey: 'panel.orders.stageProcessing', icon: FaClock },
+  { key: 'pedido_confirmado', labelKey: 'panel.orders.stageConfirmed', icon: FaCheckToSlot },
+  { key: 'en_camino', labelKey: 'panel.orders.stageDone', icon: FaWarehouse },
 ];
 
 const getNextStage = (current) => {
@@ -41,6 +44,7 @@ export default function OrdersDashboard({
   dashboardToken,
   requirePin = true,
 }) {
+    const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState('pending');
   const [items, setItems] = useState(orders);
   const [updatingId, setUpdatingId] = useState(null);
@@ -99,7 +103,7 @@ export default function OrdersDashboard({
     });
     const result = await response.json();
     if (!response.ok) {
-      throw new Error(result?.error ?? 'No se pudo actualizar el estado interno.');
+      throw new Error(result?.error ?? t('panel.orders.internalError'));
     }
     applyServerUpdate(orderId, {
       fulfillmentReturn:
@@ -134,7 +138,7 @@ export default function OrdersDashboard({
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.error ?? 'No se pudo actualizar');
+        throw new Error(payload?.error ?? t('panel.orders.updateError'));
       }
       applyServerUpdate(order.id, {
         fulfillmentStatus: payload.fulfillmentStatus,
@@ -145,7 +149,7 @@ export default function OrdersDashboard({
       }
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : 'Hubo un error al cambiar el estado.'
+        error instanceof Error ? error.message : t('panel.orders.stageError')
       );
     } finally {
       setUpdatingId(null);
@@ -211,7 +215,7 @@ export default function OrdersDashboard({
       await persistLogistics(order.id, { returnStatus: targetReturn });
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : 'Hubo un error al actualizar la devolución.'
+        error instanceof Error ? error.message : t('panel.orders.returnError')
       );
     } finally {
       setReturnUpdatingId(null);
@@ -230,7 +234,7 @@ export default function OrdersDashboard({
       });
     } catch (error) {
       setFeedback(
-        error instanceof Error ? error.message : 'Hubo un error al guardar la nota.'
+        error instanceof Error ? error.message : t('panel.orders.noteError')
       );
     } finally {
       setNoteUpdatingId(null);
@@ -242,10 +246,10 @@ export default function OrdersDashboard({
       {!hasAccess ? (
         <div className="max-w-md mx-auto rounded-3xl border border-[rgb(var(--color-text))]/15 bg-[rgb(var(--color-bg))] shadow px-6 py-8 text-center space-y-4 mt-12">
           <h2 className="text-2xl font-semibold linear-text-title">
-            Ingresa el código de acceso
+            {t('panel.orders.pinTitle')}
           </h2>
           <p className="text-sm text-[rgb(var(--color-text))]/70">
-            Este panel contiene información sensible de pedidos. Introduce tu PIN para continuar.
+            {t('panel.orders.pinHint')}
           </p>
           <input
             type="password"
@@ -261,12 +265,12 @@ export default function OrdersDashboard({
                 setHasAccess(true);
                 setPinError(null);
               } else {
-                setPinError('Código incorrecto, intenta nuevamente.');
+                setPinError(t('panel.orders.pinWrong'));
               }
             }}
             className="w-full rounded-full bg-[rgb(var(--color-text))] text-[rgb(var(--color-card))] font-semibold py-3 px-5 shadow hover:bg-[rgb(var(--color-text))]/90 transition"
           >
-            Desbloquear
+            {t('panel.orders.unlock')}
           </button>
           {pinError && <p className="text-sm text-red-500">{pinError}</p>}
         </div>
@@ -283,7 +287,7 @@ export default function OrdersDashboard({
                     : 'bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))]/70 border border-[rgb(var(--color-text))]/10'
                 }`}
               >
-                {tab === 'pending' ? 'Pendientes' : 'Completados'}
+                {tab === 'pending' ? t('panel.orders.tabPending') : t('panel.orders.tabCompleted')}
               </button>
             ))}
           </div>
@@ -291,11 +295,11 @@ export default function OrdersDashboard({
           <div className="mt-6 space-y-6">
             {items.length === 0 ? (
               <div className="rounded-3xl border border-[rgb(var(--color-text))]/15 bg-[rgb(var(--color-bg))] px-6 py-12 text-center text-[rgb(var(--color-text))]/60">
-                Aún no hay pedidos confirmados.
+                {t('panel.orders.emptyConfirmed')}
               </div>
             ) : filteredOrders.length === 0 ? (
               <div className="rounded-3xl border border-[rgb(var(--color-text))]/15 bg-[rgb(var(--color-bg))] px-6 py-12 text-center text-[rgb(var(--color-text))]/60">
-                No hay registros en esta sección.
+                {t('panel.orders.emptySection')}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-6">
@@ -308,14 +312,14 @@ export default function OrdersDashboard({
                   const logisticState = (() => {
                     if (order.fulfillmentReturn === 'devolucion') {
                       return {
-                        label: 'Devolución',
+                        label: t('panel.orders.return'),
                         badgeClass: 'bg-rose-100 text-rose-800',
                         icon: FaTruckRampBox,
                       };
                     }
                     if (order.isCompleted) {
                       return {
-                        label: 'Finalizado',
+                        label: t('panel.orders.stageDone'),
                         badgeClass: 'bg-emerald-100 text-emerald-800',
                         icon: FaWarehouse,
                       };
@@ -324,7 +328,7 @@ export default function OrdersDashboard({
                       fulfillmentStages.find((stage) => stage.key === order.fulfillmentStatus) ||
                       fulfillmentStages[0];
                     return {
-                      label: stageInfo.label,
+                      label: t(stageInfo.labelKey),
                       badgeClass: 'bg-slate-100 text-slate-800',
                       icon: stageInfo.icon,
                     };
@@ -353,7 +357,7 @@ export default function OrdersDashboard({
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${style.badge}`}>
-                            {style.label}
+                            {t(style.labelKey)}
                           </span>
                           <span
                             className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ${logisticState.badgeClass}`}
@@ -365,21 +369,21 @@ export default function OrdersDashboard({
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-[rgb(var(--color-text))]/80 py-4">
                         <div>
-                          <p className="font-semibold text-[rgb(var(--color-text))]">Teléfono</p>
-                          <p className="wrap-break-word">{order.contactPhone ?? 'Sin registro'}</p>
+                          <p className="font-semibold text-[rgb(var(--color-text))]">{t('account.phone')}</p>
+                          <p className="wrap-break-word">{order.contactPhone ?? t('account.summaryEmpty')}</p>
                         </div>
                         <div>
-                          <p className="font-semibold text-[rgb(var(--color-text))]">Correo</p>
-                          <p className="wrap-break-word">{order.email ?? 'Sin registro'}</p>
+                          <p className="font-semibold text-[rgb(var(--color-text))]">{t('account.mail')}</p>
+                          <p className="wrap-break-word">{order.email ?? t('account.summaryEmpty')}</p>
                         </div>
                         <div>
-                          <p className="font-semibold text-[rgb(var(--color-text))]">Domicilio</p>
+                          <p className="font-semibold text-[rgb(var(--color-text))]">{t('account.address')}</p>
                           <p className="wrap-break-word">
-                            {order.contactAddress ?? 'Sin registro'}
+                            {order.contactAddress ?? t('account.summaryEmpty')}
                           </p>
                         </div>
                         <div>
-                          <p className="font-semibold text-[rgb(var(--color-text))]">Fecha</p>
+                          <p className="font-semibold text-[rgb(var(--color-text))]">{t('panel.common.date')}</p>
                           <p>
                             {new Date(order.created * 1000).toLocaleDateString('es-MX', {
                               dateStyle: 'medium',
@@ -387,13 +391,13 @@ export default function OrdersDashboard({
                           </p>
                         </div>
                         <div>
-                          <p className="font-semibold text-[rgb(var(--color-text))]">Total</p>
+                          <p className="font-semibold text-[rgb(var(--color-text))]">{t('checkout.total')}</p>
                           <p className="font-bold text-lg linear-text-title">
                             {money.format(order.amount / 100)}
                           </p>
                         </div>
                         <div>
-                          <p className="font-semibold text-[rgb(var(--color-text))]">Moneda</p>
+                          <p className="font-semibold text-[rgb(var(--color-text))]">{t('panel.orders.currency')}</p>
                           <p>{order.currency}</p>
                         </div>
                       </div>
@@ -426,7 +430,7 @@ export default function OrdersDashboard({
                                 }`}
                               >
                                 <StageIcon className="text-base mb-1" />
-                                {stage.label}
+                                {t(stage.labelKey)}
                               </div>
                             );
                           })}
@@ -445,25 +449,25 @@ export default function OrdersDashboard({
                               } disabled:opacity-50`}
                             >
                               {updatingId === order.id
-                                ? 'Actualizando...'
+                                ? t('panel.common.updating')
                                 : order.isCompleted
-                                ? 'Finalizado'
+                                ? t('panel.orders.stageDone')
                                 : isFinalStage
-                                ? 'Finalizar'
-                                : `Ir a "${nextStage.label}"`}
+                                ? t('panel.orders.finish')
+                                : t('panel.orders.goTo', { stage: t(nextStage.labelKey) })}
                             </button>
                           </div>
                         ) : (
                           <div className="flex flex-col gap-4">
                             <div className="rounded-2xl border border-[rgb(var(--color-text))]/10 bg-[rgb(var(--color-card))] px-4 py-3 text-sm text-[rgb(var(--color-text))]/80 w-full">
                               <p className="text-xs uppercase font-semibold text-[rgb(var(--color-text))]/60 mb-1">
-                                Nota
+                                {t('checkout.note')}
                               </p>
                               <textarea
                                 value={noteDrafts[order.id] ?? order.fulfillmentNote ?? ''}
                                 rows={3}
                                 className="w-full rounded-xl border border-[rgb(var(--color-text))]/20 bg-white/80 px-3 py-2 text-sm text-[rgb(var(--color-text))] focus:border-cyan-400 focus:outline-none min-h-[120px]"
-                                placeholder="Escribe comentarios sobre la entrega..."
+                                placeholder={t('panel.orders.notePlaceholder')}
                                 onChange={(event) =>
                                   setNoteDrafts((prev) => ({
                                     ...prev,
@@ -478,7 +482,7 @@ export default function OrdersDashboard({
                                 disabled={noteUpdatingId === order.id}
                               />
                               {noteUpdatingId === order.id && (
-                                <p className="mt-1 text-xs text-cyan-600">Guardando nota…</p>
+                                <p className="mt-1 text-xs text-cyan-600">{t('panel.orders.noteSaving')}</p>
                               )}
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -493,10 +497,10 @@ export default function OrdersDashboard({
                                   } disabled:opacity-50`}
                                 >
                                   {returnUpdatingId === order.id
-                                    ? 'Actualizando...'
+                                    ? t('panel.common.updating')
                                     : order.fulfillmentReturn === 'devolucion'
-                                    ? 'Habilitar'
-                                    : 'Devolución'}
+                                    ? t('panel.orders.enable')
+                                    : t('panel.orders.return')}
                                 </button>
                               </div>
                               <div className="flex">
@@ -505,7 +509,7 @@ export default function OrdersDashboard({
                                   disabled={resetUpdatingId === order.id}
                                   className="w-full rounded-full px-4 py-2 text-sm font-semibold shadow bg-emerald-100 text-emerald-800 hover:bg-emerald-200 disabled:opacity-50 cursor-pointer"
                                 >
-                                  {resetUpdatingId === order.id ? 'Reactivando...' : 'Reactivar'}
+                                  {resetUpdatingId === order.id ? t('panel.orders.reactivating') : t('panel.orders.reactivate')}
                                 </button>
                               </div>
                             </div>
