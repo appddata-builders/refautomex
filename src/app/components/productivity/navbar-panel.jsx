@@ -11,6 +11,7 @@ import { getStorageValue, setStorageValue } from "@/app/lib/storage-values";
 import { userPool } from '@/app/lib/cognito-manager';
 import { GiAutoRepair } from 'react-icons/gi';
 import { MdSell } from "react-icons/md";
+import { LuDatabaseBackup } from 'react-icons/lu';
 import { BiSolidUserCircle } from 'react-icons/bi';
 import RefautomexLogo from '@/app/components/refautomex-logo';
 import ShiftModeButton from '../principal/shiftmode-button';
@@ -136,6 +137,7 @@ export default function NavbarPanel() {
         },
         { name: t('panel.nav.home'), icon: AiOutlineDashboard, href: '/productivity?load=home' },
         { name: t('panel.nav.settings'), icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings' },
+        { name: t('panel.nav.backups'), icon: LuDatabaseBackup, href: '/productivity?load=backups', adminOnly: true },
     ];
 
     const filteredNavItems = navItems

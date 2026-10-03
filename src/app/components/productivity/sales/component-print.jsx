@@ -237,9 +237,11 @@ const ComponentToPrint = React.forwardRef(({
                             const description = String(item.descripcion || '');
                             return (
                                 <React.Fragment key={index}>
-                                    {/* Descripcion a todo el ancho */}
+                                    {/* Descripcion a todo el ancho. Se parte en varias lineas
+                                        en vez de recortarse: en 55 mm una descripcion larga
+                                        salia cortada con "..." y el ticket no decia que se vendio. */}
                                     <tr>
-                                        <td colSpan={3} className="p-0.5 text-[9px] font-semibold uppercase truncate overflow-hidden whitespace-nowrap">
+                                        <td colSpan={3} className="p-0.5 text-[9px] font-semibold uppercase break-words">
                                             {description.toUpperCase()}
                                         </td>
                                     </tr>
@@ -251,12 +253,14 @@ const ComponentToPrint = React.forwardRef(({
                                         <td className="p-0.5 text-[9px] uppercase">
                                             {item.refaccion}
                                         </td>
+                                        {/* Un monto por linea y sin cortes: en la celda angosta,
+                                            "AIVA: $ 431.03 • MON: $ 500.00" se partia en cada espacio
+                                            y en el papel quedaban etiquetas y cifras revueltas. */}
                                         <td className="p-0.5 text-[9px] text-right">
                                             {hasAiva && (
-                                                <span className="font-semibold">AIVA: $ {item.aIva}</span>
+                                                <div className="font-semibold whitespace-nowrap">AIVA: ${item.aIva}</div>
                                             )}
-                                            {hasAiva && <span className="mx-1 text-[8px] text-gray-500">•</span>}
-                                            <span className="font-bold">MON: $ {Number(item.monto || 0).toFixed(2)}</span>
+                                            <div className="font-bold whitespace-nowrap">MON: ${Number(item.monto || 0).toFixed(2)}</div>
                                         </td>
                                     </tr>
                                 </React.Fragment>

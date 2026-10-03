@@ -99,6 +99,11 @@ const tablaCompleta = (tabla) => async () => ({
 // POST
 // ---------------------------------------------------------------------------
 
+// El registro manda '' en los campos que se dejan vacios. Para casi todos da
+// igual, pero f_nacimiento es una fecha y Postgres no acepta '' como fecha.
+const valorDeUsuario = (body, campo) =>
+  campo === 'f_nacimiento' ? body?.[campo] || null : body?.[campo] ?? null;
+
 const newUser = async ({ body }) => {
   const campos = [
     'email', 'cognitoid', 'nombre', 'apellido', 'telefono', 'f_nacimiento',
@@ -106,7 +111,7 @@ const newUser = async ({ body }) => {
   ];
 
   const marcadores = campos.map(() => '?').join(', ');
-  const valores = campos.map((c) => body?.[c] ?? null);
+  const valores = campos.map((c) => valorDeUsuario(body, c));
 
   return {
     cuerpo: await escribir(
@@ -129,7 +134,7 @@ const patchUser = async ({ body }) => {
   ];
 
   const asignaciones = campos.map((c) => `${c} = ?`).join(', ');
-  const valores = [...campos.map((c) => body?.[c] ?? null), body?.idusuario];
+  const valores = [...campos.map((c) => valorDeUsuario(body, c)), body?.idusuario];
 
   return {
     cuerpo: await escribir(

@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:hydrate": "node scripts/seed-hydrate.mjs"
+    "seed:hydrate": "node scripts/seed-hydrate.mjs",
+    "db:pg:push": "drizzle-kit push --config drizzle.config.pg.mjs",
+    "db:pg:studio": "drizzle-kit studio --config drizzle.config.pg.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.932.0",
@@ -24,6 +26,7 @@
     "amazon-cognito-identity-js": "^6.3.15",
     "atropos": "^2.0.2",
     "aws-amplify": "^6.15.7",
+    "aws-jwt-verify": "^5.2.1",
     "axios": "^1.12.2",
     "better-sqlite3": "^12.11.1",
     "body-parser": "^2.2.1",
@@ -51,6 +54,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "15.5.6",
     "tailwindcss": "^4"

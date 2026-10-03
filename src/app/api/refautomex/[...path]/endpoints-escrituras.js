@@ -111,7 +111,9 @@ const newSale = async ({ body }) => {
       await tx.escribir(
         `INSERT INTO pedidos (idventa, idusuario, f_pedido, f_entrega, nombre, telefono, status, email)
          VALUES (?, ?, ?, ?, ?, ?, 'P', ?)`,
-        [String(idventa), idusuario, fecha_pedido ?? null, fecha_entrega ?? null,
+        // `||` y no `??` en las fechas: el ticket manda '' cuando no se elige
+        // fecha de entrega, y Postgres no acepta '' como fecha.
+        [String(idventa), idusuario, fecha_pedido || null, fecha_entrega || null,
           nombre_cliente ?? null, telefono ?? null, email ?? null]
       );
     }
@@ -264,9 +266,12 @@ const patchMigrate = async ({ body }) => {
       );
       if (ocupada.length > 0) throw new Error('La matriz destino no está vacía.');
 
+      // `?::int` y no `?` a secas: sin el tipo, Postgres toma la otra forma de
+      // substring, `substring(texto FROM patron)`, busca '10' como expresion
+      // regular, devuelve NULL y el UPDATE truena por NOT NULL.
       const r = await tx.escribir(
         `UPDATE localizacion
-            SET localizacion = ? || substring(localizacion FROM ?)
+            SET localizacion = ? || substring(localizacion FROM ?::int)
           WHERE localizacion LIKE ?`,
         [target, String(source).length + 1, `${source}%`]
       );
