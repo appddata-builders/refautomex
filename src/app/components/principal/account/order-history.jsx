@@ -2,8 +2,10 @@
 import React, { useState, useEffect } from "react";
 import { getStorageValue } from "@/app/lib/storage-values";
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function OrderHistory(){
+    const { t } = useTranslation();
     const cognitoUserSession = getStorageValue('CognitoUserSession');
     const username = cognitoUserSession?.idToken.payload["cognito:username"];
     const userData = getStorageValue(`user_${username}`);
@@ -44,26 +46,26 @@ export default function OrderHistory(){
     return (
         <div className='bg-[rgb(var(--color-card))]'>
             <div className="container mx-auto bg-gradient-to-tl from-[rgb(var(--color-card))] via-[rgb(var(--color-bg))] to-[rgb(var(--color-galaxy))] px-6 md:px-28 py-24 sm:py-40">
-                <h1 className="text-3xl pt-10 font-semibold mb-4 text-center sm:text-left text-[rgb(var(--color-text))]">Order history</h1>
-                <p className="mb-8 text-center sm:text-left text-[rgb(var(--color-text))]">Check the status of recent orders, manage returns, and download invoices.</p>
+                <h1 className="text-3xl pt-10 font-semibold mb-4 text-center sm:text-left text-[rgb(var(--color-text))]">{t('account.historyTitle')}</h1>
+                <p className="mb-8 text-center sm:text-left text-[rgb(var(--color-text))]">{t('account.historySubtitle')}</p>
                 {sales.map((order) => (
                     <div key={order.id} className="mb-6">
                     <div className="flex flex-col lg:flex-row justify-between items-center bg-[rgb(var(--color-bg))] p-4 lg:p-8 my-2 rounded-2xl border border-zinc-300">
                         <div className="flex-1 mb-4 lg:mb-0">
-                        <div className="text-[rgb(var(--color-text))]">Order number</div>
+                        <div className="text-[rgb(var(--color-text))]">{t('account.historyOrderNumber')}</div>
                         <div className='text-[rgb(var(--color-gray))]'>{order.folio}</div>
                         </div>
                         <div className="flex-1 mb-4 lg:mb-0">
-                            <div className="text-[rgb(var(--color-text))]">Date placed</div>
+                            <div className="text-[rgb(var(--color-text))]">{t('account.historyDate')}</div>
                             <div className='text-[rgb(var(--color-gray))]'>{order.fecha_venta}</div>
                         </div>
                         <div className="flex-1 mb-4 lg:mb-0">
-                            <div className="text-[rgb(var(--color-text))]">Total amount</div>
+                            <div className="text-[rgb(var(--color-text))]">{t('account.historyTotal')}</div>
                             <div className='text-[rgb(var(--color-gray))]'>{order.total_venta}</div>
                         </div>
                         <div className="flex space-x-2">
-                            <div className="gradient-text-title flex justify-center items-center mx-2">{order.status == 'A' ? 'Pendiente' : 'Entregada'}</div>
-                            <button className="bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer">Ver compra</button>
+                            <div className="gradient-text-title flex justify-center items-center mx-2">{order.status == 'A' ? t('account.historyPending') : t('account.historyDelivered')}</div>
+                            <button className="bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer">{t('account.historyView')}</button>
                         </div>
                     </div>
                     {/*sales.products.map((product) => (

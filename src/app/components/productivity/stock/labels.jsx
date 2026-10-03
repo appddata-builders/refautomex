@@ -1,3 +1,5 @@
+import { useTranslation } from '@/app/lib/text/text-provider';
+
 const resolveLabelImageSrc = (product, basePath) => {
     const fallback = `${basePath}productos/no-img.png`;
     const rawImage = product.imageSrc || product.ruta || (product.rutas?.[0] ?? '');
@@ -41,6 +43,7 @@ const compareBySuffix = (a, b) => {
 };
 
 export default function Labels({ products }) {
+    const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
 
     // Agrupar productos por localización principal
@@ -77,7 +80,7 @@ export default function Labels({ products }) {
                                         loading="eager"
                                         className="h-8"
                                         src={`${multimediaSrc}refautomex_n.svg`}
-                                        alt="Refautomex"
+                                        alt={t('meta.brand')}
                                     />
                                 </div>
                                 <div className="w-full flex items-center justify-center">
@@ -104,7 +107,7 @@ export default function Labels({ products }) {
                                         loading="eager"
                                         className="h-8"
                                         src={`${multimediaSrc}refautomex_n.svg`}
-                                        alt="Refautomex"
+                                        alt={t('meta.brand')}
                                     />
                                 </div>
                                 <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">

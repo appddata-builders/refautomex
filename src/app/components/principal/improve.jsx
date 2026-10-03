@@ -5,9 +5,8 @@ import Atropos from 'atropos/react';
 import 'atropos/css';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { FaShoppingBag } from "react-icons/fa";
-import '@/app/translations/i18next-translation';
 
 export default function Improve() {
     const { i18n, t } = useTranslation();

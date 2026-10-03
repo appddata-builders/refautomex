@@ -1,7 +1,6 @@
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { MdGetApp } from "react-icons/md";
 import { IoMdCheckmarkCircleOutline } from "react-icons/io";
-import '@/app/translations/i18next-translation';
 
 export default function TierPromotion() {
   const { t } = useTranslation();
@@ -46,8 +45,8 @@ export default function TierPromotion() {
               <div className="mx-auto max-w-xs px-8">
                 <p className="text-base font-semibold text-[rgb(var(--color-text))] opacity-80">{t('promotions.label')}</p>
                 <p className="mt-6 flex items-baseline justify-center gap-x-2">
-                  <span className="text-5xl font-bold tracking-tight text-[rgb(var(--color-text))]">$399</span>
-                  <span className="text-sm font-semibold leading-6 tracking-wide text-[rgb(var(--color-text))] opacity-80">MXN</span>
+                  <span className="text-5xl font-bold tracking-tight text-[rgb(var(--color-text))]">{t('promotions.price')}</span>
+                  <span className="text-sm font-semibold leading-6 tracking-wide text-[rgb(var(--color-text))] opacity-80">{t('promotions.currency')}</span>
                 </p>
                 <button className='bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer font-bold'>
                     <span className='flex px-1 justify-center items-center'>

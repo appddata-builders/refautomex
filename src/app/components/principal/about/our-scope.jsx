@@ -1,6 +1,5 @@
 import {FaCogs, FaLightbulb, FaCloudsmith, FaDolly, FaHammer, FaRegObjectGroup, FaScrewdriver, FaShoppingBag, FaSplotch} from 'react-icons/fa'
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function OurScope() {
     const { t } = useTranslation();
@@ -20,7 +19,7 @@ export default function OurScope() {
     <div className="relative bg-gradient-to-b from-[rgb(var(--color-card))] via-[rgb(var(--color-gray))] to-[rgb(var(--color-gray-base))] 
     z-0 h-full min-h-screen w-full text-gray-50 overflow-hidden">
         {bubblesData.map((bubble, index) => (
-        <div 
+        <div
             key={index}
             className={`absolute z-0 scale-75 lg:scale-100 ${bubble.color} rounded-full p-4 w-28 h-28 lg:w-30 lg:h-30 flex items-center justify-center lg:animate-out hover:opacity-80`}
             style={{ top: bubble.top, left: bubble.left }}

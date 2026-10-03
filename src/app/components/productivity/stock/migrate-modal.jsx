@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaTruckRampBox, FaParachuteBox } from "react-icons/fa6";
 import { CgDanger } from "react-icons/cg";
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const createInitialMatrixSelection = () => ({
     origin: { anaquel: '', nivel: '', seccion: '' },
@@ -8,6 +9,7 @@ const createInitialMatrixSelection = () => ({
 });
 
 export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
+    const { t } = useTranslation();
     const [formData, setFormData] = useState(createInitialMatrixSelection());
     const [missingFieldsWarning, setMissingFieldsWarning] = useState(false);
     const [submissionStatus, setSubmissionStatus] = useState({ type: '', message: '' });
@@ -83,7 +85,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
         } catch (error) {
             setSubmissionStatus({
                 type: 'error',
-                message: 'No se pudo completar la migración.',
+                message: t('panel.migrate.error'),
             });
         } finally {
             setIsSubmitting(false);
@@ -96,17 +98,17 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
             <div className="relative flex items-center justify-center min-h-screen px-4">
                 <div className="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full z-50">
                     <div className="px-4 py-5 sm:px-6">
-                        <h3 className="text-lg leading-6 font-medium text-gray-900">Migrar Matrices por Localizacion</h3>
+                        <h3 className="text-lg leading-6 font-medium text-gray-900">{t('panel.migrate.title')}</h3>
                     </div>
                     <div className='flex flex-col px-2 text-stone-800 border-l-4 border-l-amber-600 m-2 shadow rounded'>
                         <div className="bg-red-200 p-2 mx-2 my-1 rounded-md">
                             <div className="flex items-center justify-center">
-                                NO SE PUEDEN HACER CAMBIOS SIN SUPERVISIÓN Y ACEPTACIÓN DEL COMITÉ INTERNO
+                                {t('panel.migrate.warning')}
                             </div>
                         </div>
-                        Para migrar las localizaciones de una matriz de productos debes asegurarte de tener disponible
+                        {t('panel.migrate.hint')}
                         <br />
-                        <span className='text-amber-700'>TODA LA MATRIZ DESTINO</span>
+                        <span className='text-amber-700'>{t('panel.migrate.wholeTarget')}</span>
                     </div>
                     <div className="bg-gray-50 px-4 py-5 sm:p-6">
                         <div className="space-y-4">
@@ -114,7 +116,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-4 mb-6">
                                 <label className="flex items-center text-sm font-semibold text-gray-700">
                                     <FaTruckRampBox className="w-5 h-5 mr-2 text-blue-800" />
-                                    ORIGEN:
+                                    {t('panel.migrate.source')}
                                 </label>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full" data-testid="migration-origin">
                                     <select
@@ -123,7 +125,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                         onChange={(event) => handleSelectChange('origin', 'anaquel', event.target.value)}
                                         className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
                                     >
-                                        <option value="">Anaquel</option>
+                                        <option value="">{t('panel.migrate.shelf')}</option>
                                         {anaqueles.map(value => (
                                             <option key={value} value={value}>{value}</option>
                                         ))}
@@ -134,7 +136,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                         onChange={(event) => handleSelectChange('origin', 'nivel', event.target.value)}
                                         className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
                                     >
-                                        <option value="">Nivel</option>
+                                        <option value="">{t('panel.migrate.level')}</option>
                                         {niveles.map(value => (
                                             <option key={value} value={value}>{value}</option>
                                         ))}
@@ -145,7 +147,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                         onChange={(event) => handleSelectChange('origin', 'seccion', event.target.value)}
                                         className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
                                     >
-                                        <option value="">Sección</option>
+                                        <option value="">{t('panel.migrate.section')}</option>
                                         {secciones.map(value => (
                                             <option key={value} value={value}>{value}</option>
                                         ))}
@@ -156,7 +158,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                             <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
                                 <label className="flex items-center text-sm font-semibold text-gray-700">
                                     <FaParachuteBox className="w-5 h-5 mr-2 text-amber-700" />
-                                    DESTINO:
+                                    {t('panel.migrate.target')}
                                 </label>
                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
                                     <select
@@ -165,7 +167,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                         onChange={(event) => handleSelectChange('destination', 'anaquel', event.target.value)}
                                         className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-amber-400 focus:outline-none"
                                     >
-                                        <option value="">Anaquel</option>
+                                        <option value="">{t('panel.migrate.shelf')}</option>
                                         {anaqueles.map(value => (
                                             <option key={value} value={value}>{value}</option>
                                         ))}
@@ -176,7 +178,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                         onChange={(event) => handleSelectChange('destination', 'nivel', event.target.value)}
                                         className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-amber-400 focus:outline-none"
                                     >
-                                        <option value="">Nivel</option>
+                                        <option value="">{t('panel.migrate.level')}</option>
                                         {niveles.map(value => (
                                             <option key={value} value={value}>{value}</option>
                                         ))}
@@ -187,7 +189,7 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                         onChange={(event) => handleSelectChange('destination', 'seccion', event.target.value)}
                                         className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-2 focus:ring-amber-400 focus:outline-none"
                                     >
-                                        <option value="">Sección</option>
+                                        <option value="">{t('panel.migrate.section')}</option>
                                         {secciones.map(value => (
                                             <option key={value} value={value}>{value}</option>
                                         ))}
@@ -223,13 +225,13 @@ export default function MigrateModal({ isOpen, toggleModal, onSubmit }) {
                                 disabled={isSubmitting}
                                 className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 sm:ml-3 sm:w-auto sm:text-sm ${isSubmitting ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-700 focus:ring-blue-500'}`}
                             >
-                                {isSubmitting ? 'Migrando...' : 'Migrar matriz'}
+                                {isSubmitting ? t('panel.migrate.running') : t('panel.migrate.action')}
                             </button>
                             <button
                                 onClick={toggleModal}
                                 className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
                             >
-                                Cancelar
+                                {t('panel.common.cancel')}
                             </button>
                         </div>
                     </div>

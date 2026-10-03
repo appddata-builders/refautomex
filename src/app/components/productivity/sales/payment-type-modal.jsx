@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { BsCashCoin, BsCreditCard2Front, BsCreditCard } from 'react-icons/bs';
 import { FaMoneyBillTransfer } from 'react-icons/fa6';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const paymentTypesMap = {
   '1': 1,
@@ -19,6 +20,7 @@ const paymentIcons = {
 };
 
 export default function PaymentTypeModal({ isOpen, toggleModal, onConfirm }) {
+    const { t } = useTranslation();
   const [selectedPaymentType, setSelectedPaymentType] = useState(null);
   const scrollRef = useRef(0);
 
@@ -49,7 +51,7 @@ export default function PaymentTypeModal({ isOpen, toggleModal, onConfirm }) {
 
   const handleConfirm = () => {
     if (!selectedPaymentType) {
-      alert('Por favor, selecciona un método de pago antes de confirmar.');
+      alert(t('panel.paymentType.pickFirst'));
       return;
     }
     onConfirm(paymentTypesMap[selectedPaymentType]);
@@ -66,7 +68,7 @@ export default function PaymentTypeModal({ isOpen, toggleModal, onConfirm }) {
       <div className="fixed inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} aria-hidden="true" />
       <div className="relative bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] rounded-lg overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full">
         <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-[rgb(var(--color-text))]">Seleccionar Tipo de Pago</h3>
+          <h3 className="text-lg leading-6 font-medium text-[rgb(var(--color-text))]">{t('panel.paymentType.title')}</h3>
         </div>
         <div className="px-4 py-5 sm:p-6">
           <div className="space-y-4">
@@ -81,10 +83,10 @@ export default function PaymentTypeModal({ isOpen, toggleModal, onConfirm }) {
                   }`}
                 >
                   <Icon className="w-6 h-6 mx-3" />
-                  {key === '1' && 'Efectivo'}
-                  {key === '2' && 'Tarjeta de Débito'}
-                  {key === '3' && 'Tarjeta de Crédito'}
-                  {key === '4' && 'Transferencia'}
+                  {key === '1' && t('panel.paymentType.cash')}
+                  {key === '2' && t('panel.paymentType.debit')}
+                  {key === '3' && t('panel.paymentType.credit')}
+                  {key === '4' && t('panel.paymentType.transfer')}
                 </button>
               );
             })}
@@ -94,13 +96,13 @@ export default function PaymentTypeModal({ isOpen, toggleModal, onConfirm }) {
               onClick={handleConfirm}
               className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-500 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
             >
-              Confirmar
+              {t('panel.common.confirm')}
             </button>
             <button
               onClick={toggleModal}
               className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
             >
-              Cancelar
+              {t('panel.common.cancel')}
             </button>
           </div>
         </div>

@@ -9,7 +9,7 @@ import { useCart } from '@/app/lib/shopping-context';
 import { CiShop, CiStar, CiMail } from "react-icons/ci";
 import { MdShoppingCart } from 'react-icons/md';
 import { PiBooksThin } from "react-icons/pi";
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { TbChristmasTreeFilled } from "react-icons/tb";
 
 import RefautomexLogo from '@/app/components/refautomex-logo';
@@ -127,7 +127,7 @@ export default function Navbar() {
     >
       <nav
         className="flex w-full min-h-[75px] sm:min-h-[80px] xl:max-w-7xl items-center justify-center lg:justify-between px-0.5 sm:px-5 transition duration-100 ease-in-out"
-        aria-label="Global"
+        aria-label={t('navbar.ariaGlobal')}
       >
         <div className="flex flex-1 justify-center items-center md:justify-between">
           <div className="fixed left-3 bottom-3 flex flex-col items-center gap-2 z-50">
@@ -170,7 +170,7 @@ export default function Navbar() {
                         src={profileImageUrl}
                         onError={() => setImgError(true)}
                         className="w-full h-full object-cover bg-gray-50"
-                        alt="Profile"
+                        alt={t('account.photo')}
                       />
                     )}
                   </div>

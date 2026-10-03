@@ -19,6 +19,8 @@ import Capture from '@/app/components/productivity/requirements/capture';
 import Providers from '@/app/components/productivity/requirements/providers';
 import Site from '@/app/components/productivity/orders/site';
 import Delivery from '@/app/components/productivity/orders/delivery';
+import Backups from '@/app/components/productivity/backups';
+import BackupScheduler from '@/app/components/productivity/backup-scheduler';
 
 export default function Productivity() {
   const router = useRouter();
@@ -27,6 +29,9 @@ export default function Productivity() {
 
   const load = searchParams.get('load') || 'home';
   const lang = searchParams.get('lang') || 'es';
+  // Mismo criterio que navbar-panel.jsx. La API vuelve a revisarlo con el
+  // token: esto solo decide que se pinta.
+  const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
 
   useEffect(() => {
     if (userData && userData.empleado === 0) {
@@ -57,12 +62,20 @@ export default function Productivity() {
       case 'calendar': return <Calendar />;
       case 'delivery': return <Delivery />;
       case 'invoice': return <Invoice />;
+      case 'backups': return isAdmin ? <Backups /> : <Home />;
       default: return <Home />;
     }
-  }, [load]);
+  }, [load, isAdmin]);
 
   if (isAuthenticated === false) return null;
   if (userData && userData.empleado === 0) return null;
 
-  return <>{component}</>;
+  // El respaldo de las 3 pm corre en todo el panel, no solo en Respaldos: a
+  // esa hora el administrador puede estar en cualquier otra pantalla.
+  return (
+    <>
+      {component}
+      {isAdmin && <BackupScheduler />}
+    </>
+  );
 }

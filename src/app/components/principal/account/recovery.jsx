@@ -3,8 +3,7 @@ import { CognitoUser } from 'amazon-cognito-identity-js';
 import { userPool } from '@/app/lib/cognito-manager';
 import RefautomexLogo from "@/app/components/refautomex-logo";
 import { AiFillEye } from 'react-icons/ai';
-import '@/app/translations/i18next-translation';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function Recovery() {
@@ -48,7 +47,7 @@ export default function Recovery() {
 
     const handleResetPassword = () => {
         if (newPassword !== verifyNewPassword) {
-            setAlertMessage('Las contraseñas no coinciden.');
+            setAlertMessage(t('password.match'));
             return;
         }
 
@@ -186,22 +185,22 @@ export default function Recovery() {
                             </div>
                             <div className={`grid grid-cols-2 p-2 leading-3 text-xs mt-1.5 opacity-40 shadow bg-[rgb(var(--color-gray))] rounded-md ${newPassword && verifyNewPassword ? '' : 'hidden'}`}>
                                 <p className={isValid.minLength ? 'text-green-500' : 'text-red-400'}>
-                                    - {isValid.minLength ? 'La longitud es válida.' : 'Minimo 8 caracteres.'}
+                                    - {isValid.minLength ? t('password.minLengthOk') : t('password.minLength')}
                                 </p>
                                 <p className={isValid.hasNumber ? 'text-green-500' : 'text-red-400'}>
-                                    - {isValid.hasNumber ? 'Un número válido.' : 'Al menos un número.'}
+                                    - {isValid.hasNumber ? t('password.numberOk') : t('password.number')}
                                 </p>
                                 <p className={isValid.hasSpecialChar ? 'text-green-500' : 'text-red-400'}>
-                                    - {isValid.hasSpecialChar ? 'Caracter especial válido.' : 'Al menos un caracter especial.'}
+                                    - {isValid.hasSpecialChar ? t('password.specialOk') : t('password.special')}
                                 </p>
                                 <p className={isValid.hasUppercase ? 'text-green-500' : 'text-red-400'}>
-                                    - {isValid.hasUppercase ? 'Letra mayúscula válida.' : 'Al menos una letra mayúscula.'}
+                                    - {isValid.hasUppercase ? t('password.upperOk') : t('password.upper')}
                                 </p>
                                 <p className={isValid.hasLowercase ? 'text-green-500' : 'text-red-400'}>
-                                    - {isValid.hasLowercase ? 'Letra minúscula válida.' : 'Al menos una letra minúscula.'}
+                                    - {isValid.hasLowercase ? t('password.lowerOk') : t('password.lower')}
                                 </p>
                                 <p className={isValid.isSame ? 'text-green-500' : 'text-red-400'}>
-                                    - {isValid.isSame ? 'Las contraseñas coinciden.' : 'Las contraseñas no coinciden.'}
+                                    - {isValid.isSame ? t('password.matchOk') : t('password.match')}
                                 </p>
                             </div>
                             <div className="flex flex-1 justify-center items-center">

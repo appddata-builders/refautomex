@@ -4,9 +4,8 @@ import { AuthContext } from '@/app/lib/auth-tracker';
 import { MdOutlineNoAccounts, MdSwitchAccount } from "react-icons/md";
 import { getStorageValue } from "@/app/lib/storage-values";
 import { IoMdArrowRoundBack } from "react-icons/io";
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import FormData from '@/app/components/principal/invoices/form-data';
-import '@/app/translations/i18next-translation';
 
 const initialFormState = {
   name: '',
@@ -141,7 +140,7 @@ export default function FormInvoice() {
         <img
           className="absolute inset-0 h-full w-full object-cover"
           src={`${multimediaSrc}invoice.jpg`}
-          alt="Invoice Background"
+          alt={t('alt.invoice')}
         />
       </div>
     </div>
