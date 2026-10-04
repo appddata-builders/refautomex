@@ -21,6 +21,8 @@ export const HORA_RESPALDO = 15;
 
 const CLAVE_ULTIMO = 'respaldo:ultimo';
 const EVENTO = 'respaldo:actualizado';
+const CLAVE_PENDIENTE = 'respaldo:pendiente';
+const EVENTO_PENDIENTE = 'respaldo:pendiente';
 
 const dos = (n) => String(n).padStart(2, '0');
 
@@ -165,6 +167,34 @@ export const tocaRespaldo = (antes, ahora = new Date()) => {
 export class FaltaPermiso extends Error {}
 export class FaltaCarpeta extends Error {}
 
+// ------------------------------------------------------------- pendiente ---
+
+// Si el respaldo de las 3 pm no se pudo hacer, la campana de avisos lo muestra
+// el resto del dia ('carpeta' | 'permiso' | 'error'). Se guarda en esta
+// computadora porque el respaldo tambien es de esta computadora.
+export const respaldoPendiente = () => {
+  try {
+    const guardado = JSON.parse(localStorage.getItem(CLAVE_PENDIENTE));
+    return guardado?.fecha === fechaLocal() ? guardado.motivo : null;
+  } catch {
+    return null;
+  }
+};
+
+export const marcarRespaldoPendiente = (motivo) => {
+  try {
+    if (motivo) localStorage.setItem(CLAVE_PENDIENTE, JSON.stringify({ fecha: fechaLocal(), motivo }));
+    else localStorage.removeItem(CLAVE_PENDIENTE);
+  } catch { /* sin almacenamiento el aviso dura lo que la pestana */ }
+  window.dispatchEvent(new CustomEvent(EVENTO_PENDIENTE, { detail: motivo || null }));
+};
+
+export const alCambiarPendiente = (fn) => {
+  const manejador = (e) => fn(e.detail);
+  window.addEventListener(EVENTO_PENDIENTE, manejador);
+  return () => window.removeEventListener(EVENTO_PENDIENTE, manejador);
+};
+
 /**
  * Descarga el respaldo del servidor y lo guarda: en la carpeta elegida si el
  * navegador lo permite, o en Descargas si no.
@@ -192,5 +222,6 @@ export const respaldarAhora = async ({ pedirPermiso = false } = {}) => {
   };
   localStorage.setItem(CLAVE_ULTIMO, JSON.stringify(info));
   window.dispatchEvent(new CustomEvent(EVENTO, { detail: info }));
+  marcarRespaldoPendiente(null);
   return info;
 };

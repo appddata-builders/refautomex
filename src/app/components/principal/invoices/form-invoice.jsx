@@ -127,7 +127,7 @@ export default function FormInvoice() {
                 </div>
               </div>
               {activeSection === 1 && isAuthenticated && (
-                <FormData t={t} formState={formState} setFormState={setFormState} account={true}/>
+                <FormData t={t} formState={formState} setFormState={setFormState}/>
               )}
               {activeSection === 2 && (
                 <FormData t={t} formState={formState} setFormState={setFormState}/>

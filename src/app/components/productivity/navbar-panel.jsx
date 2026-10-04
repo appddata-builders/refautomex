@@ -14,6 +14,7 @@ import { MdSell } from "react-icons/md";
 import { LuDatabaseBackup } from 'react-icons/lu';
 import { BiSolidUserCircle } from 'react-icons/bi';
 import RefautomexLogo from '@/app/components/refautomex-logo';
+import NotificationBell from './notification-bell';
 import ShiftModeButton from '../principal/shiftmode-button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -206,6 +207,8 @@ export default function NavbarPanel() {
                     {name}
                 </div>
                 </Link>
+
+                <NotificationBell lang={lang} />
 
                 <button
                 type="button"

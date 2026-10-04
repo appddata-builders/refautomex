@@ -29,6 +29,15 @@
 
 import { date, integer, numeric, pgTable, real, text, varchar } from 'drizzle-orm/pg-core';
 
+// No vino de `drizzle-kit pull`: es lo que cada usuario ya vio en la campana
+// de avisos. lib/avisos.js la crea con el mismo DDL al marcar por primera vez.
+export const aviso_visto = pgTable('aviso_visto', {
+  id: varchar({ length: 80 }).primaryKey().notNull(),
+  idusuario: integer().notNull(),
+  clave: varchar({ length: 45 }).notNull(),
+  firma: varchar({ length: 64 }).notNull(),
+});
+
 export const banco = pgTable('banco', {
   idbanco: integer().primaryKey().generatedByDefaultAsIdentity(),
   banco: varchar({ length: 100 }).notNull(),
@@ -112,6 +121,14 @@ export const factura = pgTable('factura', {
   idusuario: integer(),
   idcliente: integer(),
   emitida: text().default('P').notNull(),
+  // Datos fiscales tal como los escribio el cliente al pedirla (2026-10). Las
+  // facturas anteriores no los tienen y getInvoices cae a usuario/cliente.
+  nombre: varchar({ length: 150 }),
+  rfc: varchar({ length: 20 }),
+  email: varchar({ length: 100 }),
+  telefono: varchar({ length: 45 }),
+  domicilio: varchar({ length: 255 }),
+  cp: varchar({ length: 10 }),
 });
 
 export const grupo = pgTable('grupo', {

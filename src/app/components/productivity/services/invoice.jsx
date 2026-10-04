@@ -23,6 +23,7 @@ const shapeInvoice = (invoice) => ({
     telefono: invoice.telefono ?? invoice.phone ?? '---',
     rfc: invoice.rfc ?? '---',
     domicilio: invoice.domicilio ?? invoice.direccion ?? '---',
+    cp: invoice.cp ?? null,
     sucursal: invoice.sucursal ?? invoice.nombre_sucursal ?? invoice.branch ?? null,
     cfdi: invoice.cfdi ?? invoice.cfdi_clave ?? invoice.idcfdi ?? '---',
     regimen: invoice.regimen ?? invoice.idregimen ?? '---',
@@ -358,6 +359,7 @@ export default function Invoice() {
                         <div className="break-words"><span className="font-semibold">{t('panel.invoice.cfdi')} </span>{toUpper(invoice.cfdi)}</div>
                         <div className="break-words"><span className="font-semibold">{t('panel.invoice.regime')} </span>{toUpper(invoice.regimen)}</div>
                         <div className="break-words whitespace-pre-wrap"><span className="font-semibold">{t('panel.invoice.address')} </span>{toUpper(address)}</div>
+                        <div className="break-words"><span className="font-semibold">{t('panel.invoice.cp')} </span>{invoice.cp || '---'}</div>
                         <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">{t('panel.invoice.branch')} </span>{toUpper(branchLabel)}</div>
                         {formattedPurchaseDate && (
                             <div className="break-words"><span className="font-semibold text-[rgb(var(--color-amber))]">{t('panel.invoice.purchase')} </span>{formattedPurchaseDate}</div>

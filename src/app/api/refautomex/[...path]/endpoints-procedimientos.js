@@ -70,16 +70,19 @@ const getInvoicesCaptured = async () => ({
 });
 
 // GetInvoices()
+// Los datos fiscales salen de la factura (lo que escribio el cliente). Las
+// anteriores a 2026-10 no los guardaban: caen a la cuenta, con apellidos, o al
+// cliente. El regimen lleva su clave SAT, que es lo que se captura al timbrar.
 const getInvoices = async () => ({
   cuerpo: await llamar(
     `SELECT f.idfactura, f.folio, f.idcfdi, f.idregimen, f.idusuario, f.idcliente,
             f.emitida, v.total_venta, v.fecha_venta, v.status AS venta_status,
-            cf.cfdi, r.regimen,
-            COALESCE(u.nombre, c.nombre)       AS nombre,
-            COALESCE(u.email, c.email)         AS email,
-            COALESCE(u.telefono, c.telefono)   AS telefono,
-            COALESCE(u.rfc, c.rfc)             AS rfc,
-            COALESCE(u.domicilio, c.domicilio) AS domicilio
+            cf.cfdi, r.idregimen || ' - ' || r.regimen AS regimen, f.cp,
+            COALESCE(f.nombre, NULLIF(trim(concat_ws(' ', u.nombre, u.apellido)), ''), c.nombre) AS nombre,
+            COALESCE(f.email, u.email, c.email)             AS email,
+            COALESCE(f.telefono, u.telefono, c.telefono)    AS telefono,
+            COALESCE(f.rfc, u.rfc, c.rfc)                   AS rfc,
+            COALESCE(f.domicilio, u.domicilio, c.domicilio) AS domicilio
        FROM factura f
        LEFT JOIN venta   v  ON v.folio = f.folio
        LEFT JOIN usuario u  ON f.idusuario = u.idusuario

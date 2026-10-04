@@ -431,58 +431,73 @@ const deleteCapture = async ({ body, query }) => {
 // Facturas
 // ---------------------------------------------------------------------------
 
-// InsertInvoice: valida folio, evita duplicado, y liga a usuario o a cliente.
+// InsertInvoice: valida el folio y guarda los datos fiscales en la factura tal
+// como los escribio el cliente. Antes se tomaban del perfil de la cuenta o del
+// primer registro de ese correo: facturar a una empresa desde la cuenta
+// personal, o con un RFC nuevo, salia con los datos viejos y sin codigo postal.
+// La cuenta o el cliente solo quedan para saber quien la pidio.
 const addInvoice = async ({ body }) => {
-  const { name, rfc, email, phone, placeId, CFDI, regime, ticket } = body || {};
-
-  return {
-    cuerpo: await enTransaccion(async (tx) => {
-      const folioExiste = await tx.consultar('SELECT 1 FROM venta WHERE folio = ? LIMIT 1', [ticket]);
-      if (folioExiste.length === 0) throw new Error('Folio not found in table venta.');
-
-      const yaFacturado = await tx.consultar('SELECT 1 FROM factura WHERE folio = ? LIMIT 1', [ticket]);
-      if (yaFacturado.length > 0) throw new Error('An invoice for this folio already exists.');
-
-      // Se prefiere la cuenta de usuario sobre el cliente suelto.
-      const usuario = await tx.consultar('SELECT idusuario FROM usuario WHERE email = ? LIMIT 1', [email]);
-
-      if (usuario.length > 0) {
-        const f = await tx.consultar(
-          `INSERT INTO factura (idregimen, idcfdi, folio, idusuario, idcliente, emitida)
-           VALUES (?, ?, ?, ?, NULL, 'P') RETURNING idfactura`,
-          [regime, CFDI, ticket, usuario[0].idusuario]
-        );
-        return [{
-          idfactura: f[0].idfactura,
-          folio: ticket,
-          idusuario_usado: usuario[0].idusuario,
-          idcliente_usado: null,
-        }];
-      }
-
-      let cliente = await tx.consultar('SELECT idcliente FROM cliente WHERE email = ? LIMIT 1', [email]);
-      if (cliente.length === 0) {
-        cliente = await tx.consultar(
-          `INSERT INTO cliente (email, nombre, telefono, rfc, domicilio)
-           VALUES (?, ?, ?, ?, ?) RETURNING idcliente`,
-          [email, name, phone, rfc, placeId]
-        );
-      }
-
-      const f = await tx.consultar(
-        `INSERT INTO factura (idregimen, idcfdi, folio, idusuario, idcliente, emitida)
-         VALUES (?, ?, ?, NULL, ?, 'P') RETURNING idfactura`,
-        [regime, CFDI, ticket, cliente[0].idcliente]
-      );
-
-      return [{
-        idfactura: f[0].idfactura,
-        folio: ticket,
-        idusuario_usado: null,
-        idcliente_usado: cliente[0].idcliente,
-      }];
-    }),
+  const { name, rfc, email, phone, placeId, CP, CFDI, regime, ticket } = body || {};
+  const datos = {
+    nombre: String(name ?? '').trim().toUpperCase(),
+    rfc: String(rfc ?? '').trim().toUpperCase(),
+    email: String(email ?? '').trim(),
+    telefono: String(phone ?? '').replace(/\D/g, ''),
+    domicilio: String(placeId ?? '').trim(),
+    cp: String(CP ?? '').trim(),
   };
+
+  if (!ticket || !datos.nombre || !datos.rfc || !datos.email || !CFDI || !regime) {
+    return faltan('Missing invoice data.');
+  }
+  // El CFDI 4.0 exige el codigo postal del domicilio fiscal.
+  if (!/^\d{5}$/.test(datos.cp)) return faltan('Invalid postal code.');
+
+  const resultado = await enTransaccion(async (tx) => {
+    const [venta] = await tx.consultar('SELECT status FROM venta WHERE folio = ? LIMIT 1', [ticket]);
+    if (!venta) return { rechazo: 'Folio not found in table venta.' };
+    // Una venta cancelada (C), devuelta (D) o con error (E) no se factura.
+    if (venta.status !== 'A') return { rechazo: 'The sale for this folio is not active.' };
+
+    const yaFacturado = await tx.consultar('SELECT 1 FROM factura WHERE folio = ? LIMIT 1', [ticket]);
+    if (yaFacturado.length > 0) return { rechazo: 'An invoice for this folio already exists.' };
+
+    // Se prefiere la cuenta de usuario sobre el cliente suelto.
+    const [usuario] = await tx.consultar('SELECT idusuario FROM usuario WHERE email = ? LIMIT 1', [datos.email]);
+    let idcliente = null;
+    if (!usuario) {
+      let [cliente] = await tx.consultar('SELECT idcliente FROM cliente WHERE email = ? LIMIT 1', [datos.email]);
+      cliente ??= (await tx.consultar(
+        `INSERT INTO cliente (email, nombre, telefono, rfc, domicilio)
+         VALUES (?, ?, ?, ?, ?) RETURNING idcliente`,
+        [datos.email, datos.nombre, datos.telefono, datos.rfc, datos.domicilio]
+      ))[0];
+      idcliente = cliente.idcliente;
+    }
+
+    const [factura] = await tx.consultar(
+      `INSERT INTO factura (idregimen, idcfdi, folio, idusuario, idcliente, emitida,
+                            nombre, rfc, email, telefono, domicilio, cp)
+       VALUES (?, ?, ?, ?, ?, 'P', ?, ?, ?, ?, ?, ?) RETURNING idfactura`,
+      [regime, CFDI, ticket, usuario?.idusuario ?? null, idcliente,
+        datos.nombre, datos.rfc, datos.email, datos.telefono, datos.domicilio, datos.cp]
+    );
+
+    return {
+      fila: {
+        idfactura: factura.idfactura,
+        folio: ticket,
+        idusuario_usado: usuario?.idusuario ?? null,
+        idcliente_usado: idcliente,
+      },
+    };
+  });
+
+  // Un folio que no se puede facturar no es un error del servidor.
+  if (resultado.rechazo) {
+    return { estado: 409, cuerpo: { error: 'Conflict', details: resultado.rechazo } };
+  }
+  return { cuerpo: [resultado.fila] };
 };
 
 // ---------------------------------------------------------------------------
