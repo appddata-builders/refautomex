@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 import { getPgDatabaseUrl, isPgRuntime } from './runtime-driver';
 import * as schemaPg from './schema.pg';
@@ -27,9 +28,10 @@ const openPg = () => {
 };
 
 const openSqlite = () => {
+  const dbPath = process.env.APPSTRACT_DB_PATH || DEFAULT_SQLITE_PATH;
+  if (!existsSync(dbPath)) return null;
   const { drizzle } = require('drizzle-orm/better-sqlite3');
   const Database = require('better-sqlite3');
-  const dbPath = process.env.APPSTRACT_DB_PATH || DEFAULT_SQLITE_PATH;
   const raw = new Database(dbPath, { readonly: true, fileMustExist: true });
   return drizzle(raw, { schema: schemaSqlite });
 };

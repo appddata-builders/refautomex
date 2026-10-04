@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
-import { FaUsersViewfinder, FaBoxesPacking } from 'react-icons/fa6';
+import { FaUsersViewfinder, FaBoxesPacking, FaUserShield } from 'react-icons/fa6';
 import { AiOutlineDashboard, AiOutlineLogout } from 'react-icons/ai';
 import { HiClipboardDocumentList, HiMiniCog6Tooth } from "react-icons/hi2";
 import { IoIosArrowDown, IoIosArrowUp } from 'react-icons/io';
@@ -18,6 +18,8 @@ import ShiftModeButton from '../principal/shiftmode-button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { perfilDeCategoria, puedeVer } from '@/app/lib/permisos-menu';
+import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
 
 const MenuItems = ({ items, closeMenu, lang }) => {
     const [openedSection, setOpenedSection] = useState(null);
@@ -87,64 +89,64 @@ export default function NavbarPanel() {
     const searchParams = useSearchParams();
     const lang = searchParams.get('lang') || 'es';
 
-    const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
+    // Que ve cada perfil se configura en Permisos > Permisos de perfil;
+    // `modulo` es la clave de permisos-menu.js.
+    const permisos = usePermisosMenu();
+    const perfil = perfilDeCategoria(userData?.categoria);
 
     const navItems = [
         {
         name: t('panel.nav.sales'),
         icon: MdSell,
         subNav: [
-            { name: t('panel.nav.tickets'), href: '/productivity?load=tickets' },
-            { name: t('panel.nav.devolution'), href: '/productivity?load=devolution', adminOnly: true },
-            { name: t('panel.nav.history'), href: '/productivity?load=history', adminOnly: true },
+            { name: t('panel.nav.tickets'), href: '/productivity?load=tickets', modulo: 'tickets' },
+            { name: t('panel.nav.devolution'), href: '/productivity?load=devolution', modulo: 'devolution' },
+            { name: t('panel.nav.history'), href: '/productivity?load=history', modulo: 'history' },
         ],
         },
         {
         name: t('panel.nav.stock'),
         icon: FaBoxesPacking,
         subNav: [
-            { name: t('panel.nav.inventories'), href: '/productivity?load=inventories', adminOnly: true },
-            { name: t('panel.nav.warehouse'), href: '/productivity?load=warehouse' },
-            { name: t('panel.nav.missing'), href: '/productivity?load=missing' },
+            { name: t('panel.nav.inventories'), href: '/productivity?load=inventories', modulo: 'inventories' },
+            { name: t('panel.nav.warehouse'), href: '/productivity?load=warehouse', modulo: 'warehouse' },
+            { name: t('panel.nav.missing'), href: '/productivity?load=missing', modulo: 'missing' },
         ],
         },
         {
         name: t('panel.nav.purchases'),
         icon: HiClipboardDocumentList,
-        adminOnly: true,
         subNav: [
-            { name: t('panel.nav.capture'), href: '/productivity?load=capture' },
-            { name: t('panel.nav.providers'), href: '/productivity?load=providers' },
+            { name: t('panel.nav.capture'), href: '/productivity?load=capture', modulo: 'capture' },
+            { name: t('panel.nav.providers'), href: '/productivity?load=providers', modulo: 'providers' },
         ],
         },
         {
         name: t('panel.nav.services'),
         icon: FaUsersViewfinder,
-        adminOnly: true,
         subNav: [
-            { name: t('panel.nav.calendar'), href: '/productivity?load=calendar' },
-            { name: t('panel.nav.invoice'), href: '/productivity?load=invoice' },
-            { name: t('panel.nav.personal'), href: '/productivity?load=personal' },
+            { name: t('panel.nav.calendar'), href: '/productivity?load=calendar', modulo: 'calendar' },
+            { name: t('panel.nav.invoice'), href: '/productivity?load=invoice', modulo: 'invoice' },
         ],
         },
         {
         name: t('panel.nav.orders'),
         icon: GiAutoRepair,
         subNav: [
-            { name: t('panel.nav.site'), href: '/productivity?load=site' },
-            { name: t('panel.nav.delivery'), href: '/productivity?load=delivery', adminOnly: true },
+            { name: t('panel.nav.site'), href: '/productivity?load=site', modulo: 'site' },
+            { name: t('panel.nav.delivery'), href: '/productivity?load=delivery', modulo: 'delivery' },
         ],
         },
-        { name: t('panel.nav.home'), icon: AiOutlineDashboard, href: '/productivity?load=home' },
-        { name: t('panel.nav.settings'), icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings' },
-        { name: t('panel.nav.backups'), icon: LuDatabaseBackup, href: '/productivity?load=backups', adminOnly: true },
+        { name: t('panel.nav.home'), icon: AiOutlineDashboard, href: '/productivity?load=home', modulo: 'home' },
+        { name: t('panel.nav.settings'), icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings', modulo: 'user-settings' },
+        { name: t('panel.nav.personal'), icon: FaUserShield, href: '/productivity?load=personal', modulo: 'personal' },
+        { name: t('panel.nav.backups'), icon: LuDatabaseBackup, href: '/productivity?load=backups', modulo: 'backups' },
     ];
 
     const filteredNavItems = navItems
         .map((item) => {
-            if (item.adminOnly && !isAdmin) return null;
-            if (!item.subNav) return item;
-            const allowedSubNav = item.subNav.filter((subItem) => !subItem.adminOnly || isAdmin);
+            if (!item.subNav) return puedeVer(permisos, item.modulo, perfil) ? item : null;
+            const allowedSubNav = item.subNav.filter((subItem) => puedeVer(permisos, subItem.modulo, perfil));
             if (!allowedSubNav.length) return null;
             return { ...item, subNav: allowedSubNav };
         })

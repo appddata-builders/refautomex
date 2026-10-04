@@ -48,29 +48,37 @@ export const AuthChecker = ({ children }) => {
                 return;
             }
 
-            let fetchedUserData = forceRefreshUser ? null : getStorageValue(`user_${username}`);
-            if (!fetchedUserData) {
-                try {
-                    const params = new URLSearchParams({ id: username });
-                    const endpoint = `${buildApiUrl('/getUser')}?${params.toString()}`;
-                    const response = await fetch(endpoint, {
-                        cache: 'no-store',
-                        headers: { Accept: 'application/json, text/plain, */*' },
-                    });
+            // Se pinta con lo guardado y se vuelve a pedir siempre: un admin puede
+            // haber cambiado la sucursal o el rol desde Permisos, y sin esto
+            // el empleado seguiria vendiendo desde la sucursal vieja hasta
+            // volver a iniciar sesion.
+            const cachedUserData = forceRefreshUser ? null : getStorageValue(`user_${username}`);
+            if (cachedUserData) setUserData(cachedUserData);
 
-                    if (!response.ok) {
-                        throw new Error(`Error ${response.status}: ${response.statusText}`);
-                    }
+            try {
+                const params = new URLSearchParams({ id: username });
+                const endpoint = `${buildApiUrl('/getUser')}?${params.toString()}`;
+                const response = await fetch(endpoint, {
+                    cache: 'no-store',
+                    headers: { Accept: 'application/json, text/plain, */*' },
+                });
 
-                    const data = await response.json();
-                    fetchedUserData = data[0];
-                    setStorageValue(`user_${username}`, fetchedUserData);
-                } catch (error) {
-                    console.error('Error fetching user data:', error);
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: ${response.statusText}`);
                 }
-            }
 
-            setUserData(fetchedUserData);
+                const data = await response.json();
+                const fetchedUserData = data[0];
+                if (fetchedUserData) {
+                    setStorageValue(`user_${username}`, fetchedUserData);
+                    setUserData(fetchedUserData);
+                } else if (!cachedUserData) {
+                    setUserData(null);
+                }
+            } catch (error) {
+                console.error('Error fetching user data:', error);
+                if (!cachedUserData) setUserData(null);
+            }
         };
 
         fetchUserData();

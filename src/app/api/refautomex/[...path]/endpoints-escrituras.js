@@ -101,8 +101,8 @@ const newSale = async ({ body }) => {
       // Un pedido todavia no sale del almacen, asi que no descuenta.
       if (!item.isPedido) {
         await tx.escribir(
-          'UPDATE detalle SET existencia = existencia - ? WHERE num_parte = ?',
-          [item.cantidad, item.refaccion]
+          'UPDATE detalle SET existencia = existencia - ? WHERE num_parte = ? AND idsucursal = ?',
+          [item.cantidad, item.refaccion, idsucursal]
         );
       }
     }

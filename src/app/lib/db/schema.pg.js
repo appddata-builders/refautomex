@@ -160,6 +160,14 @@ export const pedidos = pgTable('pedidos', {
   nombre: varchar({ length: 150 }),
 });
 
+// No vino de `drizzle-kit pull`: es de Permisos de perfil. /api/permisos-menu
+// la crea con el mismo DDL al guardar por primera vez.
+export const permiso_menu = pgTable('permiso_menu', {
+  modulo: varchar({ length: 45 }).primaryKey().notNull(),
+  admin: integer().default(0).notNull(),
+  empleado: integer().default(0).notNull(),
+});
+
 export const poliza = pgTable('poliza', {
   idpoliza: integer().primaryKey().generatedByDefaultAsIdentity(),
   fecha_poliza: date(),

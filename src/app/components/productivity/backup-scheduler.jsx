@@ -12,8 +12,10 @@ import {
  * todo el panel, no solo en la pantalla de Respaldos: el administrador puede
  * estar vendiendo a esa hora y el respaldo igual tiene que salir.
  *
- * Revisa cada minuto. Si el navegador pide volver a autorizar la carpeta, eso
- * solo se puede pedir con un clic: aparece un aviso con el boton.
+ * Revisa cada minuto si ya dieron las 3 pm desde la revision anterior; al
+ * montarse no hace nada, para no pedir el respaldo al iniciar sesion. Si a esa
+ * hora el navegador pide volver a autorizar la carpeta, eso solo se puede
+ * pedir con un clic: aparece un aviso con el boton.
  */
 export default function BackupScheduler() {
   const { t } = useTranslation();
@@ -23,9 +25,13 @@ export default function BackupScheduler() {
   useEffect(() => {
     let vivo = true;
     let corriendo = false;
+    let anterior = new Date();
 
     const revisar = async () => {
-      if (corriendo || !tocaRespaldo()) return;
+      const ahora = new Date();
+      const toca = tocaRespaldo(anterior, ahora);
+      anterior = ahora;
+      if (corriendo || !toca) return;
       corriendo = true;
       try {
         await respaldarAhora();
@@ -40,7 +46,6 @@ export default function BackupScheduler() {
       }
     };
 
-    revisar();
     const id = setInterval(revisar, 60_000);
     return () => {
       vivo = false;

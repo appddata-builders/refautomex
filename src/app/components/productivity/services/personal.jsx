@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Title from '../title';
+import ProfilePermissions from './profile-permissions';
 import { FaStar } from 'react-icons/fa';
 import { FaUsersViewfinder } from 'react-icons/fa6';
 import { BiSolidUserCircle } from 'react-icons/bi';
@@ -19,7 +20,8 @@ import {
     FiUsers,
 } from 'react-icons/fi';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import { getStorageValue } from '@/app/lib/storage-values';
+import { getStorageValue, setStorageValue } from '@/app/lib/storage-values';
+import { AuthContext } from '@/app/lib/auth-tracker';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 const isLikelyPlaceId = (val) => {
@@ -32,16 +34,18 @@ const isLikelyPlaceId = (val) => {
 
 export default function Personal() {
     const { t } = useTranslation();
+    const { setUserData } = useContext(AuthContext);
     const [users, setUsers] = useState([]);
     const [searchEmail, setSearchEmail] = useState('');
     const [imgErrors, setImgErrors] = useState({});
     const [expandedUserId, setExpandedUserId] = useState(null);
     const [activeTab, setActiveTab] = useState('employees');
-    const [activationByUser, setActivationByUser] = useState({});
+    const [branchDraftByUser, setBranchDraftByUser] = useState({});
     const [branches, setBranches] = useState([]);
     const [branchesLoading, setBranchesLoading] = useState(false);
     const [editingUserId, setEditingUserId] = useState(null);
     const [editFormByUser, setEditFormByUser] = useState({});
+    const [savingUserId, setSavingUserId] = useState(null);
     const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserCategory, setCurrentUserCategory] = useState(null);
     const [placeCache, setPlaceCache] = useState({});
@@ -146,18 +150,16 @@ export default function Personal() {
     };
 
     const getUserKey = (user) => user.__key ?? user.idusuario ?? user.email;
+    // La 1 y las "web" no son sucursales donde se trabaje: no salen en el selector.
+    const validBranchId = (user) => {
+        if (user.idsucursal == null || Number(user.idsucursal) === 1) return '';
+        if (String(user.sucursal || '').toLowerCase().includes('web')) return '';
+        return String(user.idsucursal);
+    };
     const isEmployee = (user) => Number(user.empleado) === 1;
 
     const toggleDetails = (userKey) => {
         setExpandedUserId((prev) => (prev === userKey ? null : userKey));
-    };
-
-    const handleGroupChange = (userKey, nextValue) => {
-        setUsers((prevUsers) => prevUsers.map((user) => {
-            const key = getUserKey(user);
-            if (key !== userKey) return user;
-            return { ...user, empleado: nextValue };
-        }));
     };
 
     const updateUserEmployment = async ({ idusuario, empleado, idsucursal }) => {
@@ -203,16 +205,48 @@ export default function Personal() {
         return response.json().catch(() => null);
     };
 
+    const updateEmployeeData = async ({ idusuario, idsucursal, telefono }) => {
+        const response = await fetch(buildApiUrl('/patchEmployeeData'), {
+            method: 'PATCH',
+            cache: 'no-store',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json, text/plain, */*',
+            },
+            body: JSON.stringify({
+                idusuario,
+                idsucursal,
+                telefono,
+            }),
+        });
+
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
+        }
+
+        return response.json().catch(() => null);
+    };
+
+    // Si el admin se cambia a si mismo de sucursal, el panel tiene que vender
+    // desde la nueva sin volver a entrar: la sesion lee user_<username>.
+    const refreshOwnSession = (changes) => {
+        const session = getStorageValue('CognitoUserSession');
+        const username = session?.idToken?.payload?.['cognito:username'];
+        const cached = username ? getStorageValue(`user_${username}`) : null;
+        if (!cached) return;
+        const next = { ...cached, ...changes };
+        setStorageValue(`user_${username}`, next);
+        setUserData?.(next);
+    };
+
     const startEditUser = (user) => {
         const userKey = getUserKey(user);
-        const branchId = Number(user.idsucursal) === 1 ? '' : (user.idsucursal ?? '');
         setExpandedUserId(userKey);
         setEditingUserId(userKey);
         setEditFormByUser((prev) => ({
             ...prev,
             [userKey]: {
                 telefono: user.telefono ?? '',
-                branchId,
             },
         }));
     };
@@ -237,20 +271,35 @@ export default function Personal() {
         });
     };
 
-    const saveEditUser = (userKey) => {
+    const saveEditUser = async (editedUser) => {
+        const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
+        if (!isAdmin) return;
+        const userKey = getUserKey(editedUser);
         const draft = editFormByUser[userKey];
         if (!draft) return;
-        const branch = branches.find((item) => String(item.id) === String(draft.branchId));
+        const telefono = String(draft.telefono ?? '').trim();
+
+        setSavingUserId(userKey);
+        try {
+            await updateEmployeeData({ idusuario: editedUser.idusuario, telefono });
+        } catch (error) {
+            console.error('Error saving employee:', error);
+            if (typeof window !== 'undefined') {
+                window.alert(t('panel.personal.saveError'));
+            }
+            return;
+        } finally {
+            setSavingUserId(null);
+        }
+
         setUsers((prevUsers) => prevUsers.map((user) => {
             const key = getUserKey(user);
             if (key !== userKey) return user;
-            return {
-                ...user,
-                telefono: draft.telefono,
-                idsucursal: branch?.id ?? user.idsucursal,
-                sucursal: branch?.name ?? user.sucursal,
-            };
+            return { ...user, telefono };
         }));
+        if (currentUserId != null && String(editedUser.idusuario) === String(currentUserId)) {
+            refreshOwnSession({ telefono });
+        }
         cancelEditUser(userKey);
     };
 
@@ -291,15 +340,52 @@ export default function Personal() {
     };
 
     const handleBranchSelect = (userKey, value) => {
-        setActivationByUser((prev) => ({
-            ...prev,
-            [userKey]: {
-                ...(prev[userKey] || {}),
-                branchId: value,
-            },
-        }));
+        setBranchDraftByUser((prev) => ({ ...prev, [userKey]: value }));
     };
 
+    // La sucursal es de los empleados: se cambia aqui y se guarda al momento.
+    const handleChangeBranch = async (employee) => {
+        const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
+        if (!isAdmin) return;
+        const userKey = getUserKey(employee);
+        const branch = branches.find((item) => String(item.id) === String(branchDraftByUser[userKey]));
+        if (!branch) {
+            if (typeof window !== 'undefined') {
+                window.alert(t('panel.personal.pickValidBranch'));
+            }
+            return;
+        }
+
+        setSavingUserId(userKey);
+        try {
+            await updateEmployeeData({ idusuario: employee.idusuario, idsucursal: branch.id });
+        } catch (error) {
+            console.error('Error changing branch:', error);
+            if (typeof window !== 'undefined') {
+                window.alert(t('panel.personal.saveError'));
+            }
+            return;
+        } finally {
+            setSavingUserId(null);
+        }
+
+        setUsers((prevUsers) => prevUsers.map((user) => {
+            const key = getUserKey(user);
+            if (key !== userKey) return user;
+            return { ...user, idsucursal: branch.id, sucursal: branch.name };
+        }));
+        setBranchDraftByUser((prev) => {
+            const next = { ...prev };
+            delete next[userKey];
+            return next;
+        });
+        if (currentUserId != null && String(employee.idusuario) === String(currentUserId)) {
+            refreshOwnSession({ idsucursal: branch.id });
+        }
+    };
+
+    // Activar solo cambia el estado; la sucursal se asigna despues en
+    // Empleados, donde la cuenta queda arriba y marcada hasta tener una.
     const handleActivateUser = async (userKey, userId) => {
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
         if (!isAdmin) return;
@@ -309,39 +395,27 @@ export default function Personal() {
             }
             return;
         }
-        const selectedId = activationByUser[userKey]?.branchId;
-        if (!selectedId) return;
-        const branch = branches.find((item) => String(item.id) === String(selectedId));
-        if (!branch) {
-            if (typeof window !== 'undefined') {
-                window.alert(t('panel.personal.pickValidBranch'));
-            }
-            return;
-        }
+        const confirmActivation = typeof window === 'undefined'
+            ? true
+            : window.confirm(t('panel.personal.confirmActivate'));
+        if (!confirmActivation) return;
 
+        setSavingUserId(userKey);
         try {
-            await updateUserEmployment({ idusuario: userId, empleado: 1, idsucursal: branch.id });
+            await updateUserEmployment({ idusuario: userId, empleado: 1, idsucursal: null });
             setUsers((prevUsers) => prevUsers.map((user) => {
                 const key = getUserKey(user);
                 if (key !== userKey) return user;
-                return {
-                    ...user,
-                    empleado: 1,
-                    idsucursal: branch.id,
-                    sucursal: branch.name,
-                };
+                return { ...user, empleado: 1, idsucursal: null, sucursal: null };
             }));
-
-            setActivationByUser((prev) => {
-                const next = { ...prev };
-                delete next[userKey];
-                return next;
-            });
+            setActiveTab('employees');
         } catch (error) {
             console.error('Error activating employee:', error);
             if (typeof window !== 'undefined') {
                 window.alert(t('panel.personal.activateError'));
             }
+        } finally {
+            setSavingUserId(null);
         }
     };
 
@@ -428,7 +502,10 @@ export default function Personal() {
         (user.email || '').toLowerCase().includes(normalizedSearch)
     );
 
-    const employees = filteredUsers.filter((user) => isEmployee(user));
+    // Los empleados sin sucursal van primero: recien activados, les falta una.
+    const employees = filteredUsers
+        .filter((user) => isEmployee(user))
+        .sort((a, b) => Number(Boolean(validBranchId(a))) - Number(Boolean(validBranchId(b))));
     const nonEmployees = filteredUsers.filter((user) => !isEmployee(user));
 
     const groupOptions = [
@@ -487,16 +564,21 @@ export default function Personal() {
         const active = isEmployee(user);
         const fullName = [user.nombre, user.apellido].filter(Boolean).join(' ') || 'Sin nombre';
         const expanded = expandedUserId === userKey;
-        const groupMeta = groupOptions.find((option) => option.value === (active ? 1 : 0));
+        const isUserAdmin = String(user.categoria || '').toUpperCase() === 'A';
+        // La etiqueta distingue a los admins; las opciones de Otros siguen
+        // diciendo "Empleado activo" porque activar no da rol de admin.
+        const groupMeta = active && isUserAdmin
+            ? {
+                label: t('panel.personal.activeAdmin'),
+                softClass: 'bg-amber-50 text-amber-700 border-amber-200',
+                dotClass: 'bg-amber-500',
+            }
+            : groupOptions.find((option) => option.value === (active ? 1 : 0));
         const address = user.domicilio ? (placeCache[user.domicilio] || user.domicilio) : user.domicilio;
 
-        const branchName = user.sucursal;
-        const isWebBranch = branchName && String(branchName).toLowerCase().includes('web');
-        const branchDisplay = isWebBranch ? '' : branchName;
         const primaryDetails = [
             { label: t('panel.personal.email'), value: user.email, icon: FiMail },
             { label: t('panel.personal.phone'), value: user.telefono, icon: FiPhone, field: 'telefono' },
-            { label: t('panel.common.branch'), value: branchDisplay, icon: FiMapPin, field: 'branch' },
         ];
 
         const dbDetails = [
@@ -506,14 +588,16 @@ export default function Personal() {
             { label: t('panel.personal.address'), value: address, icon: FiMapPin },
         ];
 
-        const selectedBranch = activationByUser[userKey]?.branchId || '';
-        const canActivate = Boolean(selectedBranch);
         const isEditing = editingUserId === userKey;
+        const isSaving = savingUserId === userKey;
+        const currentBranchId = validBranchId(user);
+        const selectedBranch = branchDraftByUser[userKey] ?? currentBranchId;
+        const canChangeBranch = Boolean(selectedBranch) && selectedBranch !== currentBranchId && !isSaving;
         const editValues = editFormByUser[userKey] || {};
-        const canEdit = active && !showActivation;
         const isSelf = currentUserId != null && String(user.idusuario) === String(currentUserId);
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
-        const isUserAdmin = String(user.categoria || '').toUpperCase() === 'A';
+        // Editar escribe el telefono en la base: solo administradores.
+        const canEdit = active && !showActivation && isAdmin;
         const canPromoteAdmin = canEdit && isAdmin && !isUserAdmin && !isSelf;
         const canDemoteAdmin = canEdit && isAdmin && isUserAdmin && !isSelf;
 
@@ -524,11 +608,8 @@ export default function Personal() {
                     ? 'break-all overflow-hidden [display:-webkit-box] [-webkit-line-clamp:2] [-webkit-box-orient:vertical]'
                     : '';
             const isTelefono = item.field === 'telefono';
-            const isBranch = item.field === 'branch';
 
-            if (isBranch && !isEditing && !branchDisplay) return null;
-
-            if (canEdit && isEditing && (isTelefono || isBranch)) {
+            if (canEdit && isEditing && isTelefono) {
                 return (
                     <div key={item.label} className="flex items-center gap-3 rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))]/70 p-3">
                         <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] shadow-sm">
@@ -536,28 +617,11 @@ export default function Personal() {
                         </span>
                         <div className="w-full">
                             <p className="text-[11px] uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">{item.label}</p>
-                            {isTelefono ? (
-                                <input
-                                    value={editValues.telefono || ''}
-                                    onChange={(e) => handleEditChange(userKey, 'telefono', e.target.value)}
-                                    className="mt-1 w-full rounded-lg border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
-                                />
-                            ) : (
-                                <select
-                                    value={editValues.branchId || ''}
-                                    onChange={(e) => handleEditChange(userKey, 'branchId', e.target.value)}
-                                    className="mt-1 w-full rounded-lg border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
-                                >
-                                    <option value="" disabled>
-                                        {branchesLoading ? t('panel.personal.loadingBranches') : t('panel.common.pickBranch')}
-                                    </option>
-                                    {branches.map((branch) => (
-                                        <option key={branch.id} value={branch.id}>
-                                            {branch.name}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
+                            <input
+                                value={editValues.telefono || ''}
+                                onChange={(e) => handleEditChange(userKey, 'telefono', e.target.value)}
+                                className="mt-1 w-full rounded-lg border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
+                            />
                         </div>
                     </div>
                 );
@@ -629,14 +693,16 @@ export default function Personal() {
                                 <>
                                     <button
                                         type="button"
-                                        onClick={() => saveEditUser(userKey)}
-                                        className="inline-flex items-center gap-2 rounded-full border border-emerald-400 bg-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5"
+                                        onClick={() => saveEditUser(user)}
+                                        disabled={isSaving}
+                                        className="inline-flex items-center gap-2 rounded-full border border-emerald-400 bg-emerald-500 px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:-translate-y-0.5 disabled:opacity-60"
                                     >
-                                        {t('panel.personal.save')}
+                                        {isSaving ? t('panel.permissions.saving') : t('panel.personal.save')}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={() => cancelEditUser(userKey)}
+                                        disabled={isSaving}
                                         className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm"
                                     >
                                         {t('panel.common.cancel')}
@@ -690,41 +756,7 @@ export default function Personal() {
                         <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))]/70 p-3">
                             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">
                                 <FiTag className="text-[rgb(var(--color-text))]" />
-                                Activar cuenta
-                            </div>
-                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-                                <select
-                                    value={selectedBranch}
-                                    onChange={(e) => handleBranchSelect(userKey, e.target.value)}
-                                    className="w-full rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70 sm:flex-1"
-                                >
-                                    <option value="" disabled>
-                                        {branchesLoading ? t('panel.personal.loadingBranches') : t('panel.common.pickBranch')}
-                                    </option>
-                                    {branches.map((branch) => (
-                                        <option key={branch.id} value={branch.id}>
-                                            {branch.name}
-                                        </option>
-                                    ))}
-                                </select>
-                                <button
-                                    type="button"
-                                    onClick={() => handleActivateUser(userKey, user.idusuario)}
-                                    disabled={!canActivate}
-                                    className="inline-flex items-center justify-center rounded-xl border border-emerald-400 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
-                                >
-                                    {t('panel.personal.activate')}
-                                </button>
-                            </div>
-                            <p className="mt-2 text-xs text-[rgb(var(--color-text))]">
-                                {branches.length ? t('panel.personal.assignBranch') : t('panel.personal.noBranches')}
-                            </p>
-                        </div>
-                    ) : !showActivation ? (
-                        <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))]/70 p-3">
-                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">
-                                <FiTag className="text-[rgb(var(--color-text))]" />
-                                Etiquetas de estado
+                                {t('panel.personal.statusTitle')}
                             </div>
                             <div className="mt-3 flex flex-wrap gap-2">
                                 {groupOptions.map((option) => {
@@ -734,8 +766,9 @@ export default function Personal() {
                                         <button
                                             key={option.label}
                                             type="button"
-                                            onClick={() => handleGroupChange(userKey, option.value)}
-                                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition ${selected ? option.activeClass : 'border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))] hover:border-[rgb(var(--color-text))]/60'}`}
+                                            onClick={() => handleActivateUser(userKey, user.idusuario)}
+                                            disabled={selected || isSaving}
+                                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition disabled:cursor-default ${selected ? option.activeClass : 'border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))] hover:border-[rgb(var(--color-text))]/60'}`}
                                         >
                                             <OptionIcon className="h-4 w-4" />
                                             {option.label}
@@ -743,6 +776,47 @@ export default function Personal() {
                                     );
                                 })}
                             </div>
+                            <p className="mt-2 text-xs text-[rgb(var(--color-text))]">{t('panel.personal.activateHint')}</p>
+                        </div>
+                    ) : !showActivation && isAdmin ? (
+                        <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))]/70 p-3">
+                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">
+                                <FiMapPin className="text-[rgb(var(--color-text))]" />
+                                {t('panel.common.branch')}
+                            </div>
+                            {!currentBranchId && (
+                                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                    {t('panel.personal.noBranchAssigned')}
+                                </p>
+                            )}
+                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <select
+                                    value={selectedBranch}
+                                    onChange={(e) => handleBranchSelect(userKey, e.target.value)}
+                                    disabled={isSaving}
+                                    className="w-full rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70 sm:flex-1"
+                                >
+                                    <option value="" disabled>
+                                        {branchesLoading ? t('panel.personal.loadingBranches') : t('panel.common.pickBranch')}
+                                    </option>
+                                    {branches.map((branch) => (
+                                        <option key={branch.id} value={String(branch.id)}>
+                                            {branch.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => handleChangeBranch(user)}
+                                    disabled={!canChangeBranch}
+                                    className="inline-flex items-center justify-center rounded-xl border border-emerald-400 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
+                                >
+                                    {isSaving ? t('panel.permissions.saving') : t('panel.personal.changeBranch')}
+                                </button>
+                            </div>
+                            {!branchesLoading && !branches.length && (
+                                <p className="mt-2 text-xs text-[rgb(var(--color-text))]">{t('panel.personal.noBranches')}</p>
+                            )}
                         </div>
                     ) : null}
 
@@ -762,6 +836,14 @@ export default function Personal() {
         );
     };
 
+    const canManagePermissions = String(currentUserCategory || '').toUpperCase() === 'A';
+    const showPermissions = activeTab === 'permissions' && canManagePermissions;
+    const tabLabels = {
+        employees: t('panel.personal.tabEmployees'),
+        others: t('panel.personal.tabOthers'),
+        permissions: t('panel.personal.tabPermissions'),
+    };
+
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-transparent to-[rgb(var(--color-card))] backdrop-blur-md py-28">
             <Title
@@ -772,31 +854,33 @@ export default function Personal() {
             />
             <div className="mx-auto max-w-7xl 2xl:max-w-[1900px] px-6 lg:px-8">
                 <div className="mx-auto mt-4 max-w-7xl 2xl:max-w-[1900px] space-y-6">
-                    <div className="rounded-2xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-card))] p-4 shadow-xl shadow-[rgb(var(--color-galaxy))]/20">
-                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                            <div className="relative flex-1">
-                                <FiSearch className="absolute left-3 top-3 h-5 w-5 text-[rgb(var(--color-text))]" />
-                                <input
-                                    type="text"
-                                    placeholder={t('panel.personal.searchPlaceholder')}
-                                    value={searchEmail}
-                                    onChange={handleSearchChange}
-                                    className="w-full rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] py-2 pl-10 pr-4 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
-                                />
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                                <span className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm">
-                                    <FiUsers className="h-4 w-4 text-[rgb(var(--color-text))]" />
-                                    {t('panel.personal.total')} {filteredUsers.length}
-                                </span>
+                    {!showPermissions && (
+                        <div className="rounded-2xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-card))] p-4 shadow-xl shadow-[rgb(var(--color-galaxy))]/20">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                                <div className="relative flex-1">
+                                    <FiSearch className="absolute left-3 top-3 h-5 w-5 text-[rgb(var(--color-text))]" />
+                                    <input
+                                        type="text"
+                                        placeholder={t('panel.personal.searchPlaceholder')}
+                                        value={searchEmail}
+                                        onChange={handleSearchChange}
+                                        className="w-full rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] py-2 pl-10 pr-4 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
+                                    />
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm">
+                                        <FiUsers className="h-4 w-4 text-[rgb(var(--color-text))]" />
+                                        {t('panel.personal.total')} {filteredUsers.length}
+                                    </span>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-3 shadow-sm">
                         <div className="flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))]">
                             <FiUsers className="h-4 w-4" />
-                            {t('panel.calendar.view')} {activeTab === 'employees' ? t('panel.personal.tabEmployees') : t('panel.personal.tabOthers')}
+                            {t('panel.calendar.view')} {tabLabels[activeTab]}
                         </div>
                         <div className="flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] p-1">
                             <button
@@ -813,55 +897,68 @@ export default function Personal() {
                             >
                                 {t('panel.personal.tabOthers')}
                             </button>
+                            {canManagePermissions && (
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('permissions')}
+                                    className={`rounded-full px-4 py-1 text-xs font-semibold transition ${activeTab === 'permissions' ? 'bg-amber-500 text-white shadow' : 'text-[rgb(var(--color-text))]'}`}
+                                >
+                                    {t('panel.personal.tabPermissions')}
+                                </button>
+                            )}
                         </div>
                     </div>
 
-                    <section className="space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                                <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-                                    {activeTab === 'employees' ? t('panel.personal.activeTitle') : t('panel.personal.othersTitle')}
-                                </h2>
-                                <p className="text-sm text-[rgb(var(--color-text))]">
-                                    {activeTab === 'employees'
-                                        ? t('panel.personal.activeSubtitle')
-                                        : t('panel.personal.othersSubtitle')}
-                                </p>
+                    {showPermissions ? (
+                        <ProfilePermissions />
+                    ) : (
+                        <section className="space-y-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
+                                        {activeTab === 'employees' ? t('panel.personal.activeTitle') : t('panel.personal.othersTitle')}
+                                    </h2>
+                                    <p className="text-sm text-[rgb(var(--color-text))]">
+                                        {activeTab === 'employees'
+                                            ? t('panel.personal.activeSubtitle')
+                                            : t('panel.personal.othersSubtitle')}
+                                    </p>
+                                </div>
+                                {activeTab === 'employees' ? (
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
+                                        <FiUserCheck className="h-4 w-4" />
+                                        {employees.length} {t('panel.personal.activeCount')}
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
+                                        <FiUserX className="h-4 w-4" />
+                                        {nonEmployees.length} {t('panel.personal.externalCount')}
+                                    </span>
+                                )}
                             </div>
                             {activeTab === 'employees' ? (
-                                <span className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 shadow-sm">
-                                    <FiUserCheck className="h-4 w-4" />
-                                    {employees.length} {t('panel.personal.activeCount')}
-                                </span>
+                                employees.length === 0 ? (
+                                    <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
+                                        {t('panel.personal.emptyEmployees')}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 2xl:grid-cols-3 ">
+                                        {employees.map((user) => renderUserCard(user, false))}
+                                    </div>
+                                )
                             ) : (
-                                <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700 shadow-sm">
-                                    <FiUserX className="h-4 w-4" />
-                                    {nonEmployees.length} {t('panel.personal.externalCount')}
-                                </span>
+                                nonEmployees.length === 0 ? (
+                                    <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
+                                        {t('panel.personal.emptyOthers')}
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                                        {nonEmployees.map((user) => renderUserCard(user, true))}
+                                    </div>
+                                )
                             )}
-                        </div>
-                        {activeTab === 'employees' ? (
-                            employees.length === 0 ? (
-                                <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
-                                    {t('panel.personal.emptyEmployees')}
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 2xl:grid-cols-3 ">
-                                    {employees.map((user) => renderUserCard(user, false))}
-                                </div>
-                            )
-                        ) : (
-                            nonEmployees.length === 0 ? (
-                                <div className="rounded-2xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] p-6 text-sm text-[rgb(var(--color-text))] shadow-sm">
-                                    {t('panel.personal.emptyOthers')}
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                                    {nonEmployees.map((user) => renderUserCard(user, true))}
-                                </div>
-                            )
-                        )}
-                    </section>
+                        </section>
+                    )}
                 </div>
             </div>
         </div>

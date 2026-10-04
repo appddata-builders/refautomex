@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "db:tunnel": "bash scripts/db-tunnel.sh",
+    "db:pg:check": "node scripts/db-pg-check.mjs",
     "seed:hydrate": "node scripts/seed-hydrate.mjs",
     "db:pg:push": "drizzle-kit push --config drizzle.config.pg.mjs",
     "db:pg:studio": "drizzle-kit studio --config drizzle.config.pg.mjs"

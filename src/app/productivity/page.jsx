@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useContext, useEffect, useMemo } from 'react';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { perfilDeCategoria, puedeVer } from '@/app/lib/permisos-menu';
+import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
 
 import Home from '@/app/components/productivity/home';
 import Settings from '@/app/components/productivity/settings';
@@ -29,9 +31,14 @@ export default function Productivity() {
 
   const load = searchParams.get('load') || 'home';
   const lang = searchParams.get('lang') || 'es';
-  // Mismo criterio que navbar-panel.jsx. La API vuelve a revisarlo con el
-  // token: esto solo decide que se pinta.
-  const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
+  // Mismo criterio que navbar-panel.jsx: un modulo que el perfil no tiene en
+  // Permisos de perfil se cambia por Home aunque se escriba la URL a mano.
+  // Respaldos lo vuelve a revisar la API con el token; esto solo decide que
+  // se pinta.
+  const permisos = usePermisosMenu();
+  const perfil = perfilDeCategoria(userData?.categoria);
+  const isAdmin = perfil === 'admin';
+  const allowed = puedeVer(permisos, load, perfil);
 
   useEffect(() => {
     if (userData && userData.empleado === 0) {
@@ -46,6 +53,7 @@ export default function Productivity() {
   }, [isAuthenticated, lang, router]);
 
   const component = useMemo(() => {
+    if (!allowed) return <Home />;
     switch (load) {
       case 'home': return <Home />;
       case 'user-settings': return <Settings />;
@@ -62,10 +70,10 @@ export default function Productivity() {
       case 'calendar': return <Calendar />;
       case 'delivery': return <Delivery />;
       case 'invoice': return <Invoice />;
-      case 'backups': return isAdmin ? <Backups /> : <Home />;
+      case 'backups': return <Backups />;
       default: return <Home />;
     }
-  }, [load, isAdmin]);
+  }, [load, allowed]);
 
   if (isAuthenticated === false) return null;
   if (userData && userData.empleado === 0) return null;

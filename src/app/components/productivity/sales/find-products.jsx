@@ -1,12 +1,12 @@
 'use client';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useContext, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { AuthContext } from '@/app/lib/auth-tracker';
 import Spinner from '@/app/components/principal/spinner';
 import { FaDeleteLeft, FaStar } from "react-icons/fa6";
 import { LuListPlus } from "react-icons/lu";
 import { TiInfo } from "react-icons/ti";
 import { IoClose } from "react-icons/io5";
-import { getStorageValue } from '@/app/lib/storage-values';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 const parseProductRoutes = (raw) => {
@@ -208,6 +208,7 @@ const FindProducts = forwardRef(({
     hideSearchModeToggle = false,
     allowedSearchTypes,
     hideSearchInput = false,
+    branch,
 }, ref) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [products, setProducts] = useState([]);
@@ -225,15 +226,10 @@ const FindProducts = forwardRef(({
     const deleteTooltip = createTooltip(FaDeleteLeft, t('panel.common.delete'), 'delete', visibleTooltip, setVisibleTooltip);
     const isPickerMode = typeof onProductPick === 'function';
 
-    const cognitoUserSession = getStorageValue('CognitoUserSession');
-    const username = cognitoUserSession?.idToken?.payload?.["cognito:username"];
-    const userData = username ? getStorageValue(`user_${username}`) : null;
-    const resolvedBranchId = userData?.idsucursal ?? 2;
+    const { userData } = useContext(AuthContext);
+    const resolvedBranchId = branch?.id ?? userData?.idsucursal ?? 2;
     const userBranchId = resolvedBranchId ? String(resolvedBranchId) : null;
-    useEffect(() => {
-        console.log('Sucursal activa en FindProducts:', resolvedBranchId);
-    }, [resolvedBranchId]);
-    const userBranchLabel = userData?.sucursal || '';
+    const userBranchLabel = branch?.label ?? userData?.sucursal ?? '';
 
     const handleSearchChange = (event) => {
         setSearchTerm(event.target.value);
@@ -348,7 +344,8 @@ const FindProducts = forwardRef(({
         }
 
         const payload = await response.json();
-        const rawProducts = Array.isArray(payload?.[0]) ? payload[0] : [];
+        if (!Array.isArray(payload?.[0])) throw new Error('Invalid products response');
+        const rawProducts = payload[0];
         return rawProducts.map((product) => createProductRecord(product, branchId === 1 ? 'web' : 'active'));
     };
 
@@ -541,6 +538,7 @@ const FindProducts = forwardRef(({
 
     return (
         <div className="relative w-full max-w-[480px] lg:max-w-[520px] mx-auto overflow-x-hidden">
+            {branch && <p className="px-3 pt-3 text-sm text-center">{t('panel.common.branch')}: {branch.label}</p>}
             {hideSearchInput ? (
                 <div className="flex justify-center items-center py-3">
                     <div className="font-bold uppercase tracking-wide bg-[rgb(var(--color-card))] py-1 px-2 rounded-md shadow shadow-[rgb(var(--color-galaxy))] inline-flex items-center gap-2 text-xs">
@@ -611,6 +609,13 @@ const FindProducts = forwardRef(({
             <div className='flex justify-center overflow-y-auto h-[570px] w-full max-w-[520px] mx-auto'>
             {isLoading ? (
                 <Spinner />
+            ) : error ? (
+                <div role="alert" className="p-6 text-center">
+                    <p>{t('common.errorProducts')}</p>
+                    <button type="button" onClick={fetchProducts} className="mt-3 underline">{t('common.retry')}</button>
+                </div>
+            ) : paginatedProducts.length === 0 ? (
+                <p role="status" className="p-6 text-center">{t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') })}</p>
             ) : (
                 showCards && (
                     <div className="relative min-h-[30rem] w-full grow [container-type:inline-size] max-lg:mx-auto max-lg:max-w-sm">
@@ -807,5 +812,7 @@ const FindProducts = forwardRef(({
         </div>
     );
 });
+
+FindProducts.displayName = 'FindProducts';
 
 export default FindProducts;

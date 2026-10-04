@@ -53,6 +53,10 @@ const formatDate = (date) => {
     return date.toLocaleDateString('es-MX', options);
 };
 
+// Operacion actual de tickets: el catalogo, la venta y la impresion usan
+// TLALNEPANTLA aunque el empleado tenga otra sucursal asignada.
+const TICKETS_BRANCH = { id: 2, label: 'TLALNEPANTLA' };
+
 export default function Tickets() {
     const { t } = useTranslation();
     const [currentDate, setCurrentDate] = useState(formatDate(new Date()));
@@ -69,7 +73,7 @@ export default function Tickets() {
     const [dateOrder, setDateOrder] = useState('');
     const [clientName, setClientName] = useState('');
     const [employee, setEmployee] = useState('');
-    const [branchId, setBranchId] = useState('');
+    const branchId = TICKETS_BRANCH.id;
     const [folio, setFolio] = useState('');
     const [subtotal, setSubtotal] = useState(0);
     const [discount, setDiscount] = useState(0);
@@ -84,7 +88,6 @@ export default function Tickets() {
         const username = cognitoUserSession.idToken.payload["cognito:username"];
         const userData = getStorageValue(`user_${username}`);
         setEmployee(userData?.nombre || '');
-        setBranchId(userData?.idsucursal ?? userData?.idSucursal ?? '');
     }, [cognitoUserSession]);
 
     useEffect(() => {
@@ -114,13 +117,12 @@ export default function Tickets() {
     const handleGenerateFolioAndPrint = async () => {
         const username = cognitoUserSession.idToken.payload["cognito:username"];
         const userData = getStorageValue(`user_${username}`);
-        const resolvedBranchId = userData?.idsucursal ?? userData?.idSucursal ?? null;
 
         const sale_data = {
             fecha_venta: new Date().toISOString().split('T')[0],
             total_venta: total.toFixed(2),
             idusuario: userData?.idusuario || 1,
-            idsucursal: resolvedBranchId,
+            idsucursal: branchId,
             status: 'A',
             idmetodo: paymentType,
             telefono: phone,
@@ -387,6 +389,7 @@ export default function Tickets() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 mx-auto gap-x-7 gap-y-6 lg:mx-0 px-2">
                         <div className= {`lg:rounded-2xl my-5 pt-2 shadow shadow-[rgb(var(--color-gray-base))] w-full max-w-[520px] mx-auto overflow-hidden rounded-xl ${folio ? 'bg-stone-500' : 'bg-[rgb(var(--color-gray))]' }`}>
                             <FindProducts
+                                branch={TICKETS_BRANCH}
                                 onAddProduct={handleAddProduct}
                                 onRemoveProduct={handleRemoveProduct}
                                 addedItems={items}

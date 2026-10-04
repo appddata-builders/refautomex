@@ -8,9 +8,11 @@
  * mismo archivo sin preguntar. El handle de la carpeta se guarda en IndexedDB
  * para que sobreviva a cerrar el navegador.
  *
- * La app no corre con el navegador cerrado: el respaldo de las 3 pm se hace si
- * el panel esta abierto a esa hora, o en cuanto se abra despues. Safari y
- * Firefox no tienen esta API; ahi el archivo se descarga a Descargas.
+ * La app no corre con el navegador cerrado: el respaldo se hace a las 3 pm si
+ * el panel esta abierto a esa hora. No se recupera al entrar despues: se pidio
+ * que el panel no pregunte nada al iniciar sesion. Para no repetir permiso
+ * cada dia, al autorizar hay que elegir "Permitir en cada visita" (Chrome 122+).
+ * Safari y Firefox no tienen esta API; ahi el archivo se descarga a Descargas.
  */
 import { userPool } from '@/app/lib/cognito-manager';
 
@@ -139,9 +141,26 @@ export const alCambiarRespaldo = (fn) => {
   return () => window.removeEventListener(EVENTO, manejador);
 };
 
-/** Ya son las 3 pm o mas y hoy todavia no hay respaldo. */
-export const tocaRespaldo = (ahora = new Date()) =>
-  ahora.getHours() >= HORA_RESPALDO && ultimoRespaldo()?.fecha !== fechaLocal(ahora);
+/** Las 3 pm mas recientes: hoy si ya pasaron, si no las de ayer. */
+const ultimasTres = (ahora) => {
+  const marca = new Date(ahora);
+  marca.setHours(HORA_RESPALDO, 0, 0, 0);
+  if (marca > ahora) marca.setDate(marca.getDate() - 1);
+  return marca;
+};
+
+/**
+ * Entre `antes` y `ahora` dieron las 3 pm y desde entonces no se ha
+ * respaldado. Solo el cruce cuenta: abrir el panel a las 5 pm no respalda ni
+ * pide nada. El archivo se sobrescribe a las 3 pm aunque en la manana se haya
+ * respaldado a mano.
+ */
+export const tocaRespaldo = (antes, ahora = new Date()) => {
+  const marca = ultimasTres(ahora);
+  if (antes >= marca) return false;
+  const ultimo = ultimoRespaldo()?.momento;
+  return !ultimo || new Date(ultimo) < marca;
+};
 
 export class FaltaPermiso extends Error {}
 export class FaltaCarpeta extends Error {}

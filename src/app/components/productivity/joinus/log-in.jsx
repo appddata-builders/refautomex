@@ -20,7 +20,7 @@ export default function LogIn() {
     const [alertDanger, setDangerMessage] = useState(null);
     const [indicationMessage, setIndicationMessage] = useState(null);
     const [isLoading, setLoading] = useState(false);
-    const urlParams = new URLSearchParams(window.location.search);
+    const urlParams = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
     const userStatus = urlParams.get('user_status');
 
     useEffect(() => {
@@ -50,17 +50,20 @@ export default function LogIn() {
 
         cognitoUser.authenticateUser(authenticationDetails, {
             onSuccess: function (result) {
-                setStorageValue('CognitoUserSession', result);
                 // pasamos cognitoId para verificar en la base de datos si es empleado
                 checkIfUserIsEmployee(result.idToken.payload.sub).then(isEmployee => {
                     if (isEmployee) {
+                        setStorageValue('CognitoUserSession', result);
                         window.location.href = '/productivity';
                     } else {
                         setAlertMessage(t('panel.login.notEmployee'));
                         cognitoUser.signOut();
+                        setStorageValue('CognitoUserSession', null);
                         setLoading(false);
                     }
                 }).catch(() => {
+                    cognitoUser.signOut();
+                    setStorageValue('CognitoUserSession', null);
                     setAlertMessage(t('panel.login.statusError'));
                     setLoading(false);
                 });
@@ -78,26 +81,20 @@ export default function LogIn() {
 
     const checkIfUserIsEmployee = async (token) => {
         if (!token) return false;
-        try {
-            const params = new URLSearchParams({ id: token });
-            const endpoint = `${buildApiUrl('/verifyEmployee')}?${params.toString()}`;
-            const response = await fetch(endpoint, {
-                cache: 'no-store',
-                headers: { Accept: 'application/json, text/plain, */*' },
-            });
+        const params = new URLSearchParams({ id: token });
+        const endpoint = `${buildApiUrl('/verifyEmployee')}?${params.toString()}`;
+        const response = await fetch(endpoint, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json, text/plain, */*' },
+        });
 
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            console.log('Empleado:', data.empleado);
-            return data.empleado;
-        } catch (error) {
-            console.error('Error al verificar empleado:', error);
-            setAlertMessage(t('panel.login.checkError'));
-            return false;
+        if (response.status === 404) return false;
+        if (!response.ok) {
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
         }
+
+        const data = await response.json();
+        return data.empleado === true || data.empleado === 1 || data.empleado === '1';
     };
 
     return (
@@ -164,6 +161,7 @@ export default function LogIn() {
                                 <div className="flex flex-1 justify-center items-center">
                                     <button
                                     type="submit"
+                                    disabled={isLoading}
                                     className="bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer -mt-2"
                                     >
                                         {isLoading ? t('panel.login.signingIn') : t('account.login')}

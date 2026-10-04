@@ -6,8 +6,8 @@ import { TbDatabaseExport, TbDatabaseImport } from 'react-icons/tb';
 import Title from './title';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import {
-  ARCHIVO_RESPALDO, alCambiarRespaldo, carpetaGuardada,
-  elegirCarpeta, fechaLocal, llamarRespaldos, respaldarAhora, soportaCarpeta, ultimoRespaldo,
+  ARCHIVO_RESPALDO, HORA_RESPALDO, alCambiarRespaldo, carpetaGuardada,
+  elegirCarpeta, llamarRespaldos, respaldarAhora, soportaCarpeta, ultimoRespaldo,
 } from '@/app/lib/respaldo-diario';
 
 const tarjeta = 'rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 shadow-md';
@@ -34,7 +34,8 @@ export default function Backups() {
     return alCambiarRespaldo(setUltimo);
   }, []);
 
-  const proximo = ultimo?.fecha === fechaLocal() || new Date().getHours() >= 15
+  // A las 3 pm se sobrescribe aunque en la manana se haya respaldado a mano.
+  const proximo = new Date().getHours() >= HORA_RESPALDO
     ? t('panel.backups.tomorrow3pm')
     : t('panel.backups.today3pm');
 
@@ -129,7 +130,8 @@ export default function Backups() {
           <h2 className="flex items-center gap-2 text-lg font-bold">
             <TbDatabaseExport className="h-5 w-5" aria-hidden="true" /> {t('panel.backups.dailyTitle')}
           </h2>
-          <p className="mt-2 text-sm opacity-80">{t('panel.backups.dailyHelp')}</p>
+          <p className="mt-2 text-sm opacity-80">{t('panel.backups.scheduleHelp')}</p>
+          {conCarpeta && <p className="mt-2 text-sm opacity-80">{t('panel.backups.persistTip')}</p>}
           {!conCarpeta && (
             <p className="mt-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">{t('panel.backups.noFolderSupport')}</p>
           )}

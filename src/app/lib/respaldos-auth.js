@@ -1,5 +1,6 @@
 /**
- * Quien puede usar /api/respaldos: solo un administrador con sesion valida.
+ * Quien puede usar /api/respaldos (y guardar /api/permisos-menu): solo un
+ * administrador con sesion valida.
  *
  * El resto de /api/refautomex no pide sesion, pero esto no puede quedar igual:
  * el respaldo trae TODAS las tablas (clientes, usuarios, ventas) y la carga
@@ -26,9 +27,9 @@ const obtenerVerificador = () => {
 
 /**
  * Devuelve { usuario } si quien llama es administrador, o { estado, mensaje }
- * con el codigo HTTP que corresponde.
+ * con el codigo HTTP que corresponde. `sinPermiso` es el mensaje del 403.
  */
-export const exigirAdmin = async (request) => {
+export const exigirAdmin = async (request, sinPermiso = 'Solo un administrador puede usar los respaldos.') => {
   const token = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim();
   if (!token) return { estado: 401, mensaje: 'Falta la sesión.' };
 
@@ -47,7 +48,7 @@ export const exigirAdmin = async (request) => {
   );
 
   if (!usuario || String(usuario.categoria || '').toUpperCase() !== 'A') {
-    return { estado: 403, mensaje: 'Solo un administrador puede usar los respaldos.' };
+    return { estado: 403, mensaje: sinPermiso };
   }
 
   return { usuario };

@@ -164,6 +164,21 @@ const patchUserCategory = async ({ body }) => {
   };
 };
 
+// No venia del Express: es la tarjeta de un empleado en Permisos. La sucursal
+// se cambia desde su bloque y el telefono desde Editar; lo que no venga se
+// conserva.
+const patchEmployeeData = async ({ body }) => {
+  if (!body?.idusuario) return faltan('Missing idusuario.');
+  const telefono = body.telefono == null ? null : String(body.telefono).trim();
+  return {
+    cuerpo: await escribir(
+      `UPDATE usuario SET idsucursal = COALESCE(?, idsucursal), telefono = COALESCE(?, telefono)
+        WHERE idusuario = ? AND empleado = 1`,
+      [body.idsucursal || null, telefono, body.idusuario]
+    ),
+  };
+};
+
 const finalizeInvoice = async ({ body }) => {
   const { idfactura, folio } = body || {};
   if (!idfactura && !folio) return faltan('Missing idfactura or folio.');
@@ -229,6 +244,7 @@ const DIRECTOS = {
     patchUser,
     patchUserEmployment,
     patchUserCategory,
+    patchEmployeeData,
     finalizeInvoice,
     patchSucursal,
   },

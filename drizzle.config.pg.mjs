@@ -1,13 +1,13 @@
 import { defineConfig } from 'drizzle-kit';
+import nextEnv from '@next/env';
+import { requirePgDatabaseUrl } from './src/app/lib/db/runtime-driver.mjs';
+
+nextEnv.loadEnvConfig(process.cwd());
 
 // Solo la base propia de refautomex. `hydrate` vive en la de appddata y la
 // administra appddata: incluirla aqui haria que un push la creara tambien en
 // esta base.
-const url = process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL;
-
-if (!url) {
-  throw new Error('DATABASE_URL o DATABASE_URL_UNPOOLED es obligatorio para drizzle-kit sobre Postgres');
-}
+const url = requirePgDatabaseUrl();
 
 export default defineConfig({
   schema: './src/app/lib/db/schema.pg.js',

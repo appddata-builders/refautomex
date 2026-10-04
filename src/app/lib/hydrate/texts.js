@@ -61,6 +61,16 @@ const rowsToResources = (rows) => {
 
 const getFallbackResources = () => rowsToResources(fallbackRows);
 
+// Drizzle envuelve el error del driver en `cause`. Una tabla opcional ausente
+// es un caso normal: los textos se leen del JSON sin reportarlo como error.
+const isMissingHydrateTable = (error) => {
+  for (let current = error; current; current = current.cause) {
+    if (current.code === '42P01') return true;
+    if (current.code === 'SQLITE_ERROR' && /no such table: (?:main\.)?hydrate\b/i.test(current.message)) return true;
+  }
+  return false;
+};
+
 export const getHydratedResources = async () => {
   const now = Date.now();
   if (cache && now - cachedAt < CACHE_TTL_MS) return cache;
@@ -75,7 +85,9 @@ export const getHydratedResources = async () => {
         .from(hydrate)
         .where(eq(hydrate.projectSlug, PROJECT_SLUG));
     } catch (error) {
-      console.info('Textos de hidratacion no disponibles; se usara el JSON local:', error.message);
+      if (!isMissingHydrateTable(error)) {
+        console.info('Textos de hidratacion no disponibles; se usara el JSON local:', error.cause?.message || error.message);
+      }
     }
   }
 

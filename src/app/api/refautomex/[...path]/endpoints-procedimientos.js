@@ -101,13 +101,13 @@ const getAllProducts = async ({ body }) => {
   return {
     cuerpo: await llamar(
       `SELECT p.num_parte, p.descripcion, d.precio, d.costo, g.grupo, g.idgrupo,
-              c.idcategoria, c.categoria, d.existencia, l.localizacion,
+              c.idcategoria, c.categoria, d.existencia, COALESCE(l.localizacion, '') AS localizacion,
               s.sucursal, s.idsucursal, p.mod_ini, p.mod_fin, ma.marca, ma.idmarca,
               d.utilidad, pr.empresa AS ultimo,
               COALESCE(json_agg(i.ruta) FILTER (WHERE i.ruta IS NOT NULL), '[]'::json) AS rutas
          FROM producto p
          INNER JOIN detalle d USING (num_parte)
-         INNER JOIN localizacion l USING (idlocalizacion)
+         LEFT JOIN localizacion l USING (idlocalizacion)
          INNER JOIN categoria c USING (idcategoria)
          INNER JOIN sucursal s USING (idsucursal)
          LEFT JOIN imagenes i USING (num_parte)

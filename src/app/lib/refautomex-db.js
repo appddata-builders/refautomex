@@ -21,6 +21,7 @@
  */
 
 import { Pool } from 'pg';
+import { requirePgDatabaseUrl } from './db/runtime-driver.mjs';
 
 // Un pool por proceso. En desarrollo, Next recarga los modulos en cada cambio
 // y sin esto quedarian conexiones colgadas hasta agotar el limite del
@@ -28,21 +29,11 @@ import { Pool } from 'pg';
 const globalForPg = globalThis;
 
 const crearPool = () => {
-  const connectionString =
-    process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    throw new Error(
-      'Falta DATABASE_URL. En el cluster la inyecta el Secret postgres-credentials, ' +
-        'que crea Terraform en postgres.tf.'
-    );
-  }
+  const connectionString = requirePgDatabaseUrl();
 
   return new Pool({
     connectionString,
-    // El nodo es un t4g.medium compartido con otra app y con el propio
-    // Postgres. Un pool chico evita que un pico de trafico agote las
-    // conexiones del servidor (max_connections = 100 por default).
+    // El droplet comparte PostgreSQL entre varias apps.
     max: 8,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
@@ -53,7 +44,7 @@ const crearPool = () => {
 //
 // No es una optimizacion: `next build` importa cada route handler para
 // recolectar datos de pagina, y en ese momento no existe DATABASE_URL - la
-// inyecta el Secret de Kubernetes en tiempo de ejecucion, no en el build.
+// inyecta Docker Compose en tiempo de ejecucion, no en el build.
 // Creando el pool al importar, el build entero fallaba con
 // "Failed to collect page data for /api/refautomex/[...path]".
 //
