@@ -43,6 +43,20 @@ export const banco = pgTable('banco', {
   banco: varchar({ length: 100 }).notNull(),
 });
 
+// No vino de `drizzle-kit pull`: es el calendario de cada sucursal.
+// /api/calendario la crea con el mismo DDL al guardar por primera vez. `fin` es
+// el ultimo dia del evento, inclusivo.
+export const calendario_evento = pgTable('calendario_evento', {
+  id: varchar({ length: 40 }).primaryKey().notNull(),
+  idsucursal: integer().notNull(),
+  etiqueta: varchar({ length: 30 }).notNull(),
+  titulo: varchar({ length: 120 }).notNull(),
+  nota: varchar({ length: 500 }),
+  inicio: date().notNull(),
+  fin: date().notNull(),
+  actualizado_por: integer(),
+});
+
 export const cantidad = pgTable('cantidad', {
   idCantidad: integer().primaryKey().generatedByDefaultAsIdentity(),
   cantidad: integer().notNull(),
@@ -258,6 +272,23 @@ export const usuario = pgTable('usuario', {
   categoria: varchar({ length: 45 }).notNull(),
   empleado: integer().notNull(),
   idsucursal: integer(),
+});
+
+// No vinieron de `drizzle-kit pull`: vacaciones de los empleados.
+// /api/vacaciones las crea con el mismo DDL al escribir por primera vez.
+// `vacacion` es un renglon por dia tomado ("<idusuario>:<fecha>");
+// `vacacion_dias`, los dias que le tocan por ano ("<idusuario>:<anio>").
+export const vacacion = pgTable('vacacion', {
+  id: varchar({ length: 30 }).primaryKey().notNull(),
+  idusuario: integer().notNull(),
+  fecha: date().notNull(),
+});
+
+export const vacacion_dias = pgTable('vacacion_dias', {
+  id: varchar({ length: 20 }).primaryKey().notNull(),
+  idusuario: integer().notNull(),
+  anio: integer().notNull(),
+  dias: integer().default(0).notNull(),
 });
 
 export const venta = pgTable('venta', {

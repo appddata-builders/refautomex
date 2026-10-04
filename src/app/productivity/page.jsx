@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useContext, useEffect, useMemo } from 'react';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import { perfilDeCategoria, puedeVer } from '@/app/lib/permisos-menu';
-import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
+import { refrescarPermisos, usePermisosMenu } from '@/app/lib/use-permisos-menu';
 
 import Home from '@/app/components/productivity/home';
 import Settings from '@/app/components/productivity/settings';
@@ -39,6 +39,12 @@ export default function Productivity() {
   const perfil = perfilDeCategoria(userData?.categoria);
   const isAdmin = perfil === 'admin';
   const allowed = puedeVer(permisos, load, perfil);
+
+  // Cada cambio de modulo vuelve a pedir los permisos: si un admin le quito
+  // algo a este perfil, se aplica sin recargar.
+  useEffect(() => {
+    refrescarPermisos();
+  }, [load]);
 
   useEffect(() => {
     if (userData && userData.empleado === 0) {

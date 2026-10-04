@@ -36,8 +36,10 @@ export default function ProfilePermissions() {
 
     const valor = (clave, perfil) => cambios[clave]?.[perfil] ?? guardados[clave][perfil];
 
-    const pendientes = MODULOS.some(({ clave }) =>
-        PERFILES.some((perfil) => valor(clave, perfil) !== guardados[clave][perfil])
+    const cambiado = (clave, perfil) => valor(clave, perfil) !== guardados[clave][perfil];
+    const pendientes = MODULOS.reduce(
+        (total, { clave }) => total + PERFILES.filter((perfil) => cambiado(clave, perfil)).length,
+        0
     );
 
     const cambiar = (clave, perfil, marcado) => {
@@ -105,8 +107,13 @@ export default function ProfilePermissions() {
                                             <th scope="row" className="px-3 py-2 text-left font-medium">{nombre}</th>
                                             {PERFILES.map((perfil) => {
                                                 const fijo = esFijo(modulo, perfil);
+                                                // Lo marcado y aun sin guardar se resalta hasta guardar.
+                                                const sinGuardar = cambiado(modulo.clave, perfil);
                                                 return (
-                                                    <td key={perfil} className="px-3 py-2 text-center">
+                                                    <td
+                                                        key={perfil}
+                                                        className={`px-3 py-2 text-center ${sinGuardar ? 'bg-[rgb(var(--color-galaxy))]/20' : ''}`}
+                                                    >
                                                         <input
                                                             type="checkbox"
                                                             checked={valor(modulo.clave, perfil)}
@@ -114,7 +121,7 @@ export default function ProfilePermissions() {
                                                             onChange={(e) => cambiar(modulo.clave, perfil, e.target.checked)}
                                                             title={fijo ? t('panel.permissions.locked') : undefined}
                                                             aria-label={`${nombre} — ${t(TEXTO_PERFIL[perfil])}`}
-                                                            className="h-5 w-5 cursor-pointer accent-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                                                            className="h-5 w-5 cursor-pointer accent-[rgb(var(--color-galaxy))] disabled:cursor-not-allowed disabled:opacity-50"
                                                         />
                                                     </td>
                                                 );
@@ -134,10 +141,16 @@ export default function ProfilePermissions() {
                 </p>
             )}
 
+            {pendientes > 0 && !guardando && (
+                <p className="text-sm font-semibold text-[rgb(var(--color-text))]">
+                    {t('panel.permissions.pending', { n: pendientes })}
+                </p>
+            )}
+
             <button
                 type="button"
                 onClick={guardar}
-                disabled={guardando || !pendientes}
+                disabled={guardando || pendientes === 0}
                 className="inline-flex items-center justify-center rounded-xl border border-emerald-400 bg-emerald-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
             >
                 {guardando ? t('panel.permissions.saving') : t('panel.permissions.save')}

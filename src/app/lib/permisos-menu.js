@@ -36,7 +36,9 @@ export const MODULOS = [
   { clave: 'missing', seccion: 'stock', admin: true, empleado: true },
   { clave: 'capture', seccion: 'purchases', admin: true, empleado: false },
   { clave: 'providers', seccion: 'purchases', admin: true, empleado: false },
-  { clave: 'calendar', seccion: 'services', admin: true, empleado: false },
+  // El empleado ve el calendario de su sucursal en solo lectura (lo exige
+  // /api/calendario); quien lo arma es un admin.
+  { clave: 'calendar', seccion: 'services', admin: true, empleado: true },
   { clave: 'invoice', seccion: 'services', admin: true, empleado: false },
   { clave: 'site', seccion: 'orders', admin: true, empleado: true },
   { clave: 'delivery', seccion: 'orders', admin: true, empleado: false },

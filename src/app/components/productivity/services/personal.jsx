@@ -13,6 +13,7 @@ import {
     FiMapPin,
     FiPhone,
     FiSearch,
+    FiSun,
     FiTag,
     FiUser,
     FiUserCheck,
@@ -22,6 +23,7 @@ import {
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { getStorageValue, setStorageValue } from '@/app/lib/storage-values';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { obtenerIdToken } from '@/app/lib/respaldo-diario';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 const isLikelyPlaceId = (val) => {
@@ -46,6 +48,9 @@ export default function Personal() {
     const [editingUserId, setEditingUserId] = useState(null);
     const [editFormByUser, setEditFormByUser] = useState({});
     const [savingUserId, setSavingUserId] = useState(null);
+    const [vacResumen, setVacResumen] = useState({ anio: null, porUsuario: {} });
+    const [vacDraftByUser, setVacDraftByUser] = useState({});
+    const [vacSavingUserId, setVacSavingUserId] = useState(null);
     const [currentUserId, setCurrentUserId] = useState(null);
     const [currentUserCategory, setCurrentUserCategory] = useState(null);
     const [placeCache, setPlaceCache] = useState({});
@@ -344,6 +349,79 @@ export default function Personal() {
     };
 
     // La sucursal es de los empleados: se cambia aqui y se guarda al momento.
+    // Dias de vacaciones de este ano por empleado; cada quien los marca en su
+    // calendario y cada dia marcado descuenta uno (ver /api/vacaciones).
+    useEffect(() => {
+        if (String(currentUserCategory || '').toUpperCase() !== 'A') return;
+        const fetchVacations = async () => {
+            try {
+                const token = await obtenerIdToken();
+                const response = await fetch('/api/vacaciones?vista=resumen', {
+                    cache: 'no-store',
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                if (!response.ok) {
+                    throw new Error(`Error ${response.status}: ${response.statusText}`);
+                }
+                const data = await response.json();
+                setVacResumen({
+                    anio: data.anio,
+                    porUsuario: Object.fromEntries((data.empleados || []).map((row) => [
+                        String(row.idusuario),
+                        { asignados: Number(row.asignados) || 0, usados: Number(row.usados) || 0 },
+                    ])),
+                });
+            } catch (error) {
+                console.error('Error fetching vacations:', error);
+            }
+        };
+        fetchVacations();
+    }, [currentUserCategory]);
+
+    const handleSaveVacationDays = async (employee) => {
+        const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
+        if (!isAdmin) return;
+        const userKey = getUserKey(employee);
+        const dias = Number(vacDraftByUser[userKey]);
+        if (!Number.isInteger(dias) || dias < 0) return;
+
+        setVacSavingUserId(userKey);
+        try {
+            const token = await obtenerIdToken();
+            const response = await fetch('/api/vacaciones', {
+                method: 'PUT',
+                cache: 'no-store',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ idusuario: employee.idusuario, dias }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                const message = data.codigo === 'usados'
+                    ? t('panel.vacation.belowUsed', { usados: data.usados })
+                    : response.status === 400 ? t('panel.vacation.range') : t('panel.vacation.saveError');
+                if (typeof window !== 'undefined') window.alert(message);
+                return;
+            }
+            setVacResumen((prev) => ({
+                anio: data.anio ?? prev.anio,
+                porUsuario: {
+                    ...prev.porUsuario,
+                    [String(employee.idusuario)]: { asignados: data.asignados, usados: data.usados },
+                },
+            }));
+            setVacDraftByUser((prev) => {
+                const next = { ...prev };
+                delete next[userKey];
+                return next;
+            });
+        } catch (error) {
+            console.error('Error saving vacation days:', error);
+            if (typeof window !== 'undefined') window.alert(t('panel.vacation.saveError'));
+        } finally {
+            setVacSavingUserId(null);
+        }
+    };
+
     const handleChangeBranch = async (employee) => {
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
         if (!isAdmin) return;
@@ -593,6 +671,11 @@ export default function Personal() {
         const currentBranchId = validBranchId(user);
         const selectedBranch = branchDraftByUser[userKey] ?? currentBranchId;
         const canChangeBranch = Boolean(selectedBranch) && selectedBranch !== currentBranchId && !isSaving;
+        const vacation = vacResumen.porUsuario[String(user.idusuario)] || { asignados: 0, usados: 0 };
+        const vacationDraft = vacDraftByUser[userKey] ?? String(vacation.asignados);
+        const isSavingVacation = vacSavingUserId === userKey;
+        const canSaveVacation = /^\d+$/.test(vacationDraft)
+            && Number(vacationDraft) !== vacation.asignados && !isSavingVacation;
         const editValues = editFormByUser[userKey] || {};
         const isSelf = currentUserId != null && String(user.idusuario) === String(currentUserId);
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
@@ -819,6 +902,44 @@ export default function Personal() {
                             )}
                         </div>
                     ) : null}
+
+                    {!showActivation && isAdmin && (
+                        <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))]/70 p-3">
+                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">
+                                <FiSun className="text-[rgb(var(--color-text))]" />
+                                {t('panel.vacation.title', { anio: vacResumen.anio ?? '' })}
+                            </div>
+                            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                                <label className="flex items-center gap-2 text-sm text-[rgb(var(--color-text))] sm:flex-1">
+                                    <input
+                                        type="number"
+                                        inputMode="numeric"
+                                        min={0}
+                                        max={60}
+                                        value={vacationDraft}
+                                        onChange={(e) => setVacDraftByUser((prev) => ({ ...prev, [userKey]: e.target.value }))}
+                                        disabled={isSavingVacation}
+                                        className="w-24 rounded-xl border border-[rgb(var(--color-border))]/80 bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-inner outline-none focus:ring-2 focus:ring-[rgb(var(--color-text))]/70"
+                                    />
+                                    {t('panel.vacation.days')}
+                                </label>
+                                <button
+                                    type="button"
+                                    onClick={() => handleSaveVacationDays(user)}
+                                    disabled={!canSaveVacation}
+                                    className="inline-flex items-center justify-center rounded-xl border border-emerald-400 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
+                                >
+                                    {isSavingVacation ? t('panel.permissions.saving') : t('panel.vacation.save')}
+                                </button>
+                            </div>
+                            <p className="mt-2 text-xs text-[rgb(var(--color-text))]">
+                                {t('panel.vacation.usage', {
+                                    usados: vacation.usados,
+                                    restan: Math.max(0, vacation.asignados - vacation.usados),
+                                })}
+                            </p>
+                        </div>
+                    )}
 
                     {expanded && (
                         <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] p-4">
