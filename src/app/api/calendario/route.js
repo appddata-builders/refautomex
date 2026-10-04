@@ -27,7 +27,8 @@ const MAX_EVENTOS = 500;
 // El despliegue no corre `db:pg:push`: la tabla se crea al guardar por primera
 // vez y tiene que ser identica a `calendario_evento` en lib/db/schema.pg.js.
 // `fin` es el ultimo dia del evento (inclusivo), para que se lea igual en el
-// respaldo CSV.
+// respaldo CSV. `creado` no se toca al editar: con el la campana avisa de las
+// fechas nuevas.
 const CREAR_TABLA = `
   CREATE TABLE IF NOT EXISTS calendario_evento (
     id varchar(40) PRIMARY KEY NOT NULL,
@@ -37,7 +38,8 @@ const CREAR_TABLA = `
     nota varchar(500),
     inicio date NOT NULL,
     fin date NOT NULL,
-    actualizado_por integer
+    actualizado_por integer,
+    creado timestamp(3) DEFAULT now() NOT NULL
   )`;
 
 const sinAcceso = (acceso) => NextResponse.json({ error: acceso.mensaje }, { status: acceso.estado });
@@ -117,6 +119,7 @@ export async function PUT(request) {
 
     await enTransaccion(async (tx) => {
       await tx.escribir(CREAR_TABLA);
+      await tx.escribir('ALTER TABLE calendario_evento ADD COLUMN IF NOT EXISTS creado timestamp(3) DEFAULT now() NOT NULL');
       await tx.escribir(
         'DELETE FROM calendario_evento WHERE idsucursal = ? AND NOT (id = ANY(?::varchar[]))',
         [idsucursal, eventos.map((e) => e.id)]

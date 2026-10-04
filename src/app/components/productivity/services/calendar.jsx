@@ -222,6 +222,8 @@ export default function CalendarPlanner() {
   const [modoVacaciones, setModoVacaciones] = useState(false);
   const [vacGuardando, setVacGuardando] = useState(false);
   const [vacAviso, setVacAviso] = useState(null);
+  const [vacArmada, setVacArmada] = useState(null);
+  const armadaTimerRef = useRef(null);
   const isYearView = calendarView === 'multiMonthQuarter';
   const { userData } = useContext(AuthContext);
   const userBranchId = normalizeBranchId(userData?.idsucursal);
@@ -252,6 +254,7 @@ export default function CalendarPlanner() {
     let ok = false;
     try {
       await llamarCalendario('PUT', envio);
+      window.dispatchEvent(new Event('refautomex:calendario-actualizado'));
       ok = true;
     } catch (error) {
       console.error('Error al guardar el calendario:', error);
@@ -438,21 +441,50 @@ export default function CalendarPlanner() {
     const conPasados = [...agregar, ...quitar].some((dia) => dia < hoyTienda);
     const nuevos = agregar.filter((dia) => dia >= hoyTienda && !diasPropios.has(dia));
     const fuera = quitar.filter((dia) => dia >= hoyTienda && diasPropios.has(dia));
-    setVacAviso(conPasados ? t('panel.vacation.pastDays') : null);
+    setVacAviso(conPasados ? { tipo: 'error', texto: t('panel.vacation.pastDays') } : null);
     if (!nuevos.length && !fuera.length) return;
 
     setVacGuardando(true);
     try {
       const datos = await llamarVacaciones('POST', { body: { agregar: nuevos, quitar: fuera } });
       setVacaciones((prev) => ({ ...prev, hoy: datos.hoy, anios: datos.anios || {}, dias: datos.dias || [] }));
+      // Lo que se quita regresa al saldo; se dice para que no quede duda.
+      if (fuera.length) setVacAviso({ tipo: 'ok', texto: t('panel.vacation.returned', { n: fuera.length }) });
     } catch (error) {
-      setVacAviso(error.datos?.codigo === 'saldo'
-        ? t('panel.vacation.noBalance', { n: error.datos.restan })
-        : t('panel.vacation.calendarSaveError'));
+      setVacAviso({
+        tipo: 'error',
+        texto: error.datos?.codigo === 'saldo'
+          ? t('panel.vacation.noBalance', { n: error.datos.restan })
+          : t('panel.vacation.calendarSaveError'),
+      });
     } finally {
       setVacGuardando(false);
     }
   };
+
+  // Quitar un dia propio pide dos toques: el primero cambia la etiqueta a
+  // "Toca de nuevo para quitar" y el segundo lo quita y lo regresa al saldo.
+  // Sirve con o sin el modo "Marcar vacaciones"; si no se vuelve a tocar, se
+  // desarma solo.
+  const tocarVacacion = (dia) => {
+    if (vacGuardando) return;
+    clearTimeout(armadaTimerRef.current);
+    if (dia < hoyTienda) {
+      setVacArmada(null);
+      setVacAviso({ tipo: 'error', texto: t('panel.vacation.pastDays') });
+      return;
+    }
+    if (vacArmada === dia) {
+      setVacArmada(null);
+      moverVacaciones({ quitar: [dia] });
+      return;
+    }
+    setVacArmada(dia);
+    setVacAviso(null);
+    armadaTimerRef.current = setTimeout(() => setVacArmada(null), 5000);
+  };
+
+  useEffect(() => () => clearTimeout(armadaTimerRef.current), []);
 
   const anioVista = String(currentDate.getFullYear());
   const anioVacaciones = vacaciones.anios[anioVista] ? anioVista : hoyTienda.slice(0, 4);
@@ -644,8 +676,8 @@ export default function CalendarPlanner() {
     if (modoVacaciones) {
       const dias = [];
       for (let dia = startKey; dia < endKey; dia = addDaysKey(dia, 1)) dias.push(dia);
-      // Un solo dia que ya es de vacaciones se quita; lo demas se agrega.
-      if (dias.length === 1 && diasPropios.has(dias[0])) moverVacaciones({ quitar: dias });
+      // Un dia que ya es de vacaciones se quita con dos toques; lo demas se agrega.
+      if (dias.length === 1 && diasPropios.has(dias[0])) tocarVacacion(dias[0]);
       else moverVacaciones({ agregar: dias });
       return;
     }
@@ -663,7 +695,7 @@ export default function CalendarPlanner() {
   const handleEventClick = (clickInfo) => {
     const { tipo, propia } = clickInfo.event.extendedProps || {};
     if (tipo === 'vacacion') {
-      if (modoVacaciones && propia) moverVacaciones({ quitar: [toDateKey(clickInfo.event.start)] });
+      if (propia) tocarVacacion(toDateKey(clickInfo.event.start));
       return;
     }
     const event = events.find((ev) => ev.id === clickInfo.event.id);
@@ -702,7 +734,10 @@ export default function CalendarPlanner() {
     return (
       <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-900">
         <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate">{eventInfo.event.title}</span>
+        <span
+          className={eventInfo.event.id === `vac-${vacArmada}` ? 'whitespace-normal break-words' : 'truncate'}
+          title={eventInfo.event.title}
+        >{eventInfo.event.title}</span>
       </div>
     );
   };
@@ -868,8 +903,13 @@ export default function CalendarPlanner() {
               {modoVacaciones && (
                 <p className="text-xs text-[rgb(var(--color-text))]/80">{t('panel.vacation.markHint')}</p>
               )}
+              {!modoVacaciones && vacaciones.dias.some((dia) => dia >= hoyTienda) && (
+                <p className="text-xs text-[rgb(var(--color-text))]/80">{t('panel.vacation.removeHint')}</p>
+              )}
               {vacAviso && (
-                <p className="rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-800">{vacAviso}</p>
+                <p className={`rounded-md px-3 py-2 text-xs ${vacAviso.tipo === 'ok' ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'}`}>
+                  {vacAviso.texto}
+                </p>
               )}
             </div>
 
@@ -1063,17 +1103,20 @@ export default function CalendarPlanner() {
                         textColor: '#0b1120',
                       };
                     }),
-                    ...vacaciones.dias.map((dia) => ({
-                      id: `vac-${dia}`,
-                      title: t('panel.vacation.mine'),
-                      start: dia,
-                      allDay: true,
-                      editable: false,
-                      extendedProps: { tipo: 'vacacion', propia: true },
-                      backgroundColor: VACACION.fondo,
-                      borderColor: VACACION.hex,
-                      textColor: '#0b1120',
-                    })),
+                    ...vacaciones.dias.map((dia) => {
+                      const armada = vacArmada === dia;
+                      return {
+                        id: `vac-${dia}`,
+                        title: armada ? t('panel.vacation.tapAgain') : t('panel.vacation.mine'),
+                        start: dia,
+                        allDay: true,
+                        editable: false,
+                        extendedProps: { tipo: 'vacacion', propia: true },
+                        backgroundColor: armada ? '#fecaca' : VACACION.fondo,
+                        borderColor: armada ? '#ef4444' : VACACION.hex,
+                        textColor: '#0b1120',
+                      };
+                    }),
                     ...(canEdit ? vacaciones.sucursal : [])
                       .filter((v) => String(v.idusuario) !== String(userData?.idusuario))
                       .map((v) => ({

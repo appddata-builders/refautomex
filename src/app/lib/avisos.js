@@ -29,7 +29,7 @@ const NIVELES = { alta: 0, media: 1, info: 2 };
 export const CLAVES = [
   'pedidosVencidos', 'pedidosProximos', 'agotadosHoy', 'webPorEnviar',
   'facturasPorEmitir', 'pagosProveedor', 'cuentasNuevas',
-  'cumpleHoy', 'cumpleManana', 'miCumple',
+  'cumpleHoy', 'cumpleManana', 'miCumple', 'calendarioNuevo', 'calendarioProximo',
 ];
 
 // "Hoy" es el de la tienda, no el del servidor: el contenedor corre en UTC y a
@@ -57,6 +57,21 @@ const listaNombres = (filas) => ({
   nombres: filas.slice(0, MAX_NOMBRES).map(nombreCorto),
   extra: Math.max(0, filas.length - MAX_NOMBRES),
 });
+
+const listaTitulos = (filas) => ({
+  nombres: filas.slice(0, MAX_NOMBRES).map((f) => f.titulo),
+  extra: Math.max(0, filas.length - MAX_NOMBRES),
+});
+
+// El calendario se crea al guardar la primera fecha: sin tabla no hay avisos.
+const consultarOpcional = async (sql, params) => {
+  try {
+    return await consultar(sql, params);
+  } catch (error) {
+    if (error?.code === '42P01') return [];
+    throw error;
+  }
+};
 
 /**
  * Avisos de `usuario` (fila de usuario con nombre, categoria, idsucursal y
@@ -165,6 +180,47 @@ export const calcularAvisos = async (usuario, permisos, vistos = {}, ahora = new
         clave: 'pagosProveedor', nivel: pagos.some((p) => p.hoy) ? 'alta' : 'media', modulo: 'capture',
         datos: { n: pagos.length, hoy: pagos.filter((p) => p.hoy).length },
         firma: firmar([hoy, ...pagos.map((p) => p.id)]),
+      });
+    }
+  }
+
+  if (ve('calendar')) {
+    // Siempre el calendario de la sucursal propia, tambien para el admin: arma
+    // varias, pero le interesan las fechas de donde trabaja.
+    const propia = Number(usuario.idsucursal) || -1;
+
+    const proximas = await consultarOpcional(
+      `SELECT id, titulo FROM calendario_evento
+        WHERE idsucursal = ? AND inicio <= ?::date AND fin >= ?::date
+        ORDER BY inicio, titulo`,
+      [propia, manana, hoy]
+    );
+    if (proximas.length) {
+      avisos.push({
+        clave: 'calendarioProximo', nivel: 'media', modulo: 'calendar',
+        datos: { n: proximas.length, ...listaTitulos(proximas) },
+        firma: firmar([hoy, ...proximas.map((e) => e.id)]),
+      });
+    }
+
+    // Fechas agregadas despues de la ultima que este usuario vio (la firma
+    // guarda ese `creado`), incluso las agregadas por el propio usuario.
+    // to_jsonb permite leer calendarios anteriores a la columna `creado`.
+    const nuevas = await consultarOpcional(
+      `SELECT id, titulo,
+              to_char(COALESCE(to_jsonb(e)->>'creado', '1970-01-02')::timestamp,
+                      'YYYY-MM-DD"T"HH24:MI:SS.MS') AS creado
+         FROM calendario_evento e
+        WHERE idsucursal = ? AND fin >= ?::date
+          AND COALESCE(to_jsonb(e)->>'creado', '1970-01-02')::timestamp > ?::timestamp
+        ORDER BY creado, id`,
+      [propia, hoy, vistos.calendarioNuevo || '1970-01-01']
+    );
+    if (nuevas.length) {
+      avisos.push({
+        clave: 'calendarioNuevo', nivel: 'info', modulo: 'calendar',
+        datos: { n: nuevas.length, ...listaTitulos(nuevas) },
+        firma: nuevas[nuevas.length - 1].creado,
       });
     }
   }

@@ -27,7 +27,7 @@
  * secuencias con mayusculas en el nombre; la cache ya vale 1 y no cambia nada.
  */
 
-import { date, integer, numeric, pgTable, real, text, varchar } from 'drizzle-orm/pg-core';
+import { date, integer, numeric, pgTable, real, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 // No vino de `drizzle-kit pull`: es lo que cada usuario ya vio en la campana
 // de avisos. lib/avisos.js la crea con el mismo DDL al marcar por primera vez.
@@ -55,6 +55,7 @@ export const calendario_evento = pgTable('calendario_evento', {
   inicio: date().notNull(),
   fin: date().notNull(),
   actualizado_por: integer(),
+  creado: timestamp({ precision: 3, mode: 'string' }).defaultNow().notNull(),
 });
 
 export const cantidad = pgTable('cantidad', {

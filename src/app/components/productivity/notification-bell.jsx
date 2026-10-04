@@ -78,11 +78,18 @@ export default function NotificationBell({ lang }) {
     cargar();
     setRespaldo(respaldoPendiente());
     const quitar = alCambiarPendiente(setRespaldo);
+    const alGuardarCalendario = async () => {
+      // Si habia una lectura anterior al guardado, esperar y pedir datos nuevos.
+      if (pidiendo.current) await pidiendo.current;
+      cargar();
+    };
+    window.addEventListener('refautomex:calendario-actualizado', alGuardarCalendario);
     const id = setInterval(() => {
       if (!document.hidden) cargar();
     }, CADA_MS);
     return () => {
       clearInterval(id);
+      window.removeEventListener('refautomex:calendario-actualizado', alGuardarCalendario);
       quitar();
     };
   }, [cargar]);

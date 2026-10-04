@@ -92,7 +92,7 @@ export const getHydratedResources = async () => {
   }
 
   const resources = rows.length > 0
-    ? rowsToResources(rows)
+    ? rowsToResources([...fallbackRows, ...rows])
     : getFallbackResources();
 
   cache = resources;
