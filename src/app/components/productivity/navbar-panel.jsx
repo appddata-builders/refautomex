@@ -111,6 +111,7 @@ export default function NavbarPanel() {
         subNav: [
             { name: t('panel.nav.inventories'), href: '/productivity?load=inventories', modulo: 'inventories' },
             { name: t('panel.nav.warehouse'), href: '/productivity?load=warehouse', modulo: 'warehouse' },
+            { name: t('panel.nav.assignment'), href: '/productivity?load=assignment', modulo: 'assignment' },
             { name: t('panel.nav.missing'), href: '/productivity?load=missing', modulo: 'missing' },
         ],
         },

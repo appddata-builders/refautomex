@@ -152,7 +152,8 @@ export default function Warehouse() {
             });
 
             const data = await response.json().catch(() => ({}));
-            const message = data?.message || (response.ok ? t('panel.warehouse.migrateOk') : t('panel.warehouse.migrateFailed'));
+            // Las validaciones del servidor ('La matriz destino no está vacía.') llegan en `details`.
+            const message = data?.message || data?.details || (response.ok ? t('panel.warehouse.migrateOk') : t('panel.warehouse.migrateFailed'));
 
             if (!response.ok) {
                 updateSaveStatus('error', message);

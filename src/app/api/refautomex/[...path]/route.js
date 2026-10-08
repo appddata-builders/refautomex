@@ -32,6 +32,35 @@ const leerCuerpo = async (request) => {
   }
 };
 
+// Fallas que no son del endpoint sino de que la API no alcanza Postgres. En
+// local casi siempre es el tunel cerrado (README: `npm run db:tunnel`) o una
+// credencial vieja en .env.local. Se responde 503 con un mensaje que el login
+// muestra tal cual, en vez de un 500 con "connect ECONNREFUSED 127.0.0.1:5433"
+// que el usuario veia como "Error al verificar el estado de empleado".
+const SIN_RED = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'ECONNRESET', 'EAI_AGAIN']);
+const EN_LOCAL = process.env.NODE_ENV !== 'production';
+const SIN_BASE = 'No hay conexión con la base de datos. Intenta de nuevo en unos minutos.';
+
+const faltaDeBase = (error) => {
+  // Los dos mensajes son de pg-pool y pg: el pool se agoto esperando conexion
+  // o el servidor la corto.
+  const sinRed = SIN_RED.has(error?.code)
+    || /^(timeout exceeded when trying to connect|Connection terminated)/.test(error?.message || '');
+
+  if (sinRed) {
+    return EN_LOCAL
+      ? 'No hay conexión con la base de datos. Abre `npm run db:tunnel` en otra terminal y vuelve a intentar.'
+      : SIN_BASE;
+  }
+  // 28P01: usuario o contrasena rechazados por Postgres.
+  if (error?.code === '28P01') {
+    return EN_LOCAL
+      ? 'La base rechazó las credenciales. Revisa DATABASE_URL en .env.local y reinicia Next.'
+      : SIN_BASE;
+  }
+  return null;
+};
+
 const despachar = async (metodo, request, context) => {
   const params = (await context.params) || {};
   const segmentos = params.path || [];
@@ -61,6 +90,12 @@ const despachar = async (metodo, request, context) => {
     // Se conserva la forma de error del Express original: hay pantallas que
     // muestran `details` al usuario.
     console.error(`[refautomex/${nombre}]`, error);
+
+    const sinBase = faltaDeBase(error);
+    if (sinBase) {
+      return NextResponse.json({ error: 'Service Unavailable', details: sinBase }, { status: 503 });
+    }
+
     return NextResponse.json(
       { error: 'Internal Server Error', details: error.message },
       { status: 500 }

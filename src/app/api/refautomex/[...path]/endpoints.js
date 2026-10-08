@@ -83,6 +83,26 @@ const verifyLocation = async ({ query }) => {
     : { cuerpo: { exists: true, message: 'Localización ocupada por otra refacción.' } };
 };
 
+// Asignacion de productos: cada producto activo de la sucursal con su
+// ubicacion. El cliente arma el mapa por anaquel y separa lo que esta por
+// ubicar ('', '0' o una cadena que no tiene la forma 01A05-1).
+const getWarehouseMap = async ({ query }) => {
+  const idsucursal = query.get('idsucursal');
+  if (!idsucursal) return faltan('Missing idsucursal parameter');
+
+  return {
+    cuerpo: await consultar(
+      `SELECT d.num_parte, p.descripcion, d.existencia, COALESCE(l.localizacion, '') AS localizacion
+         FROM detalle d
+         INNER JOIN producto p USING (num_parte)
+         LEFT JOIN localizacion l USING (idlocalizacion)
+        WHERE d.idsucursal = ? AND p.status = 'A'
+        ORDER BY d.num_parte`,
+      [idsucursal]
+    ),
+  };
+};
+
 const getAllEmployees = async () => ({
   cuerpo: await consultar(
     'SELECT * FROM usuario INNER JOIN sucursal USING (idsucursal) WHERE empleado = 1'
@@ -226,6 +246,7 @@ const DIRECTOS = {
     getUser,
     verifyEmployee,
     verifyLocation,
+    getWarehouseMap,
     getAllEmployees,
     getAllProviders: tablaCompleta('proveedor'),
     getProviders: tablaCompleta('proveedor'),

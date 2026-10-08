@@ -33,6 +33,13 @@
  */
 
 import { consultar, escribir, enTransaccion, okPacket } from '@/app/lib/refautomex-db';
+import {
+  POR_UBICAR,
+  UBICACION_VALIDA,
+  bloquearUbicaciones,
+  idDeLocalizacion,
+  reubicarDetalle,
+} from './localizaciones';
 
 const faltan = (detalle) => ({ estado: 400, cuerpo: { error: 'Bad Request', details: detalle } });
 
@@ -165,22 +172,12 @@ const newProductDetail = async ({ body }) => {
 
   return {
     cuerpo: await enTransaccion(async (tx) => {
-      let filas = await tx.consultar(
-        'SELECT idlocalizacion FROM localizacion WHERE localizacion = ? LIMIT 1',
-        [localizacion]
-      );
-
-      if (filas.length === 0) {
-        filas = await tx.consultar(
-          'INSERT INTO localizacion (localizacion) VALUES (?) RETURNING idlocalizacion',
-          [localizacion]
-        );
-      }
+      const idlocalizacion = await idDeLocalizacion(tx, localizacion);
 
       const r = await tx.escribir(
         `INSERT INTO detalle (num_parte, idsucursal, idlocalizacion, existencia, costo, precio, aiva, utilidad)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [refaccion, idsucursal, filas[0].idlocalizacion, existencia ?? null,
+        [refaccion, idsucursal, idlocalizacion, existencia ?? null,
           costo ?? null, precio ?? null, aiva ?? null, utilidad ?? null]
       );
 
@@ -212,12 +209,7 @@ const patchProduct = async ({ body }) => {
         [existencia ?? null, costo ?? null, precio ?? null, utilidad ?? null, refaccion, idsucursal]
       );
 
-      await tx.escribir(
-        `UPDATE localizacion SET localizacion = ?
-          WHERE idlocalizacion IN (
-            SELECT idlocalizacion FROM detalle WHERE num_parte = ? AND idsucursal = ?)`,
-        [localizacion ?? null, refaccion, idsucursal]
-      );
+      await reubicarDetalle(tx, { num_parte: refaccion, idsucursal, localizacion });
 
       // El original filtraba nulos y cadenas vacias dentro del JSON_TABLE.
       if (rutas !== null && rutas !== undefined) {
@@ -239,24 +231,39 @@ const patchProduct = async ({ body }) => {
   };
 };
 
-// MigrateMatrixProducts: el cursor recorria ubicaciones para renombrarlas una
-// por una. Es un solo UPDATE con concatenacion, y las validaciones previas se
-// conservan en el mismo orden porque definen que mensaje de error ve el usuario.
+// MigrateMatrixProducts: mueve los productos de una matriz (01A05) a otra
+// dentro de UNA sucursal, conservando el indice: 01A05-3 -> 02B10-3.
+//
+// El original renombraba las filas de `localizacion` con LIKE y sin sucursal,
+// asi que la matriz se movia en todas las sucursales que la usaban, y bastaba
+// con que el destino existiera en cualquiera de ellas (o como fila suelta del
+// catalogo) para rechazar la migracion con 'El prefijo destino ya existe'. Esa
+// validacion ya no aplica: ahora se cambia a que fila apunta cada detalle de
+// esta sucursal (ver localizaciones.js), y lo unico que impide migrar es que
+// la matriz destino tenga productos AQUI.
+//
+// `?::int` y no `?` a secas: sin el tipo, Postgres toma la otra forma de
+// substring, `substring(texto FROM patron)`, busca '6' como expresion regular
+// y devuelve NULL.
 const patchMigrate = async ({ body }) => {
   const { source, target, idsucursal } = body || {};
   if (idsucursal === null || idsucursal === undefined) throw new Error('idsucursal es requerido.');
+  // Sin esto un origen vacio seria LIKE '%' y moveria la sucursal entera.
+  if (!source || !target) throw new Error('Indica la matriz origen y la matriz destino.');
+
+  const desde = String(source).length + 1;
 
   return {
     cuerpo: await enTransaccion(async (tx) => {
+      await bloquearUbicaciones(tx, idsucursal);
+
       const hayOrigen = await tx.consultar(
-        'SELECT 1 FROM localizacion WHERE localizacion LIKE ? LIMIT 1', [`${source}%`]
+        `SELECT 1 FROM detalle d
+           JOIN localizacion l ON l.idlocalizacion = d.idlocalizacion
+          WHERE d.idsucursal = ? AND l.localizacion LIKE ? LIMIT 1`,
+        [idsucursal, `${source}%`]
       );
       if (hayOrigen.length === 0) throw new Error('No hay ubicaciones con ese prefijo origen.');
-
-      const hayDestino = await tx.consultar(
-        'SELECT 1 FROM localizacion WHERE localizacion LIKE ? LIMIT 1', [`${target}%`]
-      );
-      if (hayDestino.length > 0) throw new Error('El prefijo destino ya existe.');
 
       const ocupada = await tx.consultar(
         `SELECT 1 FROM detalle d
@@ -266,19 +273,116 @@ const patchMigrate = async ({ body }) => {
       );
       if (ocupada.length > 0) throw new Error('La matriz destino no está vacía.');
 
-      // `?::int` y no `?` a secas: sin el tipo, Postgres toma la otra forma de
-      // substring, `substring(texto FROM patron)`, busca '10' como expresion
-      // regular, devuelve NULL y el UPDATE truena por NOT NULL.
+      await tx.escribir(
+        `WITH nuevas AS (
+           SELECT DISTINCT ?::text || substring(l.localizacion FROM ?::int) AS texto
+             FROM detalle d
+             JOIN localizacion l ON l.idlocalizacion = d.idlocalizacion
+            WHERE d.idsucursal = ? AND l.localizacion LIKE ?
+         )
+         INSERT INTO localizacion (localizacion)
+         SELECT texto FROM nuevas
+          WHERE NOT EXISTS (SELECT 1 FROM localizacion x WHERE x.localizacion = nuevas.texto)`,
+        [target, desde, idsucursal, `${source}%`]
+      );
+
       const r = await tx.escribir(
-        `UPDATE localizacion
-            SET localizacion = ? || substring(localizacion FROM ?::int)
-          WHERE localizacion LIKE ?`,
-        [target, String(source).length + 1, `${source}%`]
+        `UPDATE detalle d
+            SET idlocalizacion = (
+                  SELECT MIN(x.idlocalizacion) FROM localizacion x
+                   WHERE x.localizacion = ?::text || substring(l.localizacion FROM ?::int))
+           FROM localizacion l
+          WHERE l.idlocalizacion = d.idlocalizacion
+            AND d.idsucursal = ? AND l.localizacion LIKE ?`,
+        [target, desde, idsucursal, `${source}%`]
       );
 
       return okPacket(r);
     }),
   };
+};
+
+// Asignacion de productos: pone un producto en una ubicacion exacta de su
+// sucursal (01A05-3), o lo manda a "por ubicar" con '0'.
+//
+// Nunca deja dos productos en el mismo lugar. Si el destino esta ocupado
+// responde 409 con el ocupante y la pantalla ofrece intercambiar: con
+// `intercambiar`, el ocupante toma el lugar que deja el producto, o queda por
+// ubicar si el producto no venia de una ubicacion valida. Devuelve los
+// movimientos hechos para que la pantalla los pinte y pueda deshacerlos.
+const patchAssignLocation = async ({ body }) => {
+  const { idsucursal, num_parte, localizacion, intercambiar = false } = body || {};
+  if (!idsucursal || !num_parte || !localizacion) {
+    return faltan('Faltan idsucursal, num_parte o localizacion.');
+  }
+
+  const destino = String(localizacion).trim().toUpperCase();
+  if (destino !== POR_UBICAR && !UBICACION_VALIDA.test(destino)) {
+    return faltan(`La ubicación ${destino} no tiene la forma 01A05-1 o ENC-1.`);
+  }
+
+  return enTransaccion(async (tx) => {
+    await bloquearUbicaciones(tx, idsucursal);
+
+    const actual = await tx.consultar(
+      `SELECT COALESCE(l.localizacion, '') AS localizacion
+         FROM detalle d
+         LEFT JOIN localizacion l USING (idlocalizacion)
+        WHERE d.num_parte = ? AND d.idsucursal = ?
+        LIMIT 1`,
+      [num_parte, idsucursal]
+    );
+    if (actual.length === 0) {
+      return {
+        estado: 404,
+        cuerpo: { error: 'Not Found', details: `${num_parte} no tiene inventario en esta sucursal.` },
+      };
+    }
+
+    const origen = actual[0].localizacion;
+    if (origen === destino) return { cuerpo: { ok: true, movimientos: [] } };
+
+    const movimientos = [{ num_parte, de: origen, a: destino }];
+
+    if (destino !== POR_UBICAR) {
+      const ocupantes = (await tx.consultar(
+        `SELECT d.num_parte
+           FROM detalle d
+           JOIN localizacion l USING (idlocalizacion)
+          WHERE d.idsucursal = ? AND l.localizacion = ? AND d.num_parte <> ?
+          ORDER BY d.num_parte`,
+        [idsucursal, destino, num_parte]
+      )).map((fila) => fila.num_parte);
+
+      if (ocupantes.length > 1) {
+        return {
+          estado: 409,
+          cuerpo: {
+            error: 'Conflict',
+            details: `${destino} ya tiene ${ocupantes.length} productos; mueve uno antes de usarla.`,
+            ocupantes,
+          },
+        };
+      }
+
+      if (ocupantes.length === 1) {
+        const [ocupante] = ocupantes;
+        if (!intercambiar) {
+          return {
+            estado: 409,
+            cuerpo: { error: 'Conflict', details: `${destino} ya la ocupa ${ocupante}.`, ocupantes },
+          };
+        }
+
+        const lugarQueDeja = UBICACION_VALIDA.test(origen) ? origen : POR_UBICAR;
+        await reubicarDetalle(tx, { num_parte: ocupante, idsucursal, localizacion: lugarQueDeja });
+        movimientos.push({ num_parte: ocupante, de: destino, a: lugarQueDeja });
+      }
+    }
+
+    await reubicarDetalle(tx, { num_parte, idsucursal, localizacion: destino });
+    return { cuerpo: { ok: true, movimientos } };
+  });
 };
 
 // ---------------------------------------------------------------------------
@@ -687,6 +791,7 @@ export const ESCRITURAS = {
     patchHistoryStatus,
     patchProduct,
     patchMigrate,
+    patchAssignLocation,
     patchCapture,
   },
   DELETE: {

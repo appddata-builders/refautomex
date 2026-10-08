@@ -61,10 +61,10 @@ export default function LogIn() {
                         setStorageValue('CognitoUserSession', null);
                         setLoading(false);
                     }
-                }).catch(() => {
+                }).catch((error) => {
                     cognitoUser.signOut();
                     setStorageValue('CognitoUserSession', null);
-                    setAlertMessage(t('panel.login.statusError'));
+                    setAlertMessage(error?.userMessage || t('panel.login.statusError'));
                     setLoading(false);
                 });
             },
@@ -90,7 +90,12 @@ export default function LogIn() {
 
         if (response.status === 404) return false;
         if (!response.ok) {
-            throw new Error(`Error ${response.status}: ${response.statusText}`);
+            // 503: la API no alcanza la base (en local, el tunel cerrado) y su
+            // mensaje dice que hacer. Cualquier otro error queda en el generico.
+            const data = response.status === 503 ? await response.json().catch(() => null) : null;
+            const error = new Error(`Error ${response.status}: ${response.statusText}`);
+            error.userMessage = data?.details;
+            throw error;
         }
 
         const data = await response.json();

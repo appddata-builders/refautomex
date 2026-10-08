@@ -15,6 +15,7 @@ import Personal from '@/app/components/productivity/services/personal';
 import Calendar from '@/app/components/productivity/services/calendar';
 import Invoice from '@/app/components/productivity/services/invoice';
 import Warehouse from '@/app/components/productivity/stock/warehouse';
+import Assignment from '@/app/components/productivity/stock/assignment';
 import Inventories from '@/app/components/productivity/stock/inventories';
 import Missing from '@/app/components/productivity/stock/missing';
 import Capture from '@/app/components/productivity/requirements/capture';
@@ -67,6 +68,7 @@ export default function Productivity() {
       case 'devolution': return <Devolution />;
       case 'history': return <History />;
       case 'warehouse': return <Warehouse />;
+      case 'assignment': return <Assignment />;
       case 'inventories': return <Inventories />;
       case 'missing': return <Missing />;
       case 'capture': return <Capture />;

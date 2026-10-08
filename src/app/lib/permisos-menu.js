@@ -33,6 +33,9 @@ export const MODULOS = [
   { clave: 'history', seccion: 'sales', admin: true, empleado: false },
   { clave: 'inventories', seccion: 'stock', admin: true, empleado: false },
   { clave: 'warehouse', seccion: 'stock', admin: true, empleado: true },
+  // Mueve inventario real al momento. Se le puede dar al almacenista desde
+  // Permisos de perfil; un empleado solo ve y asigna en su sucursal.
+  { clave: 'assignment', seccion: 'stock', admin: true, empleado: false },
   { clave: 'missing', seccion: 'stock', admin: true, empleado: true },
   { clave: 'capture', seccion: 'purchases', admin: true, empleado: false },
   { clave: 'providers', seccion: 'purchases', admin: true, empleado: false },

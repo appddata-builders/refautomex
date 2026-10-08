@@ -209,6 +209,14 @@ const FindProducts = forwardRef(({
     allowedSearchTypes,
     hideSearchInput = false,
     branch,
+    // Para modulos que solo muestran parte del catalogo (Asignacion: lo que
+    // esta por ubicar). Se aplica antes de buscar, asi que tambien cuenta en
+    // los resultados.
+    productFilter,
+    // En modo selector (onProductPick), boton visible en cada tarjeta con la
+    // accion del modulo; sin el, la tarjeta completa sigue siendo el boton.
+    pickActionLabel,
+    emptyMessage,
 }, ref) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [products, setProducts] = useState([]);
@@ -423,9 +431,10 @@ const FindProducts = forwardRef(({
     }, [userBranchId, showAllBranches, includePendingProducts, includeWebBranch]);
 
     useEffect(() => {
-        const result = filterProductsByCategory(products, searchTerm, searchType);
+        const source = productFilter ? products.filter(productFilter) : products;
+        const result = filterProductsByCategory(source, searchTerm, searchType);
         setFilteredProducts(result.dataProducts);
-    }, [searchTerm, products, searchType]);
+    }, [searchTerm, products, searchType, productFilter]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -615,7 +624,7 @@ const FindProducts = forwardRef(({
                     <button type="button" onClick={fetchProducts} className="mt-3 underline">{t('common.retry')}</button>
                 </div>
             ) : paginatedProducts.length === 0 ? (
-                <p role="status" className="p-6 text-center">{t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') })}</p>
+                <p role="status" className="p-6 text-center">{emptyMessage || t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') })}</p>
             ) : (
                 showCards && (
                     <div className="relative min-h-[30rem] w-full grow [container-type:inline-size] max-lg:mx-auto max-lg:max-w-sm">
@@ -733,6 +742,18 @@ const FindProducts = forwardRef(({
                                                             </p>
                                                             )}
                                                         </div>
+                                                        {isPickerMode && pickActionLabel && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    onProductPick(product);
+                                                                }}
+                                                                className="mt-1 w-full rounded-lg bg-amber-500 py-1.5 text-xs font-semibold text-slate-900 shadow transition hover:bg-amber-400"
+                                                            >
+                                                                {pickActionLabel}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     {stockAlerts[product.num_parte] && product.existencia === 0 && (
                                                     <div className="absolute left-2 right-2 bottom-2 rounded-full bg-amber-400/90 text-[rgb(var(--color-card))] text-[10px] font-semibold flex items-center justify-center gap-1 py-1 shadow-lg shadow-amber-500/40">

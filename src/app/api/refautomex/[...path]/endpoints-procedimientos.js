@@ -26,6 +26,7 @@
  */
 
 import { consultar, llamar, escribir, enTransaccion, okPacket } from '@/app/lib/refautomex-db';
+import { reubicarDetalle } from './localizaciones';
 
 const faltan = (detalle) => ({
   estado: 400,
@@ -368,6 +369,10 @@ const deleteProductDetail = async ({ body }) => {
 //      SET d.existencia = ..., l.localizacion = ...
 // Postgres no puede actualizar dos tablas en una sentencia. Se parte en tres,
 // dentro de una transaccion para conservar la atomicidad que daba MySQL.
+//
+// La tercera ya no renombra la fila de `localizacion` como hacia el original:
+// esa fila la comparten otros detalles, de esta y de otras sucursales. Se
+// cambia a que fila apunta el detalle (ver localizaciones.js).
 const patchTableProducts = async ({ body }) => {
   const { refaccion, idsucursal, existencia, localizacion, descripcion, costo, precio, aiva } =
     body || {};
@@ -386,14 +391,7 @@ const patchTableProducts = async ({ body }) => {
         [existencia ?? null, costo ?? null, aiva ?? null, precio ?? null, refaccion, idsucursal]
       );
 
-      await tx.escribir(
-        `UPDATE localizacion
-            SET localizacion = ?
-          WHERE idlocalizacion IN (
-            SELECT idlocalizacion FROM detalle
-             WHERE num_parte = ? AND idsucursal = ?)`,
-        [localizacion ?? null, refaccion, idsucursal]
-      );
+      await reubicarDetalle(tx, { num_parte: refaccion, idsucursal, localizacion });
 
       return okPacket(r);
     }),
