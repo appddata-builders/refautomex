@@ -4,8 +4,7 @@ import { FaInstagram, FaWhatsapp, FaFacebookSquare } from 'react-icons/fa';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
 import { useContext, useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Footer() {
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
@@ -17,12 +16,12 @@ export default function Footer() {
     const searchParams = useSearchParams();
     const [selectedLanguage, setSelectedLanguage] = useState('es');
 
-    const message = 'Buen día, quiero conocer más sobre los servicios de Refautomex.';
+    const message = t('index.video.whatsapp');
     const phoneNumber = "5639557232";
     const navigation = {
         social: [
             {
-                name: 'Instagram',
+                name: t('footer.socialInstagram'),
                 href: 'https://www.instagram.com/refautomex.by.volkspaco/',
                 icon: (props) => (
                     <FaInstagram
@@ -34,7 +33,7 @@ export default function Footer() {
                 ),
             },
             {
-                name: 'LinkedIn',
+                name: t('footer.socialWhatsapp'),
                 href: `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`,
                 icon: (props) => (
                     <FaWhatsapp size={iconSize} className='transition duration-300 ease-in-out
@@ -43,7 +42,7 @@ export default function Footer() {
                 ),
             },
             {
-                name: 'Facebook',
+                name: t('footer.socialFacebook'),
                 href: `https://www.facebook.com/search/top?q=refautomex%20by%20volkspaco`,
                 icon: (props) => (
                     <FaFacebookSquare size={iconSize} className='transition duration-300 ease-in-out
@@ -81,7 +80,7 @@ export default function Footer() {
                                 position: 'relative',
                             }}
                         >
-                            <img src={bubble.url} alt="logo" className={`${bubble.large}`} style={{ objectFit: 'contain' }} />
+                            <img src={bubble.url} alt={t('alt.brandLogo')} className={`${bubble.large}`} style={{ objectFit: 'contain' }} />
                         </div>
                     ))}
                 </div>
@@ -170,7 +169,7 @@ export default function Footer() {
                     ))}
                 </div>
                 <p className="mt-4 text-center text-xs leading-5 text-[rgb(var(--color-text))]">
-                    2025 Refautomex.com - <Link href={{ pathname: "/privacy", query: { lang: selectedLanguage } }} className='text-[rgb(var(--color-refautomex))]'>{t('footer.notice')}</Link>
+                    {t('footer.copyright')} - <Link href={{ pathname: "/privacy", query: { lang: selectedLanguage } }} className='text-[rgb(var(--color-refautomex))]'>{t('footer.notice')}</Link>
                 </p>
             </div>
         </footer>

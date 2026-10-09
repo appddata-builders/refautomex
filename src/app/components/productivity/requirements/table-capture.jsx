@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import Select from 'react-select';
 import { MdDelete, MdDeleteSweep } from 'react-icons/md';
 import { IoText } from 'react-icons/io5';
@@ -51,6 +52,7 @@ const TableCapture = forwardRef(({
     folio = null,
     defaultDiscounts = {}
 }, ref) => {
+    const { t } = useTranslation();
     const [quantities, setQuantities] = useState({});
     const [costs, setCosts] = useState({});
     const [baseCosts, setBaseCosts] = useState({});
@@ -132,16 +134,16 @@ const TableCapture = forwardRef(({
             const current = prev[productRef] || [];
             if (current.length >= MAX_DISCOUNTS) {
                 if (!isGeneralRow) {
-                    setError('Cada refacción permite máximo 3 descuentos.');
+                    setError(t('panel.tableCapture.maxDiscounts'));
                 }
                 return prev;
             }
             if (current.some((row) => !row.confirmed)) {
-                setError('Confirma o elimina el descuento pendiente antes de agregar otro.');
+                setError(t('panel.tableCapture.pendingDiscount'));
                 return prev;
             }
             if (Number.isFinite(numericDiscount) && (numericDiscount < 0 || numericDiscount >= 1)) {
-                setError('El descuento debe estar entre 0 y 0.9999.');
+                setError(t('panel.tableCapture.decimalRange'));
                 return prev;
             }
             const hasNumericValue = Number.isFinite(numericDiscount) && numericDiscount > 0;
@@ -170,11 +172,11 @@ const TableCapture = forwardRef(({
         if (isGeneral) {
             const numericDiscount = Number(discountValue);
             if (!items.length) {
-                setError('Agrega al menos una refacción antes de aplicar descuentos.');
+                setError(t('panel.newCapture.needPartsForDiscount'));
                 return;
             }
             if (!Number.isFinite(numericDiscount) || numericDiscount <= 0 || numericDiscount >= 1) {
-                setError('El descuento debe ser mayor a 0 y menor a 1.');
+                setError(t('panel.tableCapture.discountRange'));
                 return;
             }
             let applied = false;
@@ -188,13 +190,13 @@ const TableCapture = forwardRef(({
                 }
             });
             if (!applied) {
-                setError('No fue posible aplicar el descuento general.');
+                setError(t('panel.tableCapture.generalDiscountError'));
             }
             return;
         }
 
         if (!productRef) {
-            setError('Selecciona una refacción para agregar el descuento.');
+            setError(t('panel.tableCapture.pickPart'));
             return;
         }
 
@@ -249,7 +251,7 @@ const TableCapture = forwardRef(({
             const rows = prev[productRef] || [];
             const target = rows.find((row) => row.id === discountId);
             if (!target || target.value <= 0) {
-                setError('Ingresa un decimal válido antes de confirmar.');
+                setError(t('panel.tableCapture.invalidDecimal'));
                 return prev;
             }
             const updated = rows.map((row) =>
@@ -267,7 +269,7 @@ const TableCapture = forwardRef(({
     const handleDiscountChange = (productRef, discountId, value) => {
         const numericValue = value === '' ? '' : Number(value);
         if (value !== '' && (Number.isNaN(numericValue) || numericValue < 0 || numericValue >= 1)) {
-            setError('El descuento debe estar entre 0 y 0.9999.');
+            setError(t('panel.tableCapture.decimalRange'));
             return;
         }
         setDiscountRows((prev) => {
@@ -461,14 +463,14 @@ const TableCapture = forwardRef(({
                 <table className="w-[845px] text-sm text-left text-[rgb(var(--color-text))] shadow-sm">
                     <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))]">
                         <tr>
-                            <th className="p-3">REFACCIÓN</th>
-                            <th className="p-3">DESCRIPCIÓN</th>
-                            <th className="p-3">EXISTENCIA</th>
-                            <th className="p-3">NUEVA CANTIDAD</th>
-                            <th className="p-3">COSTO</th>
-                            <th className="p-3">P. VENTA</th>
-                            <th className="p-3">DESCUENTO</th>
-                            <th className="p-3">IMPORTE</th>
+                            <th className="p-3">{t('panel.table.part')}</th>
+                            <th className="p-3">{t('panel.table.description')}</th>
+                            <th className="p-3">{t('panel.table.stock')}</th>
+                            <th className="p-3">{t('panel.table.newQuantity')}</th>
+                            <th className="p-3">{t('panel.table.cost')}</th>
+                            <th className="p-3">{t('panel.table.salePrice')}</th>
+                            <th className="p-3">{t('panel.table.discount')}</th>
+                            <th className="p-3">{t('panel.table.amount')}</th>
                             <th className="p-3"></th>
                         </tr>
                     </thead>
@@ -536,7 +538,7 @@ const TableCapture = forwardRef(({
                                                 <div className='bg-yellow-500 rounded-full shadow h-5 w-5 flex items-center justify-center'>
                                                     <RiCoinsFill />
                                                 </div>
-                                                <span className='bg-[rgb(var(--color-card))] rounded-md mt-2 p-1'>Descuento</span>
+                                                <span className='bg-[rgb(var(--color-card))] rounded-md mt-2 p-1'>{t('panel.capture.discount')}</span>
                                             </div>
                                         </td>
                                         <td className="p-4">{amount}</td>
@@ -545,7 +547,7 @@ const TableCapture = forwardRef(({
                                                 onClick={() => handleRemoveClick(item)}
                                                 className={`rounded-full p-2 ${item.locked ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-500 text-white hover:bg-red-700'}`}
                                                 disabled={!!folio || item.locked}
-                                                title={item.locked ? 'No es posible eliminar refacciones guardadas previamente.' : 'Eliminar refacción'}
+                                                title={item.locked ? t('panel.tableCapture.lockedRow') : t('panel.tableCapture.removePart')}
                                             >
                                                 <MdDelete />
                                             </button>
@@ -568,7 +570,7 @@ const TableCapture = forwardRef(({
                                         value={notes}
                                         onChange={(e) => handleAddNote(e.target.value)}
                                         className="w-full px-2 py-1 border border-[rgb(var(--color-border))] rounded text-xs text-blue-500 focus:ring-blue-500 focus:border-blue-500 bg-[rgb(var(--color-card))] uppercase text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text))] placeholder:opacity-60"
-                                        placeholder="Pagado por entregar (¿Que?)"
+                                        placeholder={t('panel.table.notePlaceholder')}
                                         rows="3"
                                         maxLength="80"
                                         disabled={!!folio}
@@ -577,27 +579,27 @@ const TableCapture = forwardRef(({
                             </tr>
                         )}
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">NETO:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.net')}</td>
                             <td className="py-4 px-1 font-bold text-md text-[rgb(var(--color-text))]" colSpan="8">
-                                {neto.toFixed(2)} MXN
+                                {neto.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">DESCUENTO TOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.totalDiscount')}</td>
                             <td className="py-4 px-1 font-bold text-md text-[rgb(var(--color-text))]" colSpan="8">
-                                {totalDiscount.toFixed(2)} MXN
+                                {totalDiscount.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">SUBTOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.subtotal')}</td>
                             <td className="py-4 px-1 font-bold text-md text-[rgb(var(--color-text))]" colSpan="8">
-                                {subtotal.toFixed(2)} MXN
+                                {subtotal.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">TOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.total2')}</td>
                             <td className="py-4 px-1 font-bold text-xl text-green-600" colSpan="8">
-                                {totalWithTax.toFixed(2)} MXN
+                                {totalWithTax.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                     </tbody>

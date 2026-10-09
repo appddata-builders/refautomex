@@ -1,9 +1,8 @@
 'use client';
 
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { RiEdit2Line } from 'react-icons/ri';
 import RefautomexLogo from '@/app/components/refautomex-logo';
-import '@/app/translations/i18next-translation';
 
 export default function PrivacyContent({ lang }) {
     const { t, i18n } = useTranslation();

@@ -4,6 +4,7 @@ import { HiClipboardDocumentList } from "react-icons/hi2";
 import { GrStatusGoodSmall } from "react-icons/gr";
 import { MdPhone, MdEmail, MdOutlineDiscount, MdOutlineAccessTime } from "react-icons/md";
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const getInitials = (text = '') => {
     if (!text) return 'PR';
@@ -59,6 +60,7 @@ const INITIAL_PROVIDER_FORM = {
 };
 
 export default function Providers() {
+    const { t } = useTranslation();
     const [providers, setProviders] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
     const [error, setError] = useState(null);
@@ -87,7 +89,7 @@ export default function Providers() {
             setProviders(Array.isArray(data) ? data : []);
         } catch (err) {
             console.error('Error fetching providers:', err);
-            setError('No pudimos cargar la lista de proveedores. Intenta de nuevo más tarde.');
+            setError(t('panel.providers.loadError'));
             setProviders([]);
         } finally {
             setLoading(false);
@@ -169,25 +171,25 @@ export default function Providers() {
     const validateProviderForm = () => {
         const errors = {};
         if (!providerForm.empresa?.trim()) {
-            errors.empresa = 'La razón social es obligatoria.';
+            errors.empresa = t('panel.providers.errCompany');
         }
         if (!providerForm.contacto?.trim()) {
-            errors.contacto = 'El contacto es obligatorio.';
+            errors.contacto = t('panel.providers.errContact');
         }
         if (providerForm.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(providerForm.email)) {
-            errors.email = 'El correo principal no es válido.';
+            errors.email = t('panel.providers.errEmail');
         }
         if (providerForm.correo && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(providerForm.correo)) {
-            errors.correo = 'El correo alterno no es válido.';
+            errors.correo = t('panel.providers.errAltEmail');
         }
         if (providerForm.telefono && providerForm.telefono.replace(/\D/g, '').length < 7) {
-            errors.telefono = 'El teléfono requiere al menos 7 dígitos.';
+            errors.telefono = t('panel.providers.errPhone');
         }
         if (providerForm.celular && providerForm.celular.replace(/\D/g, '').length < 7) {
-            errors.celular = 'El celular requiere al menos 7 dígitos.';
+            errors.celular = t('panel.providers.errMobile');
         }
         if (providerForm.descuento && Number(providerForm.descuento) < 0) {
-            errors.descuento = 'El descuento no puede ser negativo.';
+            errors.descuento = t('panel.providers.errDiscount');
         }
         return errors;
     };
@@ -198,7 +200,7 @@ export default function Providers() {
         if (Object.keys(errors).length > 0) {
             setFormFeedback({
                 type: 'error',
-                message: 'Revisa los campos marcados antes de continuar.',
+                message: t('panel.providers.errFields'),
             });
             return;
         }
@@ -230,7 +232,7 @@ export default function Providers() {
 
             setFormFeedback({
                 type: 'success',
-                message: isEditing ? 'Proveedor actualizado correctamente.' : 'Proveedor agregado correctamente.',
+                message: isEditing ? t('panel.providers.updateOk') : t('panel.providers.createOk'),
             });
             await fetchProviders();
             if (!isEditing) {
@@ -242,7 +244,7 @@ export default function Providers() {
             console.error('Error saving provider:', err);
             setFormFeedback({
                 type: 'error',
-                message: 'No fue posible guardar la información. Intenta nuevamente.',
+                message: t('panel.providers.saveError'),
             });
         } finally {
             setIsSubmitting(false);
@@ -259,7 +261,7 @@ export default function Providers() {
 
     const renderProviderCard = (provider, index) => {
         const providerKey = provider.id || provider.idproveedor || provider.empresa || index;
-        const contactName = provider.contacto || provider.representante || 'Sin contacto asignado';
+        const contactName = provider.contacto || provider.representante || t('panel.providers.noContact');
         const phone = provider.telefono || provider.celular || provider.phone || '';
         const email = provider.email || provider.correo || provider.mail || '';
         const creditDays = provider.plazo_dias || provider.plazo || provider.diascredito;
@@ -287,16 +289,16 @@ export default function Providers() {
                     <div className="absolute left-4 top-2 flex h-10 w-10 items-center justify-center rounded-full shadow-2xl bg-[rgb(var(--color-bg))] text-[rgb(var(--color-amber))] font-semibold">
                         {getInitials(provider.empresa)}
                     </div>
-                    {provider.empresa || 'Proveedor sin nombre'}
+                    {provider.empresa || t('panel.providers.noName')}
                 </dt>
                 <dd className="mt-4 pl-1 text-sm text-[rgb(var(--color-text))] space-y-2">
-                    {phone && phone !== 'Sin teléfono' && (
+                    {phone && phone !== t('panel.providers.noPhone') && (
                         <div className="flex items-center gap-2">
                             <MdPhone />
                             <span>{phone}</span>
                         </div>
                     )}
-                    {email && email !== 'Sin correo' && (
+                    {email && email !== t('panel.providers.noEmail') && (
                         <div className="flex items-center gap-2">
                             <MdEmail />
                             <span className="truncate">{email}</span>
@@ -304,16 +306,16 @@ export default function Providers() {
                     )}
                     <div className="flex items-center gap-2">
                         <MdOutlineAccessTime />
-                        <span>{creditDays ? `${creditDays} días de crédito` : 'Sin plazo definido'}</span>
+                        <span>{creditDays ? t('panel.providers.creditDays', { days: creditDays }) : t('panel.providers.noTerm')}</span>
                     </div>
                     {discount && (
                         <div className="flex items-center gap-2">
                             <MdOutlineDiscount />
-                            <span>Descuento sugerido: {discount}</span>
+                            <span>{t('panel.newCapture.suggestedDiscount')}: {discount}</span>
                         </div>
                     )}
                     <p className="text-xs text-[rgb(var(--color-card-base))] font-semibold mt-2 pt-2 border-t border-[rgb(var(--color-border))]">
-                        Contacto: {contactName}
+                        {t('panel.providers.contact')}: {contactName}
                     </p>
                 </dd>
             </div>
@@ -323,9 +325,9 @@ export default function Providers() {
     return (
         <div className="bg-gradient-to-b from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
             <Title
-                title='Proveedores'
+                title={t('panel.providers.title')}
                 icon={HiClipboardDocumentList}
-                back='Volver al panel'
+                back={t('panel.common.back')}
                 path='/productivity'
             />
             <div className="mx-auto max-w-7xl px-6 lg:px-8 min-h-screen h-auto">
@@ -334,7 +336,7 @@ export default function Providers() {
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                             <input
                                 type="text"
-                                placeholder="Buscar por empresa, contacto o correo"
+                                placeholder={t('panel.providers.searchPlaceholder')}
                                 value={searchTerm}
                                 onChange={(event) => setSearchTerm(event.target.value)}
                                 className="p-2 border border-[rgb(var(--color-border))] rounded-md flex-1 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
@@ -344,7 +346,7 @@ export default function Providers() {
                                 className="px-4 py-2 rounded-md bg-amber-500 text-white font-semibold shadow hover:bg-amber-600"
                                 onClick={handleCreateProviderClick}
                             >
-                                Alta de proveedor
+                                {t('panel.providers.create')}
                             </button>
                         </div>
                         {error && (
@@ -353,13 +355,13 @@ export default function Providers() {
                             </div>
                         )}
                         {loading ? (
-                            <div className="text-center py-10 text-[rgb(var(--color-text))]">Cargando proveedores...</div>
+                            <div className="text-center py-10 text-[rgb(var(--color-text))]">{t('panel.providers.loading')}</div>
                         ) : (
                             <>
                                 <section className="mt-6">
-                                    <h2 className="text-2xl font-bold text-[rgb(var(--color-text))] mb-4">Proveedores activos</h2>
+                                    <h2 className="text-2xl font-bold text-[rgb(var(--color-text))] mb-4">{t('panel.providers.activeTitle')}</h2>
                                     {activeProviders.length === 0 ? (
-                                        <p className="text-sm text-[rgb(var(--color-gray))]">No encontramos proveedores activos con ese criterio.</p>
+                                        <p className="text-sm text-[rgb(var(--color-gray))]">{t('panel.providers.activeEmpty')}</p>
                                     ) : (
                                         <dl className="grid grid-cols-1 gap-5 gap-x-4 xl:gap-x-3 lg:max-w-none md:grid-cols-2 xl:grid-cols-4 lg:gap-y-8">
                                             {activeProviders.map(renderProviderCard)}
@@ -368,9 +370,9 @@ export default function Providers() {
                                 </section>
 
                                 <section className="mt-10">
-                                    <h2 className="text-2xl font-bold text-[rgb(var(--color-text))] mb-4">Pausados o sin actividad</h2>
+                                    <h2 className="text-2xl font-bold text-[rgb(var(--color-text))] mb-4">{t('panel.providers.pausedTitle')}</h2>
                                     {pausedProviders.length === 0 ? (
-                                        <p className="text-sm text-[rgb(var(--color-gray))]">No hay proveedores pausados.</p>
+                                        <p className="text-sm text-[rgb(var(--color-gray))]">{t('panel.providers.pausedEmpty')}</p>
                                     ) : (
                                         <dl className="grid grid-cols-1 gap-3 lg:max-w-none md:grid-cols-2 xl:grid-cols-4 lg:gap-y-8">
                                             {pausedProviders.map(renderProviderCard)}
@@ -384,7 +386,7 @@ export default function Providers() {
                     <div className="mx-auto my-10 max-w-4xl bg-[rgb(var(--color-card))] rounded-2xl shadow-lg p-6">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                             <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-                                {viewMode === 'detail' ? `Editar proveedor: ${providerForm.empresa || ''}` : 'Alta de proveedor'}
+                                {viewMode === 'detail' ? t('panel.providers.edit', { company: providerForm.empresa || '' }) : t('panel.providers.create')}
                             </h2>
                             <div className="flex gap-3">
                                 <button
@@ -392,7 +394,7 @@ export default function Providers() {
                                     onClick={handleCancelForm}
                                     className="px-4 py-2 rounded-md border border-[rgb(var(--color-border))] text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-bg))]"
                                 >
-                                    Volver a proveedores
+                                    {t('panel.providers.backToList')}
                                 </button>
                             </div>
                         </div>
@@ -409,7 +411,7 @@ export default function Providers() {
                         )}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Empresa</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.company')}</label>
                                 <input
                                     type="text"
                                     value={providerForm.empresa}
@@ -419,7 +421,7 @@ export default function Providers() {
                                 {formErrors.empresa && <p className="text-xs text-red-500 mt-1">{formErrors.empresa}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Contacto</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.contact')}</label>
                                 <input
                                     type="text"
                                     value={providerForm.contacto}
@@ -429,7 +431,7 @@ export default function Providers() {
                                 {formErrors.contacto && <p className="text-xs text-red-500 mt-1">{formErrors.contacto}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Representante</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.rep')}</label>
                                 <input
                                     type="text"
                                     value={providerForm.representante}
@@ -438,7 +440,7 @@ export default function Providers() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Teléfono</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('account.phone')}</label>
                                 <input
                                     type="tel"
                                     value={providerForm.telefono}
@@ -448,7 +450,7 @@ export default function Providers() {
                                 {formErrors.telefono && <p className="text-xs text-red-500 mt-1">{formErrors.telefono}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Celular</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.mobile')}</label>
                                 <input
                                     type="tel"
                                     value={providerForm.celular}
@@ -458,7 +460,7 @@ export default function Providers() {
                                 {formErrors.celular && <p className="text-xs text-red-500 mt-1">{formErrors.celular}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Correo principal</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.email')}</label>
                                 <input
                                     type="email"
                                     value={providerForm.email}
@@ -468,7 +470,7 @@ export default function Providers() {
                                 {formErrors.email && <p className="text-xs text-red-500 mt-1">{formErrors.email}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Correo alterno</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.altEmail')}</label>
                                 <input
                                     type="email"
                                     value={providerForm.correo}
@@ -478,7 +480,7 @@ export default function Providers() {
                                 {formErrors.correo && <p className="text-xs text-red-500 mt-1">{formErrors.correo}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Plazo (días)</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.term')}</label>
                                 <input
                                     type="number"
                                     value={providerForm.plazo_dias}
@@ -488,7 +490,7 @@ export default function Providers() {
                                 />
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Descuento sugerido (%)</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.discount')}</label>
                                 <input
                                     type="number"
                                     value={providerForm.descuento}
@@ -499,18 +501,18 @@ export default function Providers() {
                                 {formErrors.descuento && <p className="text-xs text-red-500 mt-1">{formErrors.descuento}</p>}
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Estatus</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.status')}</label>
                                 <select
                                     value={providerForm.status}
                                     onChange={(e) => handleFormChange('status', e.target.value)}
                                     className="mt-1 w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] p-2 text-[rgb(var(--color-text))]"
                                 >
-                                    <option value="A">Activo</option>
-                                    <option value="I">Inactivo</option>
+                                    <option value="A">{t('panel.providers.active')}</option>
+                                    <option value="I">{t('panel.providers.inactive')}</option>
                                 </select>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">Dirección</label>
+                                <label className="block text-sm font-medium text-[rgb(var(--color-text))]">{t('panel.providers.address')}</label>
                                 <textarea
                                     value={providerForm.direccion}
                                     onChange={(e) => handleFormChange('direccion', e.target.value)}
@@ -525,7 +527,7 @@ export default function Providers() {
                                 onClick={handleCancelForm}
                                 className="px-4 py-2 rounded-md border border-[rgb(var(--color-border))] text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-bg))]"
                             >
-                                Cancelar
+                                {t('panel.common.cancel')}
                             </button>
                             <button
                                 type="button"
@@ -533,7 +535,7 @@ export default function Providers() {
                                 disabled={isSubmitting}
                                 className="px-4 py-2 rounded-md bg-green-600 text-white font-semibold shadow hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {isSubmitting ? 'Guardando...' : 'Guardar cambios'}
+                                {isSubmitting ? t('panel.providers.saving') : t('panel.providers.save')}
                             </button>
                         </div>
                     </div>

@@ -17,8 +17,11 @@ import { HiOutlineViewGridAdd } from "react-icons/hi";
 import { MdAutorenew } from "react-icons/md";
 import ListToPrint from './list-print';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
-const fetchNewSale = async (sale_data) => {
+// `t` llega por parametro: la funcion vive fuera del componente y no puede
+// usar el hook para leer el mensaje de error.
+const fetchNewSale = async (sale_data, t) => {
     const endpoint = buildApiUrl('/newSale');
     try {
         const response = await fetch(endpoint, {
@@ -40,7 +43,7 @@ const fetchNewSale = async (sale_data) => {
         return data?.folio;
     } catch (error) {
         console.error('Error generating sale:', error);
-        alert("Imposible vender, por favor intenta nuevamente más tarde.");
+        alert(t('panel.tickets.saleError'));
         return null;
     }
 };
@@ -50,7 +53,12 @@ const formatDate = (date) => {
     return date.toLocaleDateString('es-MX', options);
 };
 
+// Operacion actual de tickets: el catalogo, la venta y la impresion usan
+// TLALNEPANTLA aunque el empleado tenga otra sucursal asignada.
+const TICKETS_BRANCH = { id: 2, label: 'TLALNEPANTLA' };
+
 export default function Tickets() {
+    const { t } = useTranslation();
     const [currentDate, setCurrentDate] = useState(formatDate(new Date()));
     const [visibleTooltip, setVisibleTooltip] = useState({});
     const [items, setItems] = useState([]);
@@ -65,7 +73,7 @@ export default function Tickets() {
     const [dateOrder, setDateOrder] = useState('');
     const [clientName, setClientName] = useState('');
     const [employee, setEmployee] = useState('');
-    const [branchId, setBranchId] = useState('');
+    const branchId = TICKETS_BRANCH.id;
     const [folio, setFolio] = useState('');
     const [subtotal, setSubtotal] = useState(0);
     const [discount, setDiscount] = useState(0);
@@ -80,7 +88,6 @@ export default function Tickets() {
         const username = cognitoUserSession.idToken.payload["cognito:username"];
         const userData = getStorageValue(`user_${username}`);
         setEmployee(userData?.nombre || '');
-        setBranchId(userData?.idsucursal ?? userData?.idSucursal ?? '');
     }, [cognitoUserSession]);
 
     useEffect(() => {
@@ -110,13 +117,12 @@ export default function Tickets() {
     const handleGenerateFolioAndPrint = async () => {
         const username = cognitoUserSession.idToken.payload["cognito:username"];
         const userData = getStorageValue(`user_${username}`);
-        const resolvedBranchId = userData?.idsucursal ?? userData?.idSucursal ?? null;
 
         const sale_data = {
             fecha_venta: new Date().toISOString().split('T')[0],
             total_venta: total.toFixed(2),
             idusuario: userData?.idusuario || 1,
-            idsucursal: resolvedBranchId,
+            idsucursal: branchId,
             status: 'A',
             idmetodo: paymentType,
             telefono: phone,
@@ -143,13 +149,14 @@ export default function Tickets() {
 
         try {
             if (!folio) {
-                const generatedFolio = await fetchNewSale(sale_data);
+                const generatedFolio = await fetchNewSale(sale_data, t);
                 if (generatedFolio) {
                     setFolio(generatedFolio);
                 }
             }
         } catch (error) {
-            alert("Error generating folio:", error);
+            console.error('Error generating folio:', error);
+            alert(t('panel.tickets.folioError'));
         }
     };
 
@@ -315,7 +322,7 @@ export default function Tickets() {
         {
             icon: HiOutlineViewGridAdd,
             btnconf: `relative blue-circle-button tooltip-button`,
-            label: 'Agregar',
+            label: t('panel.tickets.addRow'),
             id: 'addrow',
             path: '',
             event: handleRowData
@@ -323,7 +330,7 @@ export default function Tickets() {
         {
             icon: LiaListAlt,
             btnconf: `relative blue-circle-button tooltip-button ${validaHiddenLista}`,
-            label: 'Listado',
+            label: t('panel.tickets.list'),
             id: 'list',
             path: '',
             event: handlelistPrint
@@ -334,7 +341,7 @@ export default function Tickets() {
         baseButtonConfigs.push({
             icon: IoTicket,
             btnconf: `relative p-3 m-1 rounded-full shadow hover:shadow-xl bg-amber-500 color-cultured cursor-pointer inline-block tooltip-button`,
-            label: 'Ticket',
+            label: t('panel.tickets.ticket'),
             id: 'print',
             path: '',
             event: handleOnlyPrint
@@ -344,7 +351,7 @@ export default function Tickets() {
     const pedidoButton = {
         icon: IoBagAdd,
         btnconf: `relative p-3 m-1 rounded-full shadow hover:shadow-xl bg-amber-500 color-cultured cursor-pointer inline-block tooltip-button`,
-        label: 'Pedido',
+        label: t('panel.site.statusOrder'),
         id: 'add',
         path: '',
         event: handleClientData
@@ -356,14 +363,14 @@ export default function Tickets() {
         {
             icon: IoTicket,
             btnconf: `relative gray-circle-button tooltip-button`,
-            label: 'Reimprimir ticket',
+            label: t('panel.tickets.reprint'),
             id: 'print',
             event: queueTicketPrint
         },
         {
             icon: MdAutorenew,
             btnconf: `relative green-circle-button tooltip-button`,
-            label: 'Nueva venta',
+            label: t('panel.tickets.newSale'),
             id: 'new',
             event: () => window.location.reload()
         }
@@ -372,9 +379,9 @@ export default function Tickets() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-card))] via-text-[rgb(var(--color-bg))] to-[rgb(var(--color-galaxy))] backdrop-blur-md pt-28 overflow-x-hidden">
             <Title
-                title='Genera tickets para clientes'
+                title={t('panel.tickets.title')}
                 icon={MdSell}
-                back='Volver al panel'
+                back={t('panel.common.back')}
                 path='/productivity'
             />
             <div>
@@ -382,6 +389,7 @@ export default function Tickets() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 mx-auto gap-x-7 gap-y-6 lg:mx-0 px-2">
                         <div className= {`lg:rounded-2xl my-5 pt-2 shadow shadow-[rgb(var(--color-gray-base))] w-full max-w-[520px] mx-auto overflow-hidden rounded-xl ${folio ? 'bg-stone-500' : 'bg-[rgb(var(--color-gray))]' }`}>
                             <FindProducts
+                                branch={TICKETS_BRANCH}
                                 onAddProduct={handleAddProduct}
                                 onRemoveProduct={handleRemoveProduct}
                                 addedItems={items}

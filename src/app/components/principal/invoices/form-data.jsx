@@ -5,7 +5,7 @@ import GooglePlacesAutocomplete from '@/app/components/principal/account/google-
 import Select from 'react-select';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 
-export default function FormData({ t, formState, setFormState, account }) {
+export default function FormData({ t, formState, setFormState }) {
   const [isCaptchaValid, setIsCaptchaValid] = useState(false);
   const [isSuccessfull, setIsSuccessfull] = useState(false);
   const recaptchaRef = useRef(null);
@@ -25,8 +25,9 @@ export default function FormData({ t, formState, setFormState, account }) {
     CP: ''
   });
 
-  // i18n helper
-  const tr = (key, fallback) => (typeof t === 'function' ? t(key) : (fallback ?? key));
+  // El texto siempre sale de la base; aqui solo se protege el caso de que el
+  // formulario se monte sin recibir `t` por props.
+  const tr = (key) => (typeof t === 'function' ? t(key) : '');
 
   // Helper: take only the part after the pipe
   const extractAfterPipe = (s) => {
@@ -60,21 +61,21 @@ export default function FormData({ t, formState, setFormState, account }) {
         const emailRe = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Za-z]{2,}$/;
         const cpRe = /^\d{5}$/;
 
-        if (!name || !nameRe.test(name)) errs.name = tr('invoice.err.name', 'Enter a valid name.');
-        if (!rfc || !rfcRe.test(rfc)) errs.rfc = tr('invoice.err.rfc', 'Enter a valid RFC (12 or 13 chars).');
-        if (!email || !emailRe.test(email)) errs.email = tr('invoice.err.email', 'Enter a valid email.');
-        if (phoneDigits.length !== 10) errs.phone = tr('invoice.err.phone', 'Enter a 10-digit phone number.');
-        if (!placeId) errs.placeId = tr('invoice.err.placeId', 'Select an address.');
-        if (!cpRe.test(cp)) errs.CP = tr('invoice.err.cp', 'Postal code must be 5 digits.');
-        if (!idCFDI) errs.CFDI = tr('invoice.err.cfdi', 'Select a CFDI usage.');
-        if (!idregimen) errs.regime = tr('invoice.err.regimen', 'Select a tax regime.');
-        if (!ticket) errs.ticket = tr('invoice.err.ticket', 'Ticket is required.');
+        if (!name || !nameRe.test(name)) errs.name = tr('invoice.err.name');
+        if (!rfc || !rfcRe.test(rfc)) errs.rfc = tr('invoice.err.rfc');
+        if (!email || !emailRe.test(email)) errs.email = tr('invoice.err.email');
+        if (phoneDigits.length !== 10) errs.phone = tr('invoice.err.phone');
+        if (!placeId) errs.placeId = tr('invoice.err.placeId');
+        if (!cpRe.test(cp)) errs.CP = tr('invoice.err.cp');
+        if (!idCFDI) errs.CFDI = tr('invoice.err.cfdi');
+        if (!idregimen) errs.regime = tr('invoice.err.regimen');
+        if (!ticket) errs.ticket = tr('invoice.err.ticket');
 
         setErrorMessages(prev => ({ ...prev, ...errs }));
 
         // Highlight form-level error message if any
         if (Object.keys(errs).length > 0) {
-        setErrorMessage(tr('mailbox.errorData', 'Please correct the highlighted fields.'));
+        setErrorMessage(tr('mailbox.errorData'));
         return false;
         }
         setErrorMessage('');
@@ -93,7 +94,7 @@ export default function FormData({ t, formState, setFormState, account }) {
         // 2) reCAPTCHA
         const recaptchaValue = recaptchaRef.current?.getValue();
         if (!recaptchaValue) {
-            setErrorMessage(tr('mailbox.errorCaptcha', 'Invalid reCAPTCHA. Please try again.'));
+            setErrorMessage(tr('mailbox.errorCaptcha'));
             return;
         }
         recaptchaRef.current?.reset();
@@ -107,6 +108,7 @@ export default function FormData({ t, formState, setFormState, account }) {
             email:    (formState.email || '').trim(),
             phone:    phoneDigits,
             placeId:  (formState.placeId || '').trim(),
+            CP:       (formState.CP || '').trim(),
             CFDI:    formState.idCFDI ?? null,
             regime: formState.idregimen ?? null,
             ticket:   normalizeTicket(formState.ticket),
@@ -127,10 +129,10 @@ export default function FormData({ t, formState, setFormState, account }) {
             }
 
             setIsSuccessfull(true);
-            setSuccessMessage('Factura agregada correctamente, enviaremos tu factura a tu correo, ¡Gracias por comprar en refautomex!');
+            setSuccessMessage(tr('invoice.addOk'));
             return response;
         } catch (error) {
-            alert("Error al agregar factura o previamente añadida, por favor contáctanos si el problema persiste.");
+            alert(tr('invoice.addError'));
             console.log(error);
             setIsSuccessfull(false);
             return null;
@@ -342,11 +344,12 @@ export default function FormData({ t, formState, setFormState, account }) {
                 {t('invoice.direction')}
             </label>
             <div className="mt-2.5">
+                {/* Con cuenta llega llena del perfil, pero se puede cambiar:
+                    la factura puede ir a otro domicilio fiscal (una empresa). */}
                 <GooglePlacesAutocomplete
                 placeId={formState.placeId}
                 setPlaceId={setPlaceId}
                 setPostalCode={setPostalCode}
-                lock={ !!account }
                 />
                 {errorMessages.placeId && <p className="text-red-600 text-xs mt-1">{errorMessages.placeId}</p>}
             </div>
@@ -358,17 +361,22 @@ export default function FormData({ t, formState, setFormState, account }) {
                 {t('invoice.PC')}
             </label>
             <div className="mt-2.5">
+                {/* Se llena con la direccion, pero manda el de la constancia
+                    fiscal: el CFDI 4.0 lo valida contra el SAT y Google no
+                    siempre trae el mismo. */}
                 <input
                 type="text"
                 name="CP"
                 id="CP"
+                inputMode="numeric"
+                maxLength={5}
                 value={formState.CP}
                 onChange={handleInputChange}
-                disabled={true}
+                disabled={isSuccessfull}
                 className={`
                     ${errorMessages.CP ? "bg-red-200" : ""}
                     ${isSuccessfull ? "bg-stone-400 opacity-70" : ""}
-                    bg-gray-200 block w-full rounded-md border-0 py-2 p-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6
+                    block w-full rounded-md border-0 py-2 p-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6
                 `}
                 />
                 {errorMessages.CP && <p className="text-red-600 text-xs mt-1">{errorMessages.CP}</p>}
@@ -418,7 +426,7 @@ export default function FormData({ t, formState, setFormState, account }) {
                 <label htmlFor="ticket" className="block text-sm font-semibold leading-6 text-[rgb(var(--color-text))]">
                     {t('invoice.ticket')}
                 </label>
-                <span className='text-[rgb(var(--color-text))] opacity-80 text-xs'>Completo i.e: T-000001, contáctanos en caso necesario.</span>
+                <span className='text-[rgb(var(--color-text))] opacity-80 text-xs'>{tr('invoice.ticketHint')}</span>
                 <div className="mt-2.5">
                     <input
                     type="text"

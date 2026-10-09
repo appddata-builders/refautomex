@@ -1,7 +1,6 @@
 'use client';
 import { FaStar } from "react-icons/fa6";
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Spinner() {
     const { t } = useTranslation();

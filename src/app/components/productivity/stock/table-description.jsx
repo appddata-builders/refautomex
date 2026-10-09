@@ -5,6 +5,7 @@ import Select from 'react-select';
 import { LuListRestart } from "react-icons/lu";
 import { CiBoxList } from "react-icons/ci";
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const parseRoutes = (raw) => {
     if (!raw) return [];
@@ -33,6 +34,7 @@ export default function TableDescription({
     isSaving = false,
     isAdmin = false,
 }) {
+    const { t } = useTranslation();
     const [QuantityOptions, setQuantityOptions] = useState([]);
     const listRef = useRef();
     const printRef = useRef(null);
@@ -176,7 +178,7 @@ export default function TableDescription({
                                 <div className="flex items-center gap-1">
                                     <button
                                         onClick={handleListPrint}
-                                        title="Listar para impresión"
+                                        title={t('panel.tableDesc.printList')}
                                         className={`bg-gray-700 text-white rounded-full p-1.5 self-center flex items-center mx-0.5 ${isSaving ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                                         disabled={isSaving}
                                     >
@@ -184,22 +186,22 @@ export default function TableDescription({
                                     </button>
                                     <button
                                         onClick={handleClearTable}
-                                        title="Limpiar tabla"
+                                        title={t('panel.tableDesc.clear')}
                                         className={`bg-red-700 text-white rounded-full p-1.5 self-center flex items-center mx-0.5 ${isSaving ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'}`}
                                         disabled={isSaving}
                                     >
                                         <LuListRestart className="text-lg" />
                                     </button>
-                                    <span className="font-semibold">Refacción</span>
+                                    <span className="font-semibold">{t('panel.capture.part')}</span>
                                 </div>
                             </th>
-                            <th className="p-1">IMG</th>
-                            <th className="p-1">DESCRIPCIÓN</th>
-                            <th className="p-1">LOCALIZACIÓN</th>
-                            <th className="p-1">EXISTENCIA</th>
-                            <th className="p-1">COSTO</th>
-                            <th className="p-1">PRECIO</th>
-                            <th className="p-1">ACCIONES</th>
+                            <th className="p-1">{t('panel.tableDesc.img')}</th>
+                            <th className="p-1">{t('panel.table.description')}</th>
+                            <th className="p-1">{t('panel.tableDesc.location')}</th>
+                            <th className="p-1">{t('panel.table.stock')}</th>
+                            <th className="p-1">{t('panel.table.cost')}</th>
+                            <th className="p-1">{t('panel.table.price')}</th>
+                            <th className="p-1">{t('panel.table.actions')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -349,12 +351,12 @@ export default function TableDescription({
                     >
                         <thead>
                             <tr className="bg-gray-200 text-left">
-                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">Refacción</th>
-                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">Descripción</th>
-                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">Localización</th>
-                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">Existencia</th>
-                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">Costo</th>
-                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">Precio</th>
+                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">{t('panel.capture.part')}</th>
+                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">{t('panel.capture.descriptionLabel')}</th>
+                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">{t('panel.tableDesc.locationTitle')}</th>
+                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">{t('panel.tableDesc.stockTitle')}</th>
+                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">{t('panel.capture.cost')}</th>
+                                <th className="border border-gray-400 px-3 py-2 uppercase tracking-wide text-xs">{t('panel.invoice.price')}</th>
                             </tr>
                         </thead>
                         <tbody>

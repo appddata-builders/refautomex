@@ -12,6 +12,7 @@ import Labels from './labels';
 import { useReactToPrint } from 'react-to-print';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const hasLeadingZeroSuffix = (location = '') => {
     const parts = location.split('-');
@@ -21,6 +22,7 @@ const hasLeadingZeroSuffix = (location = '') => {
 };
 
 export default function Warehouse() {
+    const { t } = useTranslation();
     const { userData } = useContext(AuthContext);
     const userBranchId = userData?.idsucursal || null;
     const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
@@ -123,12 +125,12 @@ export default function Warehouse() {
         if (!migrationSelection?.source || !migrationSelection?.target) {
             return {
                 ok: false,
-                message: 'Información de migración incompleta.',
+                message: t('panel.warehouse.migrateIncomplete'),
             };
         }
 
         if (!userBranchId) {
-            const message = 'No se pudo determinar la sucursal del usuario.';
+            const message = t('panel.warehouse.noBranch');
             updateSaveStatus('error', message);
             return {
                 ok: false,
@@ -150,7 +152,8 @@ export default function Warehouse() {
             });
 
             const data = await response.json().catch(() => ({}));
-            const message = data?.message || (response.ok ? 'Matriz migrada correctamente.' : 'Error al migrar matriz.');
+            // Las validaciones del servidor ('La matriz destino no está vacía.') llegan en `details`.
+            const message = data?.message || data?.details || (response.ok ? t('panel.warehouse.migrateOk') : t('panel.warehouse.migrateFailed'));
 
             if (!response.ok) {
                 updateSaveStatus('error', message);
@@ -169,7 +172,7 @@ export default function Warehouse() {
             };
         } catch (error) {
             console.error('Error al migrar matrices:', error);
-            const message = error?.message || 'Error al migrar matriz. Intenta de nuevo.';
+            const message = error?.message || t('panel.warehouse.migrateError');
             updateSaveStatus('error', message);
             return {
                 ok: false,
@@ -194,7 +197,7 @@ export default function Warehouse() {
         try {
             if (hasLeadingZeroSuffix(item.localizacion || '')) {
                 errorMessage =
-                    'Índice no puede iniciar con 0, i.e. usa -1 en lugar de -01.';
+                    t('panel.warehouse.indexZero');
                 isValid = false;
                 setLocationErrors(prev => ({
                     ...prev,
@@ -235,7 +238,7 @@ export default function Warehouse() {
             }
         } catch (error) {
             console.error('Error verificando localización:', error);
-            errorMessage = 'Error al verificar la localización.';
+            errorMessage = t('panel.warehouse.locationCheckError');
             isValid = false;
 
             setLocationErrors(prev => ({
@@ -274,7 +277,7 @@ export default function Warehouse() {
             return;
         }
         if (!hasChanges) {
-            updateSaveStatus('error', 'No hay cambios para guardar.');
+            updateSaveStatus('error', t('panel.warehouse.noChanges'));
             return;
         }
         handleSaveCompleteTable();
@@ -282,14 +285,14 @@ export default function Warehouse() {
 
     const handleSaveCompleteTable = async () => {
         if (items.length === 0) {
-            updateSaveStatus('error', 'No hay productos para guardar.');
+            updateSaveStatus('error', t('panel.warehouse.noProducts'));
             return;
         }
         setSaveStatus({ type: null, message: '' });
 
         const modifiedItems = items.filter(item => item.modified);
         if (modifiedItems.length === 0) {
-            updateSaveStatus('error', 'No se han realizado modificaciones en los registros.');
+            updateSaveStatus('error', t('panel.warehouse.noEdits'));
             return;
         }
 
@@ -301,7 +304,7 @@ export default function Warehouse() {
                 .filter(result => !result.isValid)
                 .map(result => `${result.refaccion}: ${result.errorMessage}`)
                 .join(' | ');
-            updateSaveStatus('error', errorMessages || 'Error al validar localizaciones.');
+            updateSaveStatus('error', errorMessages || t('panel.warehouse.locationValidateError'));
             return;
         }
 
@@ -336,12 +339,12 @@ export default function Warehouse() {
                 }
             }));
 
-            updateSaveStatus('success', 'Se guardó correctamente.');
+            updateSaveStatus('success', t('panel.warehouse.saveOk'));
             findProductsRef.current?.refreshProducts?.();
             saveSuccessful = true;
         } catch (error) {
             console.error('Error actualizando registros:', error);
-            updateSaveStatus('error', 'Error al guardar listado.');
+            updateSaveStatus('error', t('panel.warehouse.saveError'));
         } finally {
             if (saveSuccessful) {
                 setItems(prevItems =>
@@ -355,7 +358,7 @@ export default function Warehouse() {
 
     const handleLabelsStickerPrint = () => {
         if (items.length === 0) {
-            alert('No hay productos para rotular');
+            alert(t('panel.warehouse.noLabels'));
             return;
         }
         handlePrint();
@@ -374,7 +377,7 @@ export default function Warehouse() {
         {
             icon: FaExchangeAlt,
             btnconf:`relative tooltip-button p-3 m-1 rounded-full shadow hover:shadow-xl bg-amber-500 color-cultured cursor-pointer inline-block`,
-            label: 'Migrar', id: 'migrate', path: '',
+            label: t('panel.warehouse.migrate'), id: 'migrate', path: '',
             event: handleMigrateLocation,
             disabled: isSaving,
             adminOnly: true,
@@ -382,7 +385,7 @@ export default function Warehouse() {
         {
             icon: IoSaveSharp,
             btnconf:'relative blue-circle-button tooltip-button',
-            label: isSaving ? 'Guardando' : 'Actualizar lista', id: 'update', path: '',
+            label: isSaving ? t('panel.warehouse.saving') : t('panel.warehouse.updateList'), id: 'update', path: '',
             event: handleSaveClick,
             disabled: isSaving,
             adminOnly: true,
@@ -390,7 +393,7 @@ export default function Warehouse() {
         {
             icon: PiStickerFill,
             btnconf:`relative blue-circle-button tooltip-button`,
-            label: 'Rotular', id: 'list', path: '',
+            label: t('panel.warehouse.label'), id: 'list', path: '',
             event: handleLabelsStickerPrint,
             disabled: isSaving,
         }
@@ -399,9 +402,9 @@ export default function Warehouse() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
             <Title
-                title='Gestión de Almacén y productos'
+                title={t('panel.warehouse.title')}
                 icon={FaBoxesPacking}
-                back='Volver al panel'
+                back={t('panel.common.back')}
                 path='/productivity'
             />
             <div className={isEditing ? 'hidden' : 'block'}>

@@ -4,12 +4,11 @@ import { BsArrowRightCircle } from "react-icons/bs";
 import { IoIosContact } from 'react-icons/io';
 import { MdEmail, MdStars } from 'react-icons/md';
 import { AiOutlineShop } from 'react-icons/ai';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 import RefautomexLogo from '@/app/components/refautomex-logo';
 import Link from 'next/link';
 
-import '@/app/translations/i18next-translation';
 
 export default function Custom404() {
     const { t } = useTranslation();
