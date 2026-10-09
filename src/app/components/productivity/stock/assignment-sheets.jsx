@@ -64,17 +64,21 @@ function ErrorNote({ message }) {
 
 /**
  * Lo que hay en un contenedor, posicion por posicion. Los huecos entre
- * posiciones ocupadas se ven como libres y se puede ubicar justo ahi; el boton
- * de abajo ubica en la primera libre.
+ * posiciones ocupadas se ven como libres y se puede ubicar justo ahi; "Agregar
+ * hueco de indice" suma otra posicion libre al final, para ubicar mas alla de
+ * la ultima ocupada. El boton de abajo ubica en la primera libre.
  */
 export function MatrixDetail({ code, matrix: mapMatrix, busyId, error, onMove, onUnassign, onAddHere, onClose, loadMatrix }) {
     const { t } = useTranslation();
     const matrix = useLiveMatrix(code, loadMatrix, mapMatrix, error);
+    // Ultimo hueco agregado al final; dura mientras el detalle esta abierto.
+    const [addedUpTo, setAddedUpTo] = useState(-1);
     const items = matrix?.items || [];
     const { anaquel, nivel, seccion } = splitMatrix(code);
-    // Hasta la ultima ocupada: la libre que sigue ya la cubre el boton de abajo.
+    // Hasta la ultima ocupada o el ultimo hueco agregado, lo que llegue mas lejos.
     const lastUsed = items.length ? items[items.length - 1].index : -1;
-    const slots = matrixSlots(items).filter((slot) => slot.index <= lastUsed);
+    const lastShown = Math.max(lastUsed, addedUpTo);
+    const slots = matrixSlots(items, null, 0, lastShown).filter((slot) => slot.index <= lastShown);
 
     return (
         <>
@@ -95,7 +99,7 @@ export function MatrixDetail({ code, matrix: mapMatrix, busyId, error, onMove, o
                 </div>
             )}
 
-            {items.length ? (
+            {slots.length ? (
                 <ul className="space-y-2">
                     {slots.map((slot) => (slot.occupants.length ? slot.occupants.map((item) => (
                         <li
@@ -157,6 +161,17 @@ export function MatrixDetail({ code, matrix: mapMatrix, busyId, error, onMove, o
                 </p>
             )}
 
+            {lastShown < MAX_INDEX && (
+                <button
+                    type="button"
+                    onClick={() => setAddedUpTo(lastShown + 1)}
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-amber-500/60 text-sm font-semibold text-amber-600 transition hover:bg-amber-400/10"
+                >
+                    <FaPlus className="size-3.5" aria-hidden="true" />
+                    {t('panel.assignment.addGap')}
+                </button>
+            )}
+
             <ErrorNote message={error} />
 
             <button
@@ -201,9 +216,12 @@ export function PlaceForm({ product, initialMatrix, initialIndex = null, matrice
         merged.set(code, liveMatrix);
         return merged;
     }, [code, liveMatrix, mapMatrices]);
+    // El hueco elegido puede estar mas alla de las posiciones que hay (uno
+    // agregado al final en el detalle): las posiciones llegan hasta el.
+    const reach = picked.code === code ? (picked.index ?? -1) : -1;
     const slots = useMemo(
-        () => (code ? matrixSlots(matrices.get(code)?.items, product.iddetalle, extra) : []),
-        [code, matrices, product.iddetalle, extra]
+        () => (code ? matrixSlots(matrices.get(code)?.items, product.iddetalle, extra, reach) : []),
+        [code, matrices, product.iddetalle, extra, reach]
     );
     const chosenIndex = picked.code === code ? picked.index : firstFreeIndex(slots);
     const slot = slots.find((candidate) => candidate.index === chosenIndex);

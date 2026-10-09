@@ -203,9 +203,10 @@ export const buildWarehouse = (rows = [], layout = []) => {
  * renglones que la ocupan (sin contar el que se esta moviendo, por su
  * iddetalle) y si es donde ese renglon ya esta. Los huecos entre posiciones ocupadas salen libres, y al
  * final siempre queda una libre mas `extra` (si la matriz tiene mas espacio
- * fisico del que se usa), hasta MAX_INDEX.
+ * fisico del que se usa). Llegan por lo menos hasta `upTo` (un hueco agregado
+ * mas alla de la ultima ocupada), sin pasar de MAX_INDEX.
  */
-export const matrixSlots = (items = [], movingId = null, extra = 0) => {
+export const matrixSlots = (items = [], movingId = null, extra = 0, upTo = -1) => {
     const occupied = new Map();
     let current = null;
 
@@ -218,7 +219,8 @@ export const matrixSlots = (items = [], movingId = null, extra = 0) => {
     }
 
     const highest = Math.max(-1, current ?? -1, ...occupied.keys());
-    return Array.from({ length: Math.min(MAX_INDEX + 1, highest + 2 + extra) }, (_, index) => ({
+    const length = Math.max(highest + 2 + extra, upTo + 1);
+    return Array.from({ length: Math.min(MAX_INDEX + 1, length) }, (_, index) => ({
         index,
         occupants: occupied.get(index) || [],
         isCurrent: current === index,
