@@ -8,18 +8,18 @@ import { LEVELS, SPECIAL_LEVELS, TWO_DIGITS, isSpecialLevel, matrixCode } from '
  * mientras se elige: 01·05 dice que falta el nivel.
  *
  * Con `allowSpecial`, el nivel tambien ofrece ENC, EXT, OBS e INT. Esos niveles
- * solo llevan indice (ENC-1): al elegir uno, anaquel y seccion no aplican y se
- * desactivan, pero conservan lo elegido por si se vuelve a un nivel normal.
+ * son del anaquel pero no tienen seccion (01ENC-0): al elegir uno, la seccion
+ * se desactiva y conserva lo elegido por si se vuelve a un nivel normal.
  */
 export default function MatrixPicker({ label, icon: Icon, iconClassName = '', value, onChange, allowSpecial = false }) {
     const { t } = useTranslation();
     const code = matrixCode(value);
     const special = isSpecialLevel(value.nivel);
     const preview = special
-        ? value.nivel
+        ? `${value.anaquel || '··'}${value.nivel}`
         : `${value.anaquel || '··'}${value.nivel || '·'}${value.seccion || '··'}`;
     const fields = [
-        { field: 'anaquel', label: t('panel.migrate.shelf'), options: TWO_DIGITS, disabled: special },
+        { field: 'anaquel', label: t('panel.migrate.shelf'), options: TWO_DIGITS },
         { field: 'nivel', label: t('panel.migrate.level'), options: LEVELS, extra: allowSpecial ? SPECIAL_LEVELS : null },
         { field: 'seccion', label: t('panel.migrate.section'), options: TWO_DIGITS, disabled: special },
     ];

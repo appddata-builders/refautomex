@@ -29,6 +29,17 @@
 
 import { date, integer, numeric, pgTable, real, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 
+// No vino de `drizzle-kit pull`: los niveles de cada anaquel en Asignacion de
+// productos ("A,B,C,ENC"). /patchShelfLevels la crea con el mismo DDL
+// (TABLA_NIVELES en api/refautomex/[...path]/localizaciones.js) al guardar por
+// primera vez. La llave es "<idsucursal>:<anaquel>".
+export const anaquel_niveles = pgTable('anaquel_niveles', {
+  id: varchar({ length: 20 }).primaryKey().notNull(),
+  idsucursal: integer().notNull(),
+  anaquel: varchar({ length: 2 }).notNull(),
+  niveles: varchar({ length: 200 }).notNull(),
+});
+
 // No vino de `drizzle-kit pull`: es lo que cada usuario ya vio en la campana
 // de avisos. lib/avisos.js la crea con el mismo DDL al marcar por primera vez.
 export const aviso_visto = pgTable('aviso_visto', {

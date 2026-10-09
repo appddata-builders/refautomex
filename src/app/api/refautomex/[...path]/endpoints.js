@@ -83,24 +83,75 @@ const verifyLocation = async ({ query }) => {
     : { cuerpo: { exists: true, message: 'Localización ocupada por otra refacción.' } };
 };
 
-// Asignacion de productos: cada producto activo de la sucursal con su
-// ubicacion. El cliente arma el mapa por anaquel y separa lo que esta por
-// ubicar ('', '0' o una cadena que no tiene la forma 01A05-1).
+// Asignacion de productos: cada renglon de inventario de un producto activo de
+// la sucursal, con su ubicacion. El cliente arma el mapa por anaquel y separa lo
+// que esta por ubicar ('', '0' o una cadena que no tiene la forma 01A05-0 /
+// 01ENC-0).
+//
+// Los renglones de productos dados de baja o fuera del catalogo no juegan en el
+// mapa: no se muestran y tampoco ocupan lugar, porque patchAssignLocation los
+// libera a "por ubicar" al poner ahi un producto activo (SOLO_ACTIVOS).
 const getWarehouseMap = async ({ query }) => {
   const idsucursal = query.get('idsucursal');
   if (!idsucursal) return faltan('Missing idsucursal parameter');
 
   return {
     cuerpo: await consultar(
-      `SELECT d.num_parte, p.descripcion, d.existencia, COALESCE(l.localizacion, '') AS localizacion
+      `SELECT d.iddetalle, d.num_parte, p.descripcion, d.existencia,
+              COALESCE(l.localizacion, '') AS localizacion
          FROM detalle d
          INNER JOIN producto p USING (num_parte)
          LEFT JOIN localizacion l USING (idlocalizacion)
         WHERE d.idsucursal = ? AND p.status = 'A'
-        ORDER BY d.num_parte`,
+        ORDER BY d.num_parte, d.iddetalle`,
       [idsucursal]
     ),
   };
+};
+
+// Asignacion de productos: los renglones activos de un solo contenedor (12B02,
+// 01ENC) en este momento. El detalle de una matriz y el formulario de ubicar lo
+// piden al abrirse: deciden con lo que hay ahora y no con la foto del mapa, que
+// puede tener un minuto o no ver lo que otra persona acaba de mover.
+const CONTENEDOR = /^[0-9]{2}(?:ENC|EXT|OBS|INT|[A-Z][0-9]{2})$/;
+
+const getMatrixRows = async ({ query }) => {
+  const idsucursal = query.get('idsucursal');
+  const matriz = String(query.get('matriz') || '').toUpperCase();
+  if (!idsucursal || !CONTENEDOR.test(matriz)) return faltan('Missing idsucursal or matriz parameter');
+
+  return {
+    cuerpo: await consultar(
+      `SELECT d.iddetalle, d.num_parte, p.descripcion, d.existencia, l.localizacion
+         FROM detalle d
+         INNER JOIN producto p USING (num_parte)
+         INNER JOIN localizacion l USING (idlocalizacion)
+        WHERE d.idsucursal = ? AND p.status = 'A' AND l.localizacion LIKE ?
+        ORDER BY d.iddetalle`,
+      [idsucursal, `${matriz}-%`]
+    ),
+  };
+};
+
+// Niveles guardados de cada anaquel de la sucursal: [{ anaquel, niveles }].
+// La tabla nace con el primer cambio (patchShelfLevels); antes de eso no hay
+// nada guardado y el mapa deduce los niveles de las ubicaciones.
+const getShelfLayout = async ({ query }) => {
+  const idsucursal = query.get('idsucursal');
+  if (!idsucursal) return faltan('Missing idsucursal parameter');
+
+  try {
+    const filas = await consultar(
+      'SELECT anaquel, niveles FROM anaquel_niveles WHERE idsucursal = ? ORDER BY anaquel',
+      [idsucursal]
+    );
+    return {
+      cuerpo: filas.map((fila) => ({ anaquel: fila.anaquel, niveles: fila.niveles ? fila.niveles.split(',') : [] })),
+    };
+  } catch (error) {
+    if (error?.code === '42P01') return { cuerpo: [] };
+    throw error;
+  }
 };
 
 const getAllEmployees = async () => ({
@@ -247,6 +298,8 @@ const DIRECTOS = {
     verifyEmployee,
     verifyLocation,
     getWarehouseMap,
+    getMatrixRows,
+    getShelfLayout,
     getAllEmployees,
     getAllProviders: tablaCompleta('proveedor'),
     getProviders: tablaCompleta('proveedor'),

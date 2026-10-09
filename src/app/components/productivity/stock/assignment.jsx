@@ -23,16 +23,17 @@ import {
     UNASSIGNED,
     applyMoves,
     buildWarehouse,
-    isSpecialLevel,
+    canUndo,
     isValidLocation,
     matchesTerm,
     splitMatrix,
     undoSteps,
 } from './locations';
-import { AreaCard, MapLegend, ShelfCard, ShelfPicker } from './assignment-map';
-import { MatrixDetail, PlaceForm, SHEET_TITLE_ID } from './assignment-sheets';
+import { MapLegend, ShelfCard, ShelfPicker } from './assignment-map';
+import { LevelsEditor, MatrixDetail, PlaceForm, SHEET_TITLE_ID } from './assignment-sheets';
 
 const TOAST_MS = 6000;
+const REFRESH_MS = 60000;
 const PREFS_KEY = 'asignacion-productos';
 const SEARCH_TYPES = ['Descripcion', 'Parte', 'Localizacion'];
 const AMBER_CIRCLE = 'p-3 m-1 rounded-full shadow hover:shadow-xl bg-amber-500 text-slate-900 cursor-pointer inline-block';
@@ -41,9 +42,9 @@ const AMBER_CIRCLE = 'p-3 m-1 rounded-full shadow hover:shadow-xl bg-amber-500 t
 const isWebBranch = (branch) =>
     Number(branch.idsucursal) === 1 || String(branch.sucursal || '').trim().toUpperCase() === 'WEB';
 
-// Lo que recuerda este navegador: si "Por ubicar" esta abierto y que anaquel se
-// trabajaba en cada sucursal. Sin almacenamiento la pantalla usa los valores
-// por defecto y nada mas.
+// Lo que recuerda este navegador: si la lista de productos esta abierta, en que
+// pestana, y que anaquel se trabajaba en cada sucursal. Sin almacenamiento la
+// pantalla usa los valores por defecto y nada mas.
 const readPrefs = () => {
     try {
         return JSON.parse(localStorage.getItem(PREFS_KEY)) || {};
@@ -61,9 +62,10 @@ const savePrefs = (patch) => {
 };
 
 /**
- * Asignacion de productos. A la izquierda, lo que esta por ubicar en el mismo
- * buscador de productos de los demas modulos (getAllProducts); a la derecha,
- * los botones del modulo y el anaquel que se esta trabajando. Cada cambio se
+ * Asignacion de productos. A la izquierda, el mismo buscador de productos de
+ * los demas modulos (getAllProducts) con dos pestanas: lo que esta por ubicar y
+ * todos. A la derecha, los botones del modulo y el anaquel que se esta
+ * trabajando, con sus niveles (que se pueden agregar o quitar). Cada cambio se
  * guarda al momento con /patchAssignLocation, que no deja dos productos en el
  * mismo lugar, y el aviso que sale despues permite deshacerlo.
  *
@@ -78,13 +80,17 @@ export default function Assignment() {
     const [branches, setBranches] = useState([]);
     const [branchId, setBranchId] = useState(null);
     const [rows, setRows] = useState([]);
+    // Niveles guardados por anaquel (/getShelfLayout): [{ anaquel, niveles }].
+    const [layout, setLayout] = useState([]);
     const [load, setLoad] = useState({ status: 'loading', message: '' });
     const [attempt, setAttempt] = useState(0);
     const [term, setTerm] = useState('');
     const searchTerm = useDeferredValue(term.trim());
-    // Anaquel (01) o nivel especial (ENC) que se esta trabajando: es lo unico que se pinta.
+    // Anaquel que se esta trabajando: es lo unico que se pinta.
     const [selected, setSelected] = useState(null);
     const [showUnassigned, setShowUnassigned] = useState(true);
+    // Pestana del buscador: 'unassigned' (solo por ubicar) o 'all' (todos).
+    const [phoneTab, setPhoneTab] = useState('unassigned');
     // Matriz que espera su producto despues de "Ubicar un producto aqui".
     const [placeTarget, setPlaceTarget] = useState(null);
     // Pila de vistas de la hoja: la ultima es la visible y "Volver" la quita.
@@ -92,7 +98,8 @@ export default function Assignment() {
     const [views, setViews] = useState([]);
     const [closingView, setClosingView] = useState(null);
     const [saving, setSaving] = useState(false);
-    const [busyPart, setBusyPart] = useState(null);
+    // Renglon que se esta quitando (por su iddetalle) mientras guarda.
+    const [busyId, setBusyId] = useState(null);
     const [sheetError, setSheetError] = useState('');
     const [toast, setToast] = useState(null);
     const [migrateOpen, setMigrateOpen] = useState(false);
@@ -103,7 +110,9 @@ export default function Assignment() {
     const phoneRef = useRef(null);
 
     useEffect(() => {
-        setShowUnassigned(readPrefs().showUnassigned ?? true);
+        const prefs = readPrefs();
+        setShowUnassigned(prefs.showUnassigned ?? true);
+        if (prefs.phoneTab === 'all') setPhoneTab('all');
     }, []);
 
     useEffect(() => {
@@ -142,19 +151,28 @@ export default function Assignment() {
         const request = ++requestRef.current;
         if (!silent) setLoad({ status: 'loading', message: '' });
         try {
-            const params = new URLSearchParams({ idsucursal: String(id) });
-            const response = await fetch(`${buildApiUrl('/getWarehouseMap')}?${params.toString()}`, {
-                cache: 'no-store',
-                headers: { Accept: 'application/json, text/plain, */*' },
-            });
+            const params = new URLSearchParams({ idsucursal: String(id) }).toString();
+            const options = { cache: 'no-store', headers: { Accept: 'application/json, text/plain, */*' } };
+            // Los niveles guardados no detienen el mapa: sin ellos se deducen.
+            const [response, savedLevels] = await Promise.all([
+                fetch(`${buildApiUrl('/getWarehouseMap')}?${params}`, options),
+                fetch(`${buildApiUrl('/getShelfLayout')}?${params}`, options)
+                    .then((res) => (res.ok ? res.json() : []))
+                    .catch(() => []),
+            ]);
             const data = await response.json().catch(() => null);
             if (!response.ok || !Array.isArray(data)) throw new Error(data?.details || t('panel.assignment.loadError'));
             if (request !== requestRef.current) return;
             setRows(data);
+            setLayout(Array.isArray(savedLevels) ? savedLevels : []);
             setLoad({ status: 'ready', message: '' });
         } catch (error) {
-            if (request !== requestRef.current || silent) return;
-            setLoad({ status: 'error', message: error.message });
+            if (request !== requestRef.current) return;
+            // Un refresco silencioso que falla deja el mapa como estaba, salvo que
+            // la pantalla siga cargando: entonces muestra el error y no se queda girando.
+            setLoad((current) => (silent && current.status !== 'loading'
+                ? current
+                : { status: 'error', message: error.message }));
         }
     }, [t]);
 
@@ -162,13 +180,42 @@ export default function Assignment() {
         if (branchId) loadMap(branchId);
     }, [branchId, attempt, loadMap]);
 
+    // Lo que hay en un contenedor en este momento (/getMatrixRows). El detalle de
+    // la matriz y el formulario de ubicar lo piden al abrirse: asi una posicion
+    // "libre" es libre en la base, no en la foto del mapa, que puede tener un
+    // minuto o no ver lo que otra persona acaba de mover.
+    const loadMatrix = useCallback(async (code) => {
+        const params = new URLSearchParams({ idsucursal: String(branchId), matriz: code });
+        const response = await fetch(`${buildApiUrl('/getMatrixRows')}?${params.toString()}`, {
+            cache: 'no-store',
+            headers: { Accept: 'application/json, text/plain, */*' },
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(data)) throw new Error(data?.details || t('panel.assignment.loadError'));
+        return buildWarehouse(data).matrices.get(code) ?? { code, items: [], hasConflict: false };
+    }, [branchId, t]);
+
+    // Lo que mueven otras personas (o Gestion de Almacen) tambien llega: el mapa
+    // se refresca solo cada minuto y al volver a la pestana, si esta a la vista.
+    useEffect(() => {
+        if (!branchId) return undefined;
+        const refresh = () => {
+            if (document.visibilityState === 'visible') loadMap(branchId, true);
+        };
+        const timer = setInterval(refresh, REFRESH_MS);
+        window.addEventListener('focus', refresh);
+        document.addEventListener('visibilitychange', refresh);
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener('focus', refresh);
+            document.removeEventListener('visibilitychange', refresh);
+        };
+    }, [branchId, loadMap]);
+
     useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-    const warehouse = useMemo(() => buildWarehouse(rows), [rows]);
-    const keys = useMemo(
-        () => [...warehouse.shelves.map((shelf) => shelf.shelf), ...warehouse.areas.map((area) => area.code)],
-        [warehouse]
-    );
+    const warehouse = useMemo(() => buildWarehouse(rows, layout), [rows, layout]);
+    const keys = useMemo(() => warehouse.shelves.map((shelf) => shelf.shelf), [warehouse]);
 
     // Al cargar una sucursal se vuelve al anaquel que se trabajaba en ella.
     useEffect(() => {
@@ -191,7 +238,7 @@ export default function Assignment() {
             if (!hits) continue;
             located += hits;
             matrices.add(matrix.code);
-            matchedKeys.add(matrix.special ? matrix.code : matrix.shelf);
+            matchedKeys.add(matrix.shelf);
         }
         return { parts, matrices, matchedKeys, located };
     }, [rows, searchTerm, warehouse]);
@@ -210,11 +257,26 @@ export default function Assignment() {
     );
     const onlyUnassigned = useCallback((product) => unassignedParts.has(product.num_parte), [unassignedParts]);
 
+    // El buscador trae su propia copia (getAllProducts) y no se entera de lo que
+    // se mueve aqui: sin esto seguia mostrando el indice anterior. Se le pasa la
+    // ubicacion actual del mapa, al momento y sin volver a cargarlo.
+    const currentLocations = useMemo(() => {
+        const byPart = new Map();
+        for (const row of rows) {
+            if (!row.localizacion || row.localizacion === UNASSIGNED) continue;
+            byPart.set(row.num_parte, [...(byPart.get(row.num_parte) || []), row.localizacion]);
+        }
+        return byPart;
+    }, [rows]);
+    const withCurrentLocation = useCallback(
+        (product) => ({ ...product, localizacion: (currentLocations.get(product.num_parte) || []).join(' · ') || UNASSIGNED }),
+        [currentLocations]
+    );
+
     const branchName = branches.find((branch) => branch.idsucursal === branchId)?.sucursal;
     const selectedShelf = warehouse.shelves.find((shelf) => shelf.shelf === selected);
-    const selectedArea = warehouse.areas.find((area) => area.code === selected);
-    // Lo que se ubica desde "Por ubicar" llega con el anaquel que se esta trabajando.
-    const workingMatrix = isSpecialLevel(selected) ? { nivel: selected } : { anaquel: selected || '' };
+    // Lo que se ubica desde el buscador llega con el anaquel que se esta trabajando.
+    const workingMatrix = { anaquel: selected || '' };
 
     const selectKey = (key) => {
         setSelected(key);
@@ -225,6 +287,11 @@ export default function Assignment() {
         const next = !showUnassigned;
         setShowUnassigned(next);
         savePrefs({ showUnassigned: next });
+    };
+
+    const changePhoneTab = (tab) => {
+        setPhoneTab(tab);
+        savePrefs({ phoneTab: tab });
     };
 
     const showToast = (next) => {
@@ -249,12 +316,6 @@ export default function Assignment() {
         setSheetError('');
     };
 
-    // El buscador de productos trae su propia copia: cuando algo vuelve a
-    // "por ubicar" hay que recargarla para que muestre su ubicacion real.
-    const syncPhone = (moves) => {
-        if (moves.some((move) => !isValidLocation(move.a))) findProductsRef.current?.refreshProducts?.();
-    };
-
     const refreshAll = () => {
         if (!branchId) {
             setAttempt((n) => n + 1);
@@ -264,12 +325,12 @@ export default function Assignment() {
         findProductsRef.current?.refreshProducts?.();
     };
 
-    const assign = async ({ num_parte, localizacion, intercambiar = false }) => {
+    const assign = async ({ iddetalle, localizacion, intercambiar = false }) => {
         try {
             const response = await fetch(buildApiUrl('/patchAssignLocation'), {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' },
-                body: JSON.stringify({ idsucursal: branchId, num_parte, localizacion, intercambiar }),
+                body: JSON.stringify({ idsucursal: branchId, iddetalle, localizacion, intercambiar }),
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) return { ok: false, message: data?.details || t('panel.assignment.saveError') };
@@ -286,30 +347,28 @@ export default function Assignment() {
     // persona haya ocupado el lugar y la hoja debe mostrarlo.
     const runAssignment = async (request) => {
         setSheetError('');
+        const before = rows;
         const result = await assign(request);
         loadMap(branchId, true);
         if (!result.ok) {
             setSheetError(result.message);
             return false;
         }
-        if (result.moves.length) {
-            showToast({ moves: result.moves });
-            syncPhone(result.moves);
-        }
+        if (result.moves.length) showToast({ moves: result.moves, undoable: canUndo(result.moves, before) });
         return true;
     };
 
-    const handlePlace = async (num_parte, request) => {
+    const handlePlace = async (iddetalle, request) => {
         setSaving(true);
-        const ok = await runAssignment({ num_parte, ...request });
+        const ok = await runAssignment({ iddetalle, ...request });
         setSaving(false);
         if (ok) closeSheet();
     };
 
     const handleUnassign = async (item) => {
-        setBusyPart(item.num_parte);
-        await runAssignment({ num_parte: item.num_parte, localizacion: UNASSIGNED });
-        setBusyPart(null);
+        setBusyId(item.iddetalle);
+        await runAssignment({ iddetalle: item.iddetalle, localizacion: UNASSIGNED });
+        setBusyId(null);
     };
 
     const handleUndo = async (moves) => {
@@ -324,21 +383,61 @@ export default function Assignment() {
         }
         showToast({ message: t('panel.assignment.undone') });
         loadMap(branchId, true);
-        findProductsRef.current?.refreshProducts?.();
     };
 
-    // Producto elegido en el buscador: va a la matriz que lo esperaba, o al anaquel en curso.
+    // Producto elegido en el buscador: va a la matriz (y posicion) que lo
+    // esperaba, o al anaquel en curso. El buscador trae productos y aqui se
+    // mueven renglones de inventario: si el producto esta dos veces en la
+    // sucursal se toma el que esta por ubicar, y si no, el primero.
     const handlePick = (product) => {
-        const initialMatrix = placeTarget ? splitMatrix(placeTarget) : workingMatrix;
+        const own = rows.filter((row) => row.num_parte === product.num_parte);
+        const row = own.find((item) => !isValidLocation(item.localizacion)) ?? own[0];
+        if (!row) {
+            showToast({ error: t('panel.assignment.saveError') });
+            return;
+        }
+        const initialMatrix = placeTarget ? splitMatrix(placeTarget.code) : workingMatrix;
+        const initialIndex = placeTarget?.index ?? null;
         setPlaceTarget(null);
-        openView({ type: 'place', part: product.num_parte, fallback: product, initialMatrix });
+        openView({ type: 'place', id: row.iddetalle, initialMatrix, initialIndex });
     };
 
-    const handleAddHere = (code) => {
+    // "Ubicar aqui": en la matriz, o en un hueco exacto si viene `index`.
+    const handleAddHere = (code, index = null) => {
         closeSheet();
-        setPlaceTarget(code);
+        setPlaceTarget({ code, index });
         setShowUnassigned(true);
         requestAnimationFrame(() => phoneRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    };
+
+    // Guarda la lista completa de niveles del anaquel. Devuelve si se guardo,
+    // para que el editor limpie su selector.
+    const handleSaveLevels = async (shelf, niveles) => {
+        setSaving(true);
+        setSheetError('');
+        try {
+            const response = await fetch(buildApiUrl('/patchShelfLevels'), {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' },
+                body: JSON.stringify({ idsucursal: branchId, anaquel: shelf, niveles }),
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                setSheetError(data?.details || t('panel.assignment.levelsSaveError'));
+                return false;
+            }
+            setLayout((current) => [
+                ...current.filter((entry) => entry.anaquel !== shelf),
+                { anaquel: shelf, niveles: data.niveles },
+            ]);
+            return true;
+        } catch (error) {
+            console.error('Error guardando niveles:', error);
+            setSheetError(t('panel.assignment.levelsSaveError'));
+            return false;
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleMigrate = async ({ source, target }) => {
@@ -383,29 +482,47 @@ export default function Assignment() {
                     key={view.code}
                     code={view.code}
                     matrix={warehouse.matrices.get(view.code)}
-                    busyPart={busyPart}
+                    busyId={busyId}
                     error={sheetError}
-                    onMove={(item) => openView({ type: 'place', part: item.num_parte, initialMatrix: splitMatrix(item.matrix) })}
+                    onMove={(item) => openView({ type: 'place', id: item.iddetalle, initialMatrix: splitMatrix(item.matrix) })}
                     onUnassign={handleUnassign}
-                    onAddHere={() => handleAddHere(view.code)}
+                    onAddHere={(index) => handleAddHere(view.code, index)}
+                    onClose={closeSheet}
+                    loadMatrix={loadMatrix}
+                />
+            );
+        }
+
+        if (view.type === 'levels') {
+            const shelf = warehouse.shelves.find((item) => item.shelf === view.shelf);
+            if (!shelf) return null;
+            return (
+                <LevelsEditor
+                    key={view.shelf}
+                    shelf={shelf}
+                    saving={saving}
+                    error={sheetError}
+                    onSave={handleSaveLevels}
                     onClose={closeSheet}
                 />
             );
         }
 
-        const product = rows.find((row) => row.num_parte === view.part) ?? view.fallback;
+        const product = rows.find((row) => row.iddetalle === view.id);
         if (!product) return null;
         return (
             <PlaceForm
-                key={`${view.part}-${JSON.stringify(view.initialMatrix)}`}
+                key={`${view.id}-${JSON.stringify(view.initialMatrix)}-${view.initialIndex}`}
                 product={product}
                 initialMatrix={view.initialMatrix}
+                initialIndex={view.initialIndex}
                 matrices={warehouse.matrices}
                 saving={saving}
                 error={sheetError}
-                onSubmit={(request) => handlePlace(view.part, request)}
+                onSubmit={(request) => handlePlace(view.id, request)}
                 onBack={views.length > 1 ? goBack : null}
                 onClose={closeSheet}
+                loadMatrix={loadMatrix}
             />
         );
     };
@@ -435,6 +552,17 @@ export default function Assignment() {
             onClick: () => setMigrateOpen(true),
         }] : []),
     ];
+
+    const phoneTabs = [
+        { id: 'unassigned', label: t('panel.assignment.tabUnassigned'), count: warehouse.stats.unassigned },
+        { id: 'all', label: t('panel.assignment.tabAll'), count: rows.length },
+    ];
+    // El hueco exacto (01A05-1) si "Ubicar aqui" vino de una posicion libre; si no, la matriz.
+    const targetLabel = placeTarget
+        ? `${placeTarget.code}${placeTarget.index === null ? '' : `-${placeTarget.index}`}`
+        : '';
+    let pickLabel = phoneTab === 'unassigned' ? t('panel.assignment.assign') : t('panel.assignment.place');
+    if (placeTarget) pickLabel = t('panel.assignment.placeHere', { code: targetLabel });
 
     const visibleView = views[views.length - 1] ?? closingView;
     // Sin userData todavia no se sabe la sucursal: se sigue viendo la carga.
@@ -486,7 +614,8 @@ export default function Assignment() {
                 )}
 
                 <div className="grid grid-cols-1 gap-x-6 gap-y-4 lg:grid-cols-3 lg:items-start">
-                    {/* Por ubicar: el mismo buscador de productos de los demas modulos, plegable. */}
+                    {/* Productos: el mismo buscador de los demas modulos, plegable, con dos
+                        pestanas: solo lo que esta por ubicar, o todos los que existen. */}
                     <section
                         ref={phoneRef}
                         className="min-w-0 scroll-mt-28 overflow-hidden rounded-xl bg-[rgb(var(--color-card))] shadow shadow-[rgb(var(--color-galaxy))] lg:rounded-2xl"
@@ -498,29 +627,50 @@ export default function Assignment() {
                             className="flex w-full items-center gap-2 px-4 py-3 text-left"
                         >
                             <FaInbox className="size-4 text-amber-600" aria-hidden="true" />
-                            <span className="flex-1 font-bold">{t('panel.assignment.statUnassigned')}</span>
-                            <span className="rounded-full bg-[rgb(var(--color-gray))] px-2 text-xs font-semibold">
-                                {warehouse.stats.unassigned}
-                            </span>
+                            <span className="flex-1 font-bold">{t('panel.assignment.products')}</span>
+                            {!showUnassigned && warehouse.stats.unassigned > 0 && (
+                                <span className="rounded-full bg-amber-400/30 px-2 text-xs font-semibold">
+                                    {t('panel.assignment.unassignedCount', { count: warehouse.stats.unassigned })}
+                                </span>
+                            )}
                             <FaChevronDown
                                 className={`size-3.5 transition-transform ${showUnassigned ? 'rotate-180' : ''}`}
                                 aria-hidden="true"
                             />
                         </button>
-                        {placeTarget && (
-                            <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl bg-amber-400/25 px-3 py-2 text-sm font-medium">
-                                <span className="flex-1">{t('panel.assignment.pickProduct', { code: placeTarget })}</span>
-                                <button
-                                    type="button"
-                                    onClick={() => setPlaceTarget(null)}
-                                    aria-label={t('panel.common.cancel')}
-                                    className="grid size-8 place-items-center rounded-full hover:bg-[rgb(var(--color-text))]/10"
-                                >
-                                    <FaXmark className="size-3.5" />
-                                </button>
-                            </div>
-                        )}
                         <div className={showUnassigned ? 'block pb-2' : 'hidden'}>
+                            <div role="tablist" className="mx-3 mb-2 grid grid-cols-2 gap-1 rounded-xl bg-[rgb(var(--color-bg))] p-1">
+                                {phoneTabs.map(({ id, label, count }) => (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        role="tab"
+                                        aria-selected={phoneTab === id}
+                                        onClick={() => changePhoneTab(id)}
+                                        className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold transition ${phoneTab === id
+                                            ? 'bg-amber-500 text-slate-900 shadow'
+                                            : 'text-[rgb(var(--color-gray-base))]'}`}
+                                    >
+                                        {label}
+                                        <span className={`rounded-full px-1.5 text-xs ${phoneTab === id ? 'bg-slate-900/15' : 'bg-[rgb(var(--color-gray))]'}`}>
+                                            {count}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                            {placeTarget && (
+                                <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl bg-amber-400/25 px-3 py-2 text-sm font-medium">
+                                    <span className="flex-1">{t('panel.assignment.pickProduct', { code: targetLabel })}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setPlaceTarget(null)}
+                                        aria-label={t('panel.common.cancel')}
+                                        className="grid size-8 place-items-center rounded-full hover:bg-[rgb(var(--color-text))]/10"
+                                    >
+                                        <FaXmark className="size-3.5" />
+                                    </button>
+                                </div>
+                            )}
                             {branchId && (
                                 <FindProducts
                                     ref={findProductsRef}
@@ -529,11 +679,10 @@ export default function Assignment() {
                                     includePendingProducts={false}
                                     allowedSearchTypes={SEARCH_TYPES}
                                     onProductPick={handlePick}
-                                    productFilter={placeTarget ? undefined : onlyUnassigned}
-                                    pickActionLabel={placeTarget
-                                        ? t('panel.assignment.placeHere', { code: placeTarget })
-                                        : t('panel.assignment.assign')}
-                                    emptyMessage={t('panel.assignment.unassignedEmpty')}
+                                    productFilter={phoneTab === 'unassigned' ? onlyUnassigned : undefined}
+                                    decorateProduct={withCurrentLocation}
+                                    pickActionLabel={pickLabel}
+                                    emptyMessage={phoneTab === 'unassigned' ? t('panel.assignment.unassignedEmpty') : undefined}
                                 />
                             )}
                         </div>
@@ -599,7 +748,6 @@ export default function Assignment() {
                                 <>
                                     <ShelfPicker
                                         shelves={warehouse.shelves}
-                                        areas={warehouse.areas}
                                         selected={selected}
                                         matchedKeys={search?.matchedKeys}
                                         onSelect={selectKey}
@@ -620,14 +768,7 @@ export default function Assignment() {
                                             matrices={warehouse.matrices}
                                             matchedMatrices={search?.matrices}
                                             onOpenMatrix={(code) => openView({ type: 'matrix', code })}
-                                        />
-                                    )}
-                                    {selectedArea && (
-                                        <AreaCard
-                                            area={selectedArea}
-                                            matrix={warehouse.matrices.get(selectedArea.code)}
-                                            matchedParts={search?.parts}
-                                            onOpen={(code) => openView({ type: 'matrix', code })}
+                                            onEditLevels={(shelf) => openView({ type: 'levels', shelf })}
                                         />
                                     )}
                                     <MapLegend />
@@ -641,7 +782,7 @@ export default function Assignment() {
             <Sheet
                 isOpen={views.length > 0}
                 onClose={closeSheet}
-                locked={saving || Boolean(busyPart)}
+                locked={saving || busyId !== null}
                 labelledBy={SHEET_TITLE_ID}
                 wide
             >
@@ -670,7 +811,7 @@ export default function Assignment() {
                             <span className="min-w-0 flex-1 truncate font-medium">
                                 {toast.error || toast.message || describeMoves(toast.moves)}
                             </span>
-                            {toast.moves && (
+                            {toast.moves && toast.undoable && (
                                 <button
                                     type="button"
                                     onClick={() => handleUndo(toast.moves)}

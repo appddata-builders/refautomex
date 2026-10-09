@@ -217,6 +217,9 @@ const FindProducts = forwardRef(({
     // accion del modulo; sin el, la tarjeta completa sigue siendo el boton.
     pickActionLabel,
     emptyMessage,
+    // Para modulos que saben mas que la copia de getAllProducts (Asignacion:
+    // la ubicacion actual despues de mover). Recibe y devuelve un producto.
+    decorateProduct,
 }, ref) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [products, setProducts] = useState([]);
@@ -431,10 +434,11 @@ const FindProducts = forwardRef(({
     }, [userBranchId, showAllBranches, includePendingProducts, includeWebBranch]);
 
     useEffect(() => {
-        const source = productFilter ? products.filter(productFilter) : products;
+        let source = productFilter ? products.filter(productFilter) : products;
+        if (decorateProduct) source = source.map(decorateProduct);
         const result = filterProductsByCategory(source, searchTerm, searchType);
         setFilteredProducts(result.dataProducts);
-    }, [searchTerm, products, searchType, productFilter]);
+    }, [searchTerm, products, searchType, productFilter, decorateProduct]);
 
     useEffect(() => {
         setCurrentPage(1);

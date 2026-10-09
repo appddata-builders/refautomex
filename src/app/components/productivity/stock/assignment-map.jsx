@@ -1,7 +1,6 @@
 import React from 'react';
-import { FaTriangleExclamation } from 'react-icons/fa6';
+import { FaLayerGroup, FaTriangleExclamation } from 'react-icons/fa6';
 import { useTranslation } from '@/app/lib/text/text-provider';
-import { matrixSlots } from './locations';
 
 // Libre, ocupada o en conflicto: el mismo codigo de color en celdas, posiciones y leyenda.
 const TONES = {
@@ -11,9 +10,9 @@ const TONES = {
 };
 const MATCH_RING = 'ring-2 ring-blue-500 ring-offset-2 ring-offset-[rgb(var(--color-bg))]';
 
-const toneOf = (count, conflict) => {
+const toneOf = (items = [], conflict = false) => {
     if (conflict) return TONES.conflict;
-    return count ? TONES.used : TONES.free;
+    return items.length ? TONES.used : TONES.free;
 };
 
 export function StockPill({ existencia }) {
@@ -32,45 +31,37 @@ export function StockPill({ existencia }) {
 }
 
 /**
- * Elige que se ve en el mapa: un anaquel (01, 02...) o un nivel especial (ENC,
- * EXT...). Solo se pinta el elegido, el que se esta trabajando. Mientras se
- * busca, los que tienen coincidencias llevan aro azul y el resto se atenua.
+ * Elige el anaquel que se esta trabajando: es el unico que se pinta. Mientras
+ * se busca, los que tienen coincidencias llevan aro azul y el resto se atenua.
  */
-export function ShelfPicker({ shelves, areas, selected, matchedKeys, onSelect }) {
+export function ShelfPicker({ shelves, selected, matchedKeys, onSelect }) {
     const { t } = useTranslation();
-
-    const chip = (key, { conflicts = 0, count = null }) => {
-        const isSelected = key === selected;
-        const matched = Boolean(matchedKeys?.has(key));
-        return (
-            <button
-                key={key}
-                type="button"
-                onClick={() => onSelect(key)}
-                aria-pressed={isSelected}
-                className={`relative shrink-0 rounded-full border px-3.5 py-1.5 font-mono text-sm font-semibold shadow-sm transition ${isSelected
-                    ? 'border-amber-500 bg-amber-500 text-slate-900'
-                    : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] hover:border-amber-500'} ${matched && !isSelected ? 'ring-2 ring-blue-500' : ''} ${matchedKeys && !matched && !isSelected ? 'opacity-40' : ''}`}
-            >
-                {key}
-                {count !== null && (
-                    <span className="ml-1.5 rounded-full bg-[rgb(var(--color-text))]/10 px-1.5 text-[11px]">{count}</span>
-                )}
-                {conflicts > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-[rgb(var(--color-error))]" aria-hidden="true" />
-                )}
-            </button>
-        );
-    };
 
     return (
         <nav
             aria-label={t('panel.assignment.statShelves')}
             className="-mx-3 flex items-center gap-2 overflow-x-auto px-3 py-1 [scrollbar-width:none] sm:-mx-4 sm:px-4"
         >
-            {shelves.map((shelf) => chip(shelf.shelf, { conflicts: shelf.conflicts }))}
-            <span className="mx-1 h-6 w-px shrink-0 bg-[rgb(var(--color-border))]" aria-hidden="true" />
-            {areas.map((area) => chip(area.code, { conflicts: area.conflicts, count: area.count }))}
+            {shelves.map(({ shelf, conflicts }) => {
+                const isSelected = shelf === selected;
+                const matched = Boolean(matchedKeys?.has(shelf));
+                return (
+                    <button
+                        key={shelf}
+                        type="button"
+                        onClick={() => onSelect(shelf)}
+                        aria-pressed={isSelected}
+                        className={`relative shrink-0 rounded-full border px-3.5 py-1.5 font-mono text-sm font-semibold shadow-sm transition ${isSelected
+                            ? 'border-amber-500 bg-amber-500 text-slate-900'
+                            : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] hover:border-amber-500'} ${matched && !isSelected ? 'ring-2 ring-blue-500' : ''} ${matchedKeys && !matched && !isSelected ? 'opacity-40' : ''}`}
+                    >
+                        {shelf}
+                        {conflicts > 0 && (
+                            <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-[rgb(var(--color-error))]" aria-hidden="true" />
+                        )}
+                    </button>
+                );
+            })}
         </nav>
     );
 }
@@ -85,7 +76,7 @@ function MatrixCell({ code, matrix, searching, matched, onOpen }) {
             onClick={() => onOpen(code)}
             title={code}
             aria-label={`${t('panel.assignment.matrix', { code })}: ${count}`}
-            className={`relative grid aspect-square min-h-11 place-items-center rounded-xl border text-sm font-bold transition hover:scale-105 active:scale-95 ${toneOf(count, matrix?.hasConflict)} ${searching && !matched ? 'opacity-25' : ''} ${matched ? MATCH_RING : ''}`}
+            className={`relative grid aspect-square min-h-11 place-items-center rounded-xl border text-sm font-bold transition hover:scale-105 active:scale-95 ${toneOf(matrix?.items, matrix?.hasConflict)} ${searching && !matched ? 'opacity-25' : ''} ${matched ? MATCH_RING : ''}`}
         >
             {count || <span className="opacity-40">·</span>}
             {matrix?.hasConflict && (
@@ -95,25 +86,19 @@ function MatrixCell({ code, matrix, searching, matched, onOpen }) {
     );
 }
 
-function ConflictBadge({ count }) {
-    if (!count) return null;
-    return (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[rgb(var(--color-error))]/15 px-2.5 py-1 text-xs font-semibold text-[rgb(var(--color-error))]">
-            <FaTriangleExclamation className="size-3" aria-hidden="true" />
-            {count}
-        </span>
-    );
-}
-
 /**
  * Un anaquel como se ve de frente: un renglon por nivel y una columna por
- * seccion. Cada celda es una matriz con su numero de productos; tocarla abre
- * su detalle. Si no cabe, la cuadricula se desplaza de lado y los niveles se
- * quedan fijos a la izquierda.
+ * seccion, y abajo sus niveles especiales, de un solo recuadro porque no tienen
+ * secciones. Cada recuadro es un contenedor con su numero de productos; cuales
+ * indices ocupan se ve al tocarlo, en su detalle. Si no cabe, la cuadricula se
+ * desplaza de lado y los niveles se quedan fijos a la izquierda.
  */
-export function ShelfCard({ shelf, matrices, matchedMatrices, onOpenMatrix }) {
+export function ShelfCard({ shelf, matrices, matchedMatrices, onOpenMatrix, onEditLevels }) {
     const { t } = useTranslation();
     const searching = Boolean(matchedMatrices);
+    // Sin secciones (solo niveles especiales, o anaquel recien armado) queda
+    // una columna, del mismo ancho que las demas.
+    const columns = `2.25rem repeat(${Math.max(shelf.sections.length, 1)}, minmax(2.75rem, 4rem))`;
 
     return (
         <section className="rounded-2xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] p-4 shadow-sm">
@@ -124,88 +109,82 @@ export function ShelfCard({ shelf, matrices, matchedMatrices, onOpenMatrix }) {
                         {t('panel.assignment.shelfSummary', { products: shelf.count, matrices: shelf.matrixCount })}
                     </p>
                 </div>
-                <ConflictBadge count={shelf.conflicts} />
+                <div className="flex shrink-0 items-center gap-2">
+                    {shelf.conflicts > 0 && (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-[rgb(var(--color-error))]/15 px-2.5 py-1 text-xs font-semibold text-[rgb(var(--color-error))]">
+                            <FaTriangleExclamation className="size-3" aria-hidden="true" />
+                            {shelf.conflicts}
+                        </span>
+                    )}
+                    <button
+                        type="button"
+                        onClick={() => onEditLevels(shelf.shelf)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-[rgb(var(--color-border))] px-3 py-1.5 text-xs font-semibold transition hover:border-amber-500"
+                    >
+                        <FaLayerGroup className="size-3.5 text-amber-600" aria-hidden="true" />
+                        {t('panel.assignment.editLevels')}
+                    </button>
+                </div>
             </header>
 
             <div className="-mx-4 overflow-x-auto px-4 pb-1">
                 {/* Celdas de 44 a 64 px: se encogen hasta caber, se pueden tocar con el
-                    pulgar y no se inflan en anaqueles de pocas secciones. Si ni a 44 px
-                    caben, la cuadricula se desplaza de lado. */}
-                <div
-                    className="grid gap-1.5"
-                    style={{ gridTemplateColumns: `1.75rem repeat(${shelf.sections.length}, minmax(2.75rem, 4rem))` }}
-                >
+                    pulgar y no se inflan en anaqueles de pocas secciones. */}
+                <div className="grid gap-1.5" style={{ gridTemplateColumns: columns }}>
                     <span aria-hidden="true" />
-                    {shelf.sections.map((section) => (
+                    {shelf.sections.length ? shelf.sections.map((section) => (
                         <span key={section} className="text-center text-[11px] font-medium text-[rgb(var(--color-gray-base))]">
                             {section}
                         </span>
-                    ))}
+                    )) : <span aria-hidden="true" />}
 
-                    {shelf.levels.map((level) => (
-                        <React.Fragment key={level}>
-                            <span className="sticky left-0 z-10 grid place-items-center bg-[rgb(var(--color-bg))] text-xs font-bold text-[rgb(var(--color-gray-base))]">
+                    {shelf.levels.map(({ level, special }) => {
+                        // col-start-1: cada nivel abre renglon aunque el anterior
+                        // (uno especial) no haya llenado todas las columnas.
+                        const label = (
+                            <span className="sticky left-0 z-10 col-start-1 grid place-items-center bg-[rgb(var(--color-bg))] text-[11px] font-bold text-[rgb(var(--color-gray-base))]">
                                 {level}
                             </span>
-                            {shelf.sections.map((section) => {
-                                const code = `${shelf.shelf}${level}${section}`;
-                                return (
+                        );
+
+                        if (special) {
+                            const code = `${shelf.shelf}${level}`;
+                            return (
+                                <React.Fragment key={level}>
+                                    {label}
                                     <MatrixCell
-                                        key={code}
                                         code={code}
                                         matrix={matrices.get(code)}
                                         searching={searching}
                                         matched={searching && matchedMatrices.has(code)}
                                         onOpen={onOpenMatrix}
                                     />
-                                );
-                            })}
-                        </React.Fragment>
-                    ))}
+                                </React.Fragment>
+                            );
+                        }
+
+                        return (
+                            <React.Fragment key={level}>
+                                {label}
+                                {shelf.sections.length ? shelf.sections.map((section) => {
+                                    const code = `${shelf.shelf}${level}${section}`;
+                                    return (
+                                        <MatrixCell
+                                            key={code}
+                                            code={code}
+                                            matrix={matrices.get(code)}
+                                            searching={searching}
+                                            matched={searching && matchedMatrices.has(code)}
+                                            onOpen={onOpenMatrix}
+                                        />
+                                    );
+                                }) : (
+                                    <span className={`grid aspect-square min-h-11 place-items-center rounded-xl border text-xs ${TONES.free}`}>—</span>
+                                )}
+                            </React.Fragment>
+                        );
+                    })}
                 </div>
-            </div>
-        </section>
-    );
-}
-
-/**
- * Un nivel especial (ENC, EXT, OBS, INT): sin anaquel ni seccion, solo
- * posiciones. Se ve cada posicion con lo que tiene y al final una libre.
- */
-export function AreaCard({ area, matrix, matchedParts, onOpen }) {
-    const { t } = useTranslation();
-    const slots = matrixSlots(matrix?.items);
-
-    return (
-        <section className="rounded-2xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] p-4 shadow-sm">
-            <header className="mb-3 flex items-start justify-between gap-3">
-                <div>
-                    <h3 className="text-base font-bold">{t('panel.assignment.area', { code: area.code })}</h3>
-                    <p className="text-xs text-[rgb(var(--color-gray-base))]">{t('panel.assignment.areaHint', { code: area.code })}</p>
-                </div>
-                <ConflictBadge count={area.conflicts} />
-            </header>
-
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 xl:grid-cols-6">
-                {slots.map((slot) => {
-                    const taken = slot.occupants.length;
-                    const matched = Boolean(matchedParts) && slot.occupants.some((item) => matchedParts.has(item.num_parte));
-                    return (
-                        <button
-                            key={slot.index}
-                            type="button"
-                            onClick={() => onOpen(area.code)}
-                            className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1.5 py-2 transition hover:scale-[1.02] active:scale-95 ${toneOf(taken, taken > 1)} ${matchedParts && !matched ? 'opacity-25' : ''} ${matched ? MATCH_RING : ''}`}
-                        >
-                            <span className="font-mono text-sm font-bold">{area.code}-{slot.index}</span>
-                            <span className="w-full truncate text-center text-[11px]">
-                                {taken
-                                    ? slot.occupants.map((item) => item.num_parte).join(', ')
-                                    : t('panel.assignment.free')}
-                            </span>
-                        </button>
-                    );
-                })}
             </div>
         </section>
     );

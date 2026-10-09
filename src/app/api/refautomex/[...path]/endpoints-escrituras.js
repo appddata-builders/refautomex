@@ -34,11 +34,19 @@
 
 import { consultar, escribir, enTransaccion, okPacket } from '@/app/lib/refautomex-db';
 import {
+  NIVEL_VALIDO,
   POR_UBICAR,
+  TABLA_NIVELES,
   UBICACION_VALIDA,
+  adelantarSecuencia,
   bloquearUbicaciones,
+  SOLO_ACTIVOS,
   idDeLocalizacion,
+  liberarInactivos,
+  lugarParaDesplazado,
+  nivelDe,
   reubicarDetalle,
+  reubicarPorId,
 } from './localizaciones';
 
 const faltan = (detalle) => ({ estado: 400, cuerpo: { error: 'Bad Request', details: detalle } });
@@ -257,9 +265,13 @@ const patchMigrate = async ({ body }) => {
     cuerpo: await enTransaccion(async (tx) => {
       await bloquearUbicaciones(tx, idsucursal);
 
+      // Solo cuentan los productos activos; lo demas (baja, fuera del catalogo)
+      // no juega en el mapa y se libera a "por ubicar" en vez de migrarse o de
+      // impedir la migracion.
       const hayOrigen = await tx.consultar(
         `SELECT 1 FROM detalle d
            JOIN localizacion l ON l.idlocalizacion = d.idlocalizacion
+           ${SOLO_ACTIVOS}
           WHERE d.idsucursal = ? AND l.localizacion LIKE ? LIMIT 1`,
         [idsucursal, `${source}%`]
       );
@@ -268,11 +280,16 @@ const patchMigrate = async ({ body }) => {
       const ocupada = await tx.consultar(
         `SELECT 1 FROM detalle d
            JOIN localizacion l ON l.idlocalizacion = d.idlocalizacion
+           ${SOLO_ACTIVOS}
           WHERE d.idsucursal = ? AND l.localizacion LIKE ? LIMIT 1`,
         [idsucursal, `${target}%`]
       );
       if (ocupada.length > 0) throw new Error('La matriz destino no está vacía.');
 
+      await liberarInactivos(tx, idsucursal, `${source}%`);
+      await liberarInactivos(tx, idsucursal, `${target}%`);
+
+      await adelantarSecuencia(tx);
       await tx.escribir(
         `WITH nuevas AS (
            SELECT DISTINCT ?::text || substring(l.localizacion FROM ?::int) AS texto
@@ -302,57 +319,67 @@ const patchMigrate = async ({ body }) => {
   };
 };
 
-// Asignacion de productos: pone un producto en una ubicacion exacta de su
-// sucursal (01A05-3), o lo manda a "por ubicar" con '0'.
+// Asignacion de productos: pone un renglon de inventario (`iddetalle`) en una
+// ubicacion exacta de su sucursal (01A05-3), o lo manda a "por ubicar" con '0'.
 //
-// Nunca deja dos productos en el mismo lugar. Si el destino esta ocupado
-// responde 409 con el ocupante y la pantalla ofrece intercambiar: con
-// `intercambiar`, el ocupante toma el lugar que deja el producto, o queda por
-// ubicar si el producto no venia de una ubicacion valida. Devuelve los
-// movimientos hechos para que la pantalla los pinte y pueda deshacerlos.
+// Va por iddetalle y no por num_parte: si un producto quedo dos veces en la
+// sucursal (dos detalles en la misma ubicacion, un conflicto), mover uno por
+// num_parte arrastraba al otro y el conflicto aparecia en el nuevo indice.
+//
+// Nunca deja dos renglones en el mismo lugar. Si el destino esta ocupado por un
+// producto activo responde 409 con el ocupante y la pantalla ofrece moverlo:
+// con `intercambiar`, el ocupante toma el lugar que deja el renglon si ese lugar
+// queda libre, y si no, la primera posicion libre del contenedor
+// (lugarParaDesplazado). Lo que no es un producto activo (baja, o fuera del
+// catalogo) no bloquea: se libera a "por ubicar" (liberarInactivos). Devuelve
+// los movimientos hechos para que la pantalla los pinte y pueda deshacerlos.
 const patchAssignLocation = async ({ body }) => {
-  const { idsucursal, num_parte, localizacion, intercambiar = false } = body || {};
-  if (!idsucursal || !num_parte || !localizacion) {
-    return faltan('Faltan idsucursal, num_parte o localizacion.');
+  const { idsucursal, iddetalle, localizacion, intercambiar = false } = body || {};
+  if (!idsucursal || !iddetalle || !localizacion) {
+    return faltan('Faltan idsucursal, iddetalle o localizacion.');
   }
 
   const destino = String(localizacion).trim().toUpperCase();
   if (destino !== POR_UBICAR && !UBICACION_VALIDA.test(destino)) {
-    return faltan(`La ubicación ${destino} no tiene la forma 01A05-1 o ENC-1.`);
+    return faltan(`La ubicación ${destino} no tiene la forma 01A05-0 o 01ENC-0.`);
   }
 
   return enTransaccion(async (tx) => {
     await bloquearUbicaciones(tx, idsucursal);
 
-    const actual = await tx.consultar(
-      `SELECT COALESCE(l.localizacion, '') AS localizacion
+    const [actual] = await tx.consultar(
+      `SELECT d.num_parte, COALESCE(l.localizacion, '') AS localizacion
          FROM detalle d
          LEFT JOIN localizacion l USING (idlocalizacion)
-        WHERE d.num_parte = ? AND d.idsucursal = ?
-        LIMIT 1`,
-      [num_parte, idsucursal]
+        WHERE d.iddetalle = ? AND d.idsucursal = ?`,
+      [iddetalle, idsucursal]
     );
-    if (actual.length === 0) {
+    if (!actual) {
       return {
         estado: 404,
-        cuerpo: { error: 'Not Found', details: `${num_parte} no tiene inventario en esta sucursal.` },
+        cuerpo: { error: 'Not Found', details: 'Ese renglón de inventario no existe en esta sucursal.' },
       };
     }
 
-    const origen = actual[0].localizacion;
+    const origen = actual.localizacion;
     if (origen === destino) return { cuerpo: { ok: true, movimientos: [] } };
 
-    const movimientos = [{ num_parte, de: origen, a: destino }];
+    const movimientos = [{ iddetalle: Number(iddetalle), num_parte: actual.num_parte, de: origen, a: destino }];
+    // Renglones de productos no activos que estorbaban y se mandaron a por ubicar.
+    let liberados = 0;
 
     if (destino !== POR_UBICAR) {
-      const ocupantes = (await tx.consultar(
-        `SELECT d.num_parte
+      // Solo un producto activo ocupa el lugar; lo demas se libera abajo.
+      const ocupantes = await tx.consultar(
+        `SELECT d.iddetalle, d.num_parte
            FROM detalle d
            JOIN localizacion l USING (idlocalizacion)
-          WHERE d.idsucursal = ? AND l.localizacion = ? AND d.num_parte <> ?
-          ORDER BY d.num_parte`,
-        [idsucursal, destino, num_parte]
-      )).map((fila) => fila.num_parte);
+           ${SOLO_ACTIVOS}
+          WHERE d.idsucursal = ? AND l.localizacion = ? AND d.iddetalle <> ?
+          ORDER BY d.iddetalle`,
+        [idsucursal, destino, iddetalle]
+      );
+      const partes = ocupantes.map((fila) => fila.num_parte);
 
       if (ocupantes.length > 1) {
         return {
@@ -360,7 +387,7 @@ const patchAssignLocation = async ({ body }) => {
           cuerpo: {
             error: 'Conflict',
             details: `${destino} ya tiene ${ocupantes.length} productos; mueve uno antes de usarla.`,
-            ocupantes,
+            ocupantes: partes,
           },
         };
       }
@@ -370,18 +397,83 @@ const patchAssignLocation = async ({ body }) => {
         if (!intercambiar) {
           return {
             estado: 409,
-            cuerpo: { error: 'Conflict', details: `${destino} ya la ocupa ${ocupante}.`, ocupantes },
+            cuerpo: { error: 'Conflict', details: `${destino} ya la ocupa ${ocupante.num_parte}.`, ocupantes: partes },
           };
         }
 
-        const lugarQueDeja = UBICACION_VALIDA.test(origen) ? origen : POR_UBICAR;
-        await reubicarDetalle(tx, { num_parte: ocupante, idsucursal, localizacion: lugarQueDeja });
-        movimientos.push({ num_parte: ocupante, de: destino, a: lugarQueDeja });
+        const lugarQueDeja = await lugarParaDesplazado(tx, {
+          idsucursal, iddetalle, ocupante: ocupante.iddetalle, origen, destino,
+        });
+        if (!lugarQueDeja) {
+          return {
+            estado: 409,
+            cuerpo: {
+              error: 'Conflict',
+              details: `No queda posición libre en ${destino.slice(0, destino.lastIndexOf('-'))} para ${ocupante.num_parte}.`,
+              ocupantes: partes,
+            },
+          };
+        }
+        if (lugarQueDeja !== POR_UBICAR) liberados += await liberarInactivos(tx, idsucursal, lugarQueDeja);
+        await reubicarPorId(tx, ocupante.iddetalle, lugarQueDeja);
+        movimientos.push({ iddetalle: ocupante.iddetalle, num_parte: ocupante.num_parte, de: destino, a: lugarQueDeja });
       }
+
+      liberados += await liberarInactivos(tx, idsucursal, destino);
     }
 
-    await reubicarDetalle(tx, { num_parte, idsucursal, localizacion: destino });
-    return { cuerpo: { ok: true, movimientos } };
+    await reubicarPorId(tx, iddetalle, destino);
+    return { cuerpo: { ok: true, movimientos, liberados } };
+  });
+};
+
+// Asignacion de productos: los niveles que tiene un anaquel (A, B... y los
+// especiales ENC, EXT, OBS, INT). Sin registro, el mapa los deduce de las
+// ubicaciones; con registro se ven estos, mas cualquiera que tenga productos.
+// Se guarda la lista completa, y no se acepta si deja fuera un nivel que
+// todavia tiene productos: primero hay que moverlos.
+const patchShelfLevels = async ({ body }) => {
+  const { idsucursal, anaquel, niveles } = body || {};
+  if (!idsucursal || !/^[0-9]{2}$/.test(String(anaquel ?? '')) || !Array.isArray(niveles)) {
+    return faltan('Faltan idsucursal, anaquel (dos dígitos) o la lista de niveles.');
+  }
+
+  const lista = [...new Set(niveles.map((nivel) => String(nivel).trim().toUpperCase()))];
+  const invalidos = lista.filter((nivel) => !NIVEL_VALIDO.test(nivel));
+  if (invalidos.length) return faltan(`Niveles no válidos: ${invalidos.join(', ')}.`);
+
+  return enTransaccion(async (tx) => {
+    // El mismo bloqueo que las asignaciones: nadie ubica en un nivel mientras se quita.
+    await bloquearUbicaciones(tx, idsucursal);
+    await tx.escribir(TABLA_NIVELES);
+
+    // Solo los productos activos cuentan: lo demas no juega en el mapa.
+    const ubicaciones = await tx.consultar(
+      `SELECT DISTINCT l.localizacion
+         FROM detalle d
+         JOIN localizacion l USING (idlocalizacion)
+         ${SOLO_ACTIVOS}
+        WHERE d.idsucursal = ? AND l.localizacion LIKE ?`,
+      [idsucursal, `${anaquel}%`]
+    );
+    const conProductos = new Set(ubicaciones.map((fila) => nivelDe(fila.localizacion)).filter(Boolean));
+    const ocupados = [...conProductos].filter((nivel) => !lista.includes(nivel)).sort();
+    if (ocupados.length) {
+      return {
+        estado: 409,
+        cuerpo: {
+          error: 'Conflict',
+          details: `El anaquel ${anaquel} tiene productos en ${ocupados.join(', ')}: muévelos antes de quitar el nivel.`,
+        },
+      };
+    }
+
+    await tx.escribir(
+      `INSERT INTO anaquel_niveles (id, idsucursal, anaquel, niveles) VALUES (?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET niveles = EXCLUDED.niveles`,
+      [`${idsucursal}:${anaquel}`, idsucursal, anaquel, lista.join(',')]
+    );
+    return { cuerpo: { ok: true, anaquel, niveles: lista } };
   });
 };
 
@@ -792,6 +884,7 @@ export const ESCRITURAS = {
     patchProduct,
     patchMigrate,
     patchAssignLocation,
+    patchShelfLevels,
     patchCapture,
   },
   DELETE: {

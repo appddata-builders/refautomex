@@ -1,8 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     FaCircleExclamation,
     FaLayerGroup,
     FaLocationDot,
+    FaMinus,
     FaParachuteBox,
     FaPlus,
     FaRightLeft,
@@ -13,6 +14,10 @@ import { SheetHeader } from './sheet';
 import MatrixPicker from './matrix-picker';
 import { StockPill } from './assignment-map';
 import {
+    LEVELS,
+    MAX_INDEX,
+    SPECIAL_LEVELS,
+    displacedLocation,
     firstFreeIndex,
     isSpecialLevel,
     isValidLocation,
@@ -27,6 +32,26 @@ export const SHEET_TITLE_ID = 'assignment-sheet-title';
 
 const EMPTY_MATRIX = { anaquel: '', nivel: '', seccion: '' };
 
+// El contenedor `code` como esta en la base ahora (loadMatrix), en vez de la
+// foto del mapa. Se vuelve a pedir cuando cambia `refreshKey` (por ejemplo,
+// despues de un rechazo del servidor). Mientras llega se usa `fallback`.
+const useLiveMatrix = (code, loadMatrix, fallback, refreshKey) => {
+    const [live, setLive] = useState(null);
+
+    useEffect(() => {
+        if (!code || !loadMatrix) return undefined;
+        let cancelled = false;
+        loadMatrix(code)
+            .then((matrix) => { if (!cancelled) setLive(matrix); })
+            .catch(() => { /* sin red se decide con el mapa; el servidor vuelve a revisar */ });
+        return () => {
+            cancelled = true;
+        };
+    }, [code, loadMatrix, fallback, refreshKey]);
+
+    return live?.code === code ? live : fallback;
+};
+
 function ErrorNote({ message }) {
     if (!message) return null;
     return (
@@ -37,20 +62,28 @@ function ErrorNote({ message }) {
     );
 }
 
-export function MatrixDetail({ code, matrix, busyPart, error, onMove, onUnassign, onAddHere, onClose }) {
+/**
+ * Lo que hay en un contenedor, posicion por posicion. Los huecos entre
+ * posiciones ocupadas se ven como libres y se puede ubicar justo ahi; el boton
+ * de abajo ubica en la primera libre.
+ */
+export function MatrixDetail({ code, matrix: mapMatrix, busyId, error, onMove, onUnassign, onAddHere, onClose, loadMatrix }) {
     const { t } = useTranslation();
+    const matrix = useLiveMatrix(code, loadMatrix, mapMatrix, error);
     const items = matrix?.items || [];
-    const special = isSpecialLevel(code);
     const { anaquel, nivel, seccion } = splitMatrix(code);
+    // Hasta la ultima ocupada: la libre que sigue ya la cubre el boton de abajo.
+    const lastUsed = items.length ? items[items.length - 1].index : -1;
+    const slots = matrixSlots(items).filter((slot) => slot.index <= lastUsed);
 
     return (
         <>
             <SheetHeader
                 icon={FaLayerGroup}
-                title={special ? t('panel.assignment.area', { code }) : t('panel.assignment.matrix', { code })}
+                title={t('panel.assignment.matrix', { code })}
                 titleId={SHEET_TITLE_ID}
-                subtitle={special
-                    ? t('panel.assignment.areaHint', { code })
+                subtitle={isSpecialLevel(nivel)
+                    ? t('panel.assignment.specialPath', { shelf: anaquel, level: nivel })
                     : t('panel.assignment.matrixPath', { shelf: anaquel, level: nivel, section: seccion })}
                 onClose={onClose}
             />
@@ -64,26 +97,26 @@ export function MatrixDetail({ code, matrix, busyPart, error, onMove, onUnassign
 
             {items.length ? (
                 <ul className="space-y-2">
-                    {items.map((item) => (
+                    {slots.map((slot) => (slot.occupants.length ? slot.occupants.map((item) => (
                         <li
-                            key={item.num_parte}
+                            key={item.iddetalle}
                             className={`flex items-center gap-3 rounded-2xl border p-3 ${item.conflict
                                 ? 'border-[rgb(var(--color-error))]/50 bg-[rgb(var(--color-error))]/10'
                                 : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]'}`}
                         >
                             <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-[rgb(var(--color-text))] font-mono text-sm font-bold text-[rgb(var(--color-bg))]">
-                                -{item.index}
+                                {item.index}
                             </span>
                             <span className="min-w-0 flex-1">
                                 <span className="block truncate font-mono text-sm font-semibold">{item.num_parte}</span>
-                                <span className="block truncate text-xs text-[rgb(var(--color-gray-base))]">{item.descripcion}</span>
+                                <span className="block truncate text-xs text-[rgb(var(--color-gray-base))]">{item.descripcion || '—'}</span>
                                 <span className="mt-1 block"><StockPill existencia={item.existencia} /></span>
                             </span>
                             <span className="flex shrink-0 flex-col gap-1.5">
                                 <button
                                     type="button"
                                     onClick={() => onMove(item)}
-                                    disabled={Boolean(busyPart)}
+                                    disabled={busyId !== null}
                                     className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-amber-400 disabled:opacity-40"
                                 >
                                     {t('panel.assignment.move')}
@@ -91,14 +124,32 @@ export function MatrixDetail({ code, matrix, busyPart, error, onMove, onUnassign
                                 <button
                                     type="button"
                                     onClick={() => onUnassign(item)}
-                                    disabled={Boolean(busyPart)}
+                                    disabled={busyId !== null}
                                     className="rounded-lg border border-[rgb(var(--color-border))] px-3 py-1.5 text-xs font-medium transition hover:bg-[rgb(var(--color-text))]/5 disabled:opacity-40"
                                 >
-                                    {busyPart === item.num_parte ? t('panel.assignment.saving') : t('panel.assignment.unassign')}
+                                    {busyId === item.iddetalle ? t('panel.assignment.saving') : t('panel.assignment.unassign')}
                                 </button>
                             </span>
                         </li>
-                    ))}
+                    )) : (
+                        <li
+                            key={`hueco-${slot.index}`}
+                            className="flex items-center gap-3 rounded-2xl border border-dashed border-[rgb(var(--color-border))] p-3"
+                        >
+                            <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-dashed border-[rgb(var(--color-border))] font-mono text-sm font-bold text-[rgb(var(--color-gray-base))]">
+                                {slot.index}
+                            </span>
+                            <span className="min-w-0 flex-1 text-sm text-[rgb(var(--color-gray-base))]">{t('panel.assignment.gap')}</span>
+                            <button
+                                type="button"
+                                onClick={() => onAddHere(slot.index)}
+                                disabled={busyId !== null}
+                                className="shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-amber-400 disabled:opacity-40"
+                            >
+                                {t('panel.assignment.placeInGap')}
+                            </button>
+                        </li>
+                    )))}
                 </ul>
             ) : (
                 <p className="rounded-2xl border border-dashed border-[rgb(var(--color-border))] px-4 py-6 text-center text-sm text-[rgb(var(--color-gray-base))]">
@@ -110,8 +161,8 @@ export function MatrixDetail({ code, matrix, busyPart, error, onMove, onUnassign
 
             <button
                 type="button"
-                onClick={onAddHere}
-                disabled={Boolean(busyPart)}
+                onClick={() => onAddHere(null)}
+                disabled={busyId !== null}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 font-semibold text-slate-900 shadow transition hover:bg-amber-400 disabled:opacity-40"
             >
                 <FaPlus className="size-4" aria-hidden="true" />
@@ -125,40 +176,69 @@ export function MatrixDetail({ code, matrix, busyPart, error, onMove, onUnassign
  * Elegir matriz (o nivel especial) y posicion para un producto. Las posiciones
  * se ven con lo que hay en cada una: una libre se asigna, una ocupada se
  * intercambia, y una con dos productos (conflicto) no se puede usar hasta
- * resolverlo. `initialMatrix` llega con el anaquel que se esta trabajando.
+ * resolverlo. `initialMatrix` llega con el anaquel que se esta trabajando, e
+ * `initialIndex` con el hueco elegido en el detalle de la matriz. Si la matriz
+ * tiene mas espacio del que se usa, "+" abre otra posicion.
  */
-export function PlaceForm({ product, initialMatrix, matrices, saving, error, onSubmit, onBack, onClose }) {
+export function PlaceForm({ product, initialMatrix, initialIndex = null, matrices: mapMatrices, saving, error, onSubmit, onBack, onClose, loadMatrix }) {
     const { t } = useTranslation();
     const [matrix, setMatrix] = useState(() => ({ ...EMPTY_MATRIX, ...initialMatrix }));
     // El indice elegido vale solo para la matriz en la que se eligio: al cambiar
     // de matriz se vuelve a proponer la primera posicion libre.
-    const [picked, setPicked] = useState({ code: null, index: null });
+    const [picked, setPicked] = useState(() => ({
+        code: initialIndex === null ? null : matrixCode({ ...EMPTY_MATRIX, ...initialMatrix }),
+        index: initialIndex,
+    }));
+    const [extra, setExtra] = useState(0);
 
     const code = matrixCode(matrix);
+    // La matriz elegida, como esta en la base ahora: las posiciones libres se
+    // calculan con esto y no con la foto del mapa.
+    const liveMatrix = useLiveMatrix(code, loadMatrix, mapMatrices.get(code), error);
+    const matrices = useMemo(() => {
+        if (!code || !liveMatrix) return mapMatrices;
+        const merged = new Map(mapMatrices);
+        merged.set(code, liveMatrix);
+        return merged;
+    }, [code, liveMatrix, mapMatrices]);
     const slots = useMemo(
-        () => (code ? matrixSlots(matrices.get(code)?.items, product.num_parte) : []),
-        [code, matrices, product.num_parte]
+        () => (code ? matrixSlots(matrices.get(code)?.items, product.iddetalle, extra) : []),
+        [code, matrices, product.iddetalle, extra]
     );
     const chosenIndex = picked.code === code ? picked.index : firstFreeIndex(slots);
     const slot = slots.find((candidate) => candidate.index === chosenIndex);
-    const target = code && chosenIndex ? `${code}-${chosenIndex}` : '';
+    // El indice 0 es valido: no basta con preguntar si hay indice.
+    const target = code && chosenIndex !== null ? `${code}-${chosenIndex}` : '';
+    const canGrow = slots.length <= MAX_INDEX;
+
+    const addPosition = () => {
+        setExtra((count) => count + 1);
+        setPicked({ code, index: slots.length });
+    };
     const occupants = slot?.occupants || [];
-    const isSwap = occupants.length === 1;
-    const isBlocked = occupants.length > 1;
     const isSame = Boolean(slot?.isCurrent);
     const fromLocation = isValidLocation(product.localizacion) ? product.localizacion : '';
+    // Una posicion ocupada por un renglon se puede usar: ese renglon se recorre
+    // a donde no duplique indice (el mismo calculo que hace el servidor).
+    const displaced = occupants.length === 1
+        ? displacedLocation(matrices, product, code, chosenIndex, occupants[0])
+        : null;
+    const isSwap = Boolean(displaced);
+    const isTrueSwap = isSwap && displaced === fromLocation;
+    const isBlocked = occupants.length > 1 || (occupants.length === 1 && !displaced);
     const canSubmit = Boolean(target) && !isSame && !isBlocked && !saving;
 
     let summary = t('panel.assignment.summaryMove', { product: product.num_parte, location: target });
     if (!target) summary = t('panel.assignment.pickMatrix');
     else if (isSame) summary = t('panel.assignment.sameLocation');
-    else if (isBlocked) summary = t('panel.assignment.conflictHint');
+    else if (occupants.length > 1) summary = t('panel.assignment.conflictHint');
+    else if (isBlocked) summary = t('panel.assignment.noRoom', { code, other: occupants[0].num_parte });
     else if (isSwap) {
         summary = t('panel.assignment.summarySwap', {
             product: product.num_parte,
             location: target,
             other: occupants[0].num_parte,
-            otherLocation: fromLocation || t('panel.assignment.unassignedLabel'),
+            otherLocation: isValidLocation(displaced) ? displaced : t('panel.assignment.unassignedLabel'),
         });
     }
 
@@ -218,11 +298,21 @@ export function PlaceForm({ product, initialMatrix, matrices, saving, error, onS
                                     aria-pressed={selected}
                                     className={`flex min-h-14 flex-col items-center justify-center rounded-xl border px-1 py-1.5 transition ${tone}`}
                                 >
-                                    <span className="font-mono text-base font-bold">-{candidate.index}</span>
+                                    <span className="font-mono text-base font-bold">{candidate.index}</span>
                                     <span className="w-full truncate text-center text-[10px] text-[rgb(var(--color-gray-base))]">{caption}</span>
                                 </button>
                             );
                         })}
+                        {canGrow && (
+                            <button
+                                type="button"
+                                onClick={addPosition}
+                                className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-amber-500/60 px-1 py-1.5 text-amber-600 transition hover:bg-amber-400/10"
+                            >
+                                <FaPlus className="size-3.5" aria-hidden="true" />
+                                <span className="text-[10px] font-semibold">{t('panel.assignment.addPosition')}</span>
+                            </button>
+                        )}
                     </div>
                 </section>
             )}
@@ -253,11 +343,108 @@ export function PlaceForm({ product, initialMatrix, matrices, saving, error, onS
                 >
                     {saving ? (
                         <span className="size-4 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900" aria-hidden="true" />
-                    ) : isSwap && <FaRightLeft className="size-4" aria-hidden="true" />}
+                    ) : isTrueSwap && <FaRightLeft className="size-4" aria-hidden="true" />}
                     {saving && t('panel.assignment.saving')}
-                    {!saving && (isSwap ? t('panel.assignment.swap') : t('panel.assignment.assign'))}
+                    {!saving && (isTrueSwap ? t('panel.assignment.swap') : t('panel.assignment.assign'))}
                 </button>
             </div>
+        </>
+    );
+}
+
+/**
+ * Los niveles de un anaquel: agregar los que tiene fisicamente (letras o
+ * especiales) y quitar los que no. Un nivel con productos no se puede quitar
+ * hasta moverlos; el servidor lo vuelve a revisar al guardar. Cada cambio se
+ * guarda al momento.
+ */
+export function LevelsEditor({ shelf, saving, error, onSave, onClose }) {
+    const { t } = useTranslation();
+    const [toAdd, setToAdd] = useState('');
+    const current = shelf.levels.map(({ level }) => level);
+    const letters = LEVELS.filter((level) => !current.includes(level));
+    const specials = SPECIAL_LEVELS.filter((level) => !current.includes(level));
+
+    const handleAdd = async () => {
+        if (await onSave(shelf.shelf, [...current, toAdd])) setToAdd('');
+    };
+
+    return (
+        <>
+            <SheetHeader
+                icon={FaLayerGroup}
+                title={t('panel.assignment.levelsTitle', { shelf: shelf.shelf })}
+                titleId={SHEET_TITLE_ID}
+                subtitle={t('panel.assignment.levelsHint')}
+                onClose={onClose}
+                closeDisabled={saving}
+            />
+
+            <ul className="space-y-2">
+                {shelf.levels.map(({ level, special, count }) => (
+                    <li
+                        key={level}
+                        className="flex items-center gap-3 rounded-2xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] px-3 py-2.5"
+                    >
+                        <span className="grid h-10 min-w-10 place-items-center rounded-xl bg-[rgb(var(--color-text))] px-2 font-mono text-sm font-bold text-[rgb(var(--color-bg))]">
+                            {level}
+                        </span>
+                        <span className="min-w-0 flex-1 text-sm">
+                            <span className="block font-semibold">
+                                {special ? t('panel.assignment.levelSpecial') : t('panel.assignment.levelRegular')}
+                            </span>
+                            <span className="block text-xs text-[rgb(var(--color-gray-base))]">
+                                {count ? t('panel.assignment.levelHasProducts', { count }) : t('panel.assignment.levelEmpty')}
+                            </span>
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => onSave(shelf.shelf, current.filter((item) => item !== level))}
+                            disabled={saving || count > 0}
+                            aria-label={t('panel.assignment.removeLevel', { level })}
+                            title={t('panel.assignment.removeLevel', { level })}
+                            className="grid size-9 shrink-0 place-items-center rounded-full border border-[rgb(var(--color-border))] text-[rgb(var(--color-error))] transition hover:bg-[rgb(var(--color-error))]/10 disabled:cursor-not-allowed disabled:opacity-30"
+                        >
+                            <FaMinus className="size-3.5" aria-hidden="true" />
+                        </button>
+                    </li>
+                ))}
+            </ul>
+
+            <div className="flex gap-2">
+                <select
+                    value={toAdd}
+                    onChange={(event) => setToAdd(event.target.value)}
+                    disabled={saving}
+                    aria-label={t('panel.assignment.addLevel')}
+                    className="h-12 min-w-0 flex-1 rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-3 text-base font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                >
+                    <option value="">{t('panel.assignment.addLevel')}</option>
+                    {letters.length > 0 && (
+                        <optgroup label={t('panel.migrate.level')}>
+                            {letters.map((level) => <option key={level} value={level}>{level}</option>)}
+                        </optgroup>
+                    )}
+                    {specials.length > 0 && (
+                        <optgroup label={t('panel.assignment.specialLevels')}>
+                            {specials.map((level) => <option key={level} value={level}>{level}</option>)}
+                        </optgroup>
+                    )}
+                </select>
+                <button
+                    type="button"
+                    onClick={handleAdd}
+                    disabled={!toAdd || saving}
+                    className="inline-flex h-12 shrink-0 items-center gap-2 rounded-xl bg-amber-500 px-5 font-semibold text-slate-900 shadow transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    {saving
+                        ? <span className="size-4 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900" aria-hidden="true" />
+                        : <FaPlus className="size-4" aria-hidden="true" />}
+                    {t('panel.assignment.add')}
+                </button>
+            </div>
+
+            <ErrorNote message={error} />
         </>
     );
 }
