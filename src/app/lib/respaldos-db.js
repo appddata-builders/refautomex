@@ -59,10 +59,32 @@ const leerEsquema = async (q) => {
         ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
      WHERE tc.table_schema = 'public' AND tc.constraint_type = 'PRIMARY KEY'`);
 
+  const foraneas = await q(`
+    SELECT conrelid::regclass::text AS tabla, confrelid::regclass::text AS padre
+      FROM pg_constraint
+     WHERE contype = 'f' AND connamespace = 'public'::regnamespace`);
+
   const esquema = {};
-  for (const c of columnas) (esquema[c.tabla] ??= { columnas: [], llave: null }).columnas.push(c);
+  for (const c of columnas) (esquema[c.tabla] ??= { columnas: [], llave: null, padres: [] }).columnas.push(c);
   for (const l of llaves) if (esquema[l.tabla]) esquema[l.tabla].llave = l.columna;
+  for (const f of foraneas) esquema[f.tabla]?.padres.push(f.padre);
   return esquema;
+};
+
+// Padres antes que hijos. El CSV viene en orden alfabetico, y con llaves
+// foraneas un renglon nuevo de `compra` necesita que su `proveedor` ya este
+// en la base aunque venga mas abajo en el archivo.
+const padresPrimero = (tablas, esquema) => {
+  const orden = [];
+  const vistas = new Set();
+  const visitar = (t) => {
+    if (vistas.has(t)) return;
+    vistas.add(t);
+    for (const padre of esquema[t]?.padres ?? []) if (tablas.includes(padre)) visitar(padre);
+    orden.push(t);
+  };
+  tablas.forEach(visitar);
+  return orden;
 };
 
 // ---------------------------------------------------------------- exportar ---
@@ -196,7 +218,8 @@ export const procesarCsv = async (texto, { aplicar = false } = {}) => {
     let totalCambios = 0;
     let n = 0;
 
-    for (const [tabla, filasTabla] of porTabla) {
+    for (const tabla of padresPrimero([...porTabla.keys()], esquema)) {
+      const filasTabla = porTabla.get(tabla);
       const def = esquema[tabla];
       if (!def || !def.llave) {
         avisos.push(`Se ignoraron ${filasTabla.length} renglones de "${tabla || '(sin tabla)'}": no es una tabla de la base.`);

@@ -32,13 +32,17 @@ const TABLAS = [
   `CREATE TABLE IF NOT EXISTS vacacion (
      id varchar(30) PRIMARY KEY NOT NULL,
      idusuario integer NOT NULL,
-     fecha date NOT NULL
+     fecha date NOT NULL,
+     CONSTRAINT vacacion_idusuario_usuario_idusuario_fk FOREIGN KEY (idusuario)
+       REFERENCES usuario (idusuario) ON DELETE CASCADE
    )`,
   `CREATE TABLE IF NOT EXISTS vacacion_dias (
      id varchar(20) PRIMARY KEY NOT NULL,
      idusuario integer NOT NULL,
      anio integer NOT NULL,
-     dias integer DEFAULT 0 NOT NULL
+     dias integer DEFAULT 0 NOT NULL,
+     CONSTRAINT vacacion_dias_idusuario_usuario_idusuario_fk FOREIGN KEY (idusuario)
+       REFERENCES usuario (idusuario) ON DELETE CASCADE
    )`,
 ];
 

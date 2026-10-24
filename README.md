@@ -25,6 +25,14 @@ hay diferencias. Tanto esta auditoría como Drizzle cargan `.env.local`; las
 variables ya definidas en el entorno tienen prioridad. La app usa la misma
 selección de URL (`DATABASE_URL_UNPOOLED`, después `DATABASE_URL`).
 
+`npm run db:pg:llaves` revisa las llaves foráneas de `schema.pg.js` contra la
+base: cuáles faltan, cuáles están sin validar y cuántos renglones huérfanos
+tiene cada una. Es de solo lectura. Con `-- --aplicar` las crea en una
+transacción (las que tienen huérfanos quedan `NOT VALID`), y lo que cambia de
+datos lo guarda antes en el esquema `respaldo_llaves`. `-- --revertir` deja la
+base como estaba antes de aplicarlas. En una base con datos va antes de
+`db:pg:push`.
+
 En desarrollo se consulta actualmente la base del droplet mediante el túnel:
 no hay una copia local de inventario. `npm run db:pg:push` modifica esa base;
 solo debe usarse después de revisar los cambios de esquema. No sincroniza datos.

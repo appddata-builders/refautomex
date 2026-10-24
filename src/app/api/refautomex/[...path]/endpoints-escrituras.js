@@ -20,10 +20,11 @@
  *   CONCAT_WS               ->  concat_ws (existe igual)
  *
  * SOBRE LOS TIPOS
- * venta."idVenta" es integer y concepto.idventa / pedidos.idventa son varchar.
- * MySQL comparaba coercionando; Postgres no. Cada join contra venta lleva la
- * guarda `CASE WHEN ... ~ '^[0-9]+$'`, que reproduce el resultado de MySQL
- * (una cadena no numerica se volvia 0 y no empataba con nada).
+ * venta."idVenta" es integer. concepto.idventa / pedidos.idventa eran varchar
+ * y guardaban folios ('T0001') o ids; scripts/db-pg-llaves.mjs cambia los
+ * folios por su id y las pasa a integer. Cada join contra venta compara como
+ * texto (MISMA_VENTA), que funciona con las dos: un folio no empata con
+ * ningun id, igual que en MySQL, donde la cadena se volvia 0.
  *
  * SOBRE LAS CLAVES DEL JSON
  * MySQL devuelve el nombre tal como se escribe en la consulta. Algunos
@@ -51,8 +52,8 @@ import {
 
 const faltan = (detalle) => ({ estado: 400, cuerpo: { error: 'Bad Request', details: detalle } });
 
-// Guarda reutilizable: convierte una columna varchar a int solo si es numerica.
-const NUM = (col) => `CASE WHEN ${col} ~ '^[0-9]+$' THEN ${col}::int END`;
+// Join de un idventa de concepto o pedidos con el de venta (ver SOBRE LOS TIPOS).
+const MISMA_VENTA = (a, b) => `${a}::text = ${b}::text`;
 
 // FIELD(col,'P','E') DESC  ->  E primero, luego P, luego el resto.
 const ORDEN_PE = (col) => `CASE ${col} WHEN 'P' THEN 1 WHEN 'E' THEN 2 ELSE 0 END DESC`;
@@ -650,7 +651,10 @@ const addInvoice = async ({ body }) => {
   if (!/^\d{5}$/.test(datos.cp)) return faltan('Invalid postal code.');
 
   const resultado = await enTransaccion(async (tx) => {
-    const [venta] = await tx.consultar('SELECT status FROM venta WHERE folio = ? LIMIT 1', [ticket]);
+    const [venta] = await tx.consultar(
+      'SELECT "idVenta" AS idventa, status FROM venta WHERE folio = ? LIMIT 1',
+      [ticket]
+    );
     if (!venta) return { rechazo: 'Folio not found in table venta.' };
     // Una venta cancelada (C), devuelta (D) o con error (E) no se factura.
     if (venta.status !== 'A') return { rechazo: 'The sale for this folio is not active.' };
@@ -672,10 +676,10 @@ const addInvoice = async ({ body }) => {
     }
 
     const [factura] = await tx.consultar(
-      `INSERT INTO factura (idregimen, idcfdi, folio, idusuario, idcliente, emitida,
+      `INSERT INTO factura (idregimen, idcfdi, folio, idventa, idusuario, idcliente, emitida,
                             nombre, rfc, email, telefono, domicilio, cp)
-       VALUES (?, ?, ?, ?, ?, 'P', ?, ?, ?, ?, ?, ?) RETURNING idfactura`,
-      [regime, CFDI, ticket, usuario?.idusuario ?? null, idcliente,
+       VALUES (?, ?, ?, ?, ?, ?, 'P', ?, ?, ?, ?, ?, ?) RETURNING idfactura`,
+      [regime, CFDI, ticket, venta.idventa, usuario?.idusuario ?? null, idcliente,
         datos.nombre, datos.rfc, datos.email, datos.telefono, datos.domicilio, datos.cp]
     );
 
@@ -761,7 +765,7 @@ const getHistory = async ({ query }) => {
     `SELECT c.idventa, c.num_parte, c.cantidad, c.monto_venta, c.precio_venta,
             p.descripcion, c.concepto_comodin
        FROM concepto c
-       INNER JOIN venta v ON v."idVenta" = ${NUM('c.idventa')}
+       INNER JOIN venta v ON ${MISMA_VENTA('v."idVenta"', 'c.idventa')}
        LEFT JOIN producto p USING (num_parte)
       WHERE EXTRACT(YEAR FROM v.fecha_venta) = EXTRACT(YEAR FROM ?::date)`,
     [fecha]
@@ -807,7 +811,7 @@ const getSiteRequests = async () => {
     `SELECT v."idVenta" AS idventa, v.folio, v.fecha_venta, p.f_entrega, p.f_pedido,
             p.nombre, p.telefono, v.nota, v.total_venta, p.status, v.idusuario, u.idsucursal
        FROM venta v
-       INNER JOIN pedidos p ON v."idVenta" = ${NUM('p.idventa')}
+       INNER JOIN pedidos p ON ${MISMA_VENTA('v."idVenta"', 'p.idventa')}
        LEFT JOIN usuario u ON u.idusuario = v.idusuario
       WHERE v.folio LIKE 'T%' AND p.status IN ('P','F')
       ORDER BY CASE p.status WHEN 'P' THEN 1 WHEN 'F' THEN 2 ELSE 3 END, p.f_pedido DESC`
@@ -817,14 +821,14 @@ const getSiteRequests = async () => {
     `WITH tpr AS (
        SELECT v."idVenta" AS idventa, p.status
          FROM venta v
-         INNER JOIN pedidos p ON v."idVenta" = ${NUM('p.idventa')}
+         INNER JOIN pedidos p ON ${MISMA_VENTA('v."idVenta"', 'p.idventa')}
         WHERE v.folio LIKE 'T%' AND p.status IN ('P','F')
      )
      SELECT c.idventa, c.num_parte, c.concepto_comodin, pr.descripcion,
             c.precio_venta, c.cantidad, c.pedido AS status_producto,
             tpr.status AS status_pedido
        FROM concepto c
-       INNER JOIN tpr ON tpr.idventa = ${NUM('c.idventa')}
+       INNER JOIN tpr ON ${MISMA_VENTA('tpr.idventa', 'c.idventa')}
        LEFT JOIN producto pr USING (num_parte)
       ORDER BY tpr.status, c.idventa, ${ORDEN_PE('c.pedido')}`
   );
@@ -857,7 +861,7 @@ const getWebDelivery = async () => {
             c.cantidad, c.precio_venta, c.pedido AS status_producto,
             t.tracking_web AS status_pedido
        FROM concepto c
-       INNER JOIN t ON t.idventa = ${NUM('c.idventa')}
+       INNER JOIN t ON ${MISMA_VENTA('t.idventa', 'c.idventa')}
        LEFT JOIN producto p USING (num_parte)
       ORDER BY CASE t.tracking_web WHEN 'P' THEN 1 WHEN 'F' THEN 2 ELSE 3 END,
                c.idventa, ${ORDEN_PE('c.pedido')}`

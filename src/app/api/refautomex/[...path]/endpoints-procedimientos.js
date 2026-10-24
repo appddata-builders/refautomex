@@ -236,8 +236,7 @@ const getFolioHistory = async ({ query }) => {
             p.nombre, p.telefono, v.nota, s.sucursal, v.total_venta, p.status
        FROM venta v
        LEFT JOIN pedidos p
-              ON v."idVenta" = CASE WHEN p.idventa ~ '^[0-9]+$'
-                                    THEN p.idventa::int END
+              ON v."idVenta"::text = p.idventa::text
              AND p.status IN ('P','F')
        LEFT JOIN sucursal s USING (idsucursal)
       WHERE v.folio = ?
@@ -252,27 +251,22 @@ const getFolioHistory = async ({ query }) => {
   //    para cualquier otro; al ordenar DESC quedan E, luego P, luego el resto.
   //    Postgres no tiene FIELD y se reproduce con un CASE.
   //
-  // 2. El join contra venta lleva un CASE con una guarda de formato, y no es
-  //    defensa preventiva: concepto.idventa es varchar y guarda DOS cosas
-  //    distintas. 25,568 filas tienen un folio ('T0001') y 5,555 un idVenta
-  //    numerico. venta."idVenta" es integer.
+  // 2. Los joins contra venta comparan como texto. concepto.idventa (y
+  //    pedidos.idventa) era varchar y guardaba DOS cosas distintas: 25,568
+  //    filas un folio ('T0001') y 5,555 un idVenta numerico. MySQL comparaba
+  //    int = varchar coercionando, asi que 'T0001' se volvia 0 y el join
+  //    descartaba en silencio el 78% de los conceptos.
   //
-  //    MySQL comparaba int = varchar coercionando la cadena a numero, asi que
-  //    'T0001' se volvia 0 y no empataba con nada: el join YA descartaba en
-  //    silencio el 78% de los conceptos. Postgres directamente falla con
-  //    "operator does not exist", y un cast a secas reventaria con esas filas.
-  //
-  //    La guarda reproduce el resultado de MySQL exactamente. NO es el
-  //    comportamiento correcto - es el comportamiento actual, que es lo que
-  //    debe preservar una migracion. Arreglar el modelo (que concepto apunte
-  //    a la venta por una sola via) es un cambio aparte y deliberado.
+  //    scripts/db-pg-llaves.mjs cambia esos folios por el idVenta de su venta
+  //    y pasa la columna a integer, con llave foranea. Como texto el join
+  //    funciona antes y despues del cambio; despues, las ventas de 2024
+  //    vuelven a mostrar sus conceptos.
   const conceptos = await consultar(
     `SELECT c.idventa, c.num_parte, c.concepto_comodin, pr.descripcion,
             c.precio_venta, c.cantidad, c.pedido AS status_producto
        FROM concepto c
        LEFT JOIN venta v
-              ON v."idVenta" = CASE WHEN c.idventa ~ '^[0-9]+$'
-                                    THEN c.idventa::int END
+              ON v."idVenta"::text = c.idventa::text
        LEFT JOIN pedidos p USING (idventa)
        LEFT JOIN producto pr USING (num_parte)
       WHERE v.folio = ?

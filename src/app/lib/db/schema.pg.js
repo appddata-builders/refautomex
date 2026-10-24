@@ -10,11 +10,30 @@
  * archivo una base vacia vuelve a tener la estructura completa con
  * `npm run db:pg:push`.
  *
- * Lo genero `drizzle-kit pull` contra produccion: es un espejo exacto, con los
- * nombres tal como estan en la base (por eso conviven `idVenta` y
- * `num_parte`). La app no lo importa: sus consultas son SQL a mano en
- * refautomex-db.js. Si una consulta nueva necesita una columna, se agrega aqui
- * y se aplica con `npm run db:pg:push`.
+ * Lo genero `drizzle-kit pull` contra produccion, con los nombres tal como
+ * estan en la base (por eso conviven `idVenta` y `num_parte`). La app no lo
+ * importa: sus consultas son SQL a mano en refautomex-db.js. Si una consulta
+ * nueva necesita una columna, se agrega aqui y se aplica con
+ * `npm run db:pg:push`.
+ *
+ * LLAVES FORANEAS
+ * La copia desde MySQL solo trajo llaves primarias. Las foraneas (cada
+ * `.references()`) y sus indices se agregaron despues, a partir de los joins
+ * de las consultas. En una base con datos NO se crean con push: la base
+ * reconstruida tiene renglones huerfanos y push fallaria. Primero
+ * `npm run db:pg:llaves -- --aplicar` (ver scripts/db-pg-llaves.mjs), que las
+ * crea NOT VALID y valida las que ya estan limpias; despues push solo agrega
+ * los indices. En una base vacia push crea todo.
+ *
+ * Relaciones que existen pero NO son llave foranea, a proposito:
+ *   - concepto.num_parte: los renglones comodin del ticket guardan 'NEW-1' o
+ *     'SEMI-2', que no son productos.
+ *   - producto.idelemento: la liga kit-producto es `elemento`; esta columna la
+ *     duplicaria y cerraria un ciclo producto <-> elemento.
+ *   - factura.folio: la factura apunta a su venta por idventa; el folio queda
+ *     para buscarla.
+ *   - cantidad: catalogo de valores para los selectores de existencia.
+ *   - permiso_menu: una columna por perfil, que es usuario.categoria.
  *
  * `hydrate` NO va aqui: vive en la base de appddata (lib/hydrate/schema.pg.js).
  *
@@ -27,7 +46,7 @@
  * secuencias con mayusculas en el nombre; la cache ya vale 1 y no cambia nada.
  */
 
-import { date, integer, numeric, pgTable, real, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { date, index, integer, numeric, pgTable, real, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 // No vino de `drizzle-kit pull`: los niveles de cada anaquel en Asignacion de
 // productos ("A,B,C,ENC"). /patchShelfLevels la crea con el mismo DDL
@@ -35,7 +54,7 @@ import { date, integer, numeric, pgTable, real, text, timestamp, varchar } from 
 // primera vez. La llave es "<idsucursal>:<anaquel>".
 export const anaquel_niveles = pgTable('anaquel_niveles', {
   id: varchar({ length: 20 }).primaryKey().notNull(),
-  idsucursal: integer().notNull(),
+  idsucursal: integer().notNull().references(() => sucursal.idsucursal, { onDelete: 'cascade' }),
   anaquel: varchar({ length: 2 }).notNull(),
   niveles: varchar({ length: 200 }).notNull(),
 });
@@ -44,7 +63,7 @@ export const anaquel_niveles = pgTable('anaquel_niveles', {
 // de avisos. lib/avisos.js la crea con el mismo DDL al marcar por primera vez.
 export const aviso_visto = pgTable('aviso_visto', {
   id: varchar({ length: 80 }).primaryKey().notNull(),
-  idusuario: integer().notNull(),
+  idusuario: integer().notNull().references(() => usuario.idusuario, { onDelete: 'cascade' }),
   clave: varchar({ length: 45 }).notNull(),
   firma: varchar({ length: 64 }).notNull(),
 });
@@ -59,13 +78,13 @@ export const banco = pgTable('banco', {
 // el ultimo dia del evento, inclusivo.
 export const calendario_evento = pgTable('calendario_evento', {
   id: varchar({ length: 40 }).primaryKey().notNull(),
-  idsucursal: integer().notNull(),
+  idsucursal: integer().notNull().references(() => sucursal.idsucursal, { onDelete: 'cascade' }),
   etiqueta: varchar({ length: 30 }).notNull(),
   titulo: varchar({ length: 120 }).notNull(),
   nota: varchar({ length: 500 }),
   inicio: date().notNull(),
   fin: date().notNull(),
-  actualizado_por: integer(),
+  actualizado_por: integer().references(() => usuario.idusuario, { onDelete: 'set null' }),
   creado: timestamp({ precision: 3, mode: 'string' }).defaultNow().notNull(),
 });
 
@@ -103,21 +122,29 @@ export const compra = pgTable('compra', {
   subtotal: real().default(0).notNull(),
   neto_total: real().default(0).notNull(),
   status: text(),
-  idproveedor: integer(),
-  idpoliza: integer(),
-});
+  idproveedor: integer().references(() => proveedor.idproveedor),
+  idpoliza: integer().references(() => poliza.idpoliza, { onDelete: 'set null' }),
+}, (t) => [
+  index('compra_idproveedor_idx').on(t.idproveedor),
+]);
 
+// idventa era varchar y guardaba dos cosas: el folio de la venta ('T0001', los
+// de 2024) o su idVenta. db-pg-llaves cambia los folios por el id y la pasa a
+// integer. num_parte no es llave: ver la cabecera.
 export const concepto = pgTable('concepto', {
   idconcepto: integer().primaryKey().generatedByDefaultAsIdentity(),
   precio_venta: real().notNull(),
   monto_venta: real().notNull(),
   cantidad: integer().notNull(),
   num_parte: varchar({ length: 100 }).notNull(),
-  idventa: varchar({ length: 100 }).notNull(),
+  idventa: integer().notNull().references(() => venta.idVenta),
   type: text().default('N').notNull(),
   concepto_comodin: varchar({ length: 150 }),
   pedido: text().default('E').notNull(),
-});
+}, (t) => [
+  index('concepto_idventa_idx').on(t.idventa),
+  index('concepto_num_parte_idx').on(t.num_parte),
+]);
 
 export const detalle = pgTable('detalle', {
   iddetalle: integer().primaryKey().generatedByDefaultAsIdentity(),
@@ -127,25 +154,33 @@ export const detalle = pgTable('detalle', {
   precio: real().notNull(),
   utilidad: real().notNull(),
   fecha_compra: date(),
-  idsucursal: integer().notNull(),
-  num_parte: varchar({ length: 100 }).notNull(),
-  idlocalizacion: integer().notNull(),
-});
+  idsucursal: integer().notNull().references(() => sucursal.idsucursal),
+  num_parte: varchar({ length: 100 }).notNull().references(() => producto.num_parte, { onUpdate: 'cascade' }),
+  idlocalizacion: integer().notNull().references(() => localizacion.idlocalizacion),
+}, (t) => [
+  index('detalle_num_parte_idx').on(t.num_parte),
+  index('detalle_idsucursal_idx').on(t.idsucursal),
+  index('detalle_idlocalizacion_idx').on(t.idlocalizacion),
+]);
 
+// Los productos de un kit: tabla puente kit <-> producto.
 export const elemento = pgTable('elemento', {
   idelemento: integer().primaryKey().generatedByDefaultAsIdentity(),
-  idkit: integer(),
-  num_parte: varchar({ length: 100 }),
-});
+  idkit: integer().references(() => kit.idkit, { onDelete: 'cascade' }),
+  num_parte: varchar({ length: 100 }).references(() => producto.num_parte, { onUpdate: 'cascade' }),
+}, (t) => [
+  index('elemento_idkit_idx').on(t.idkit),
+  index('elemento_num_parte_idx').on(t.num_parte),
+]);
 
 export const factura = pgTable('factura', {
   idfactura: integer().primaryKey().generatedByDefaultAsIdentity(),
   folio: varchar({ length: 150 }),
-  idventa: integer(),
-  idcfdi: integer(),
-  idregimen: integer(),
-  idusuario: integer(),
-  idcliente: integer(),
+  idventa: integer().references(() => venta.idVenta),
+  idcfdi: integer().references(() => cfdi.idcfdi),
+  idregimen: integer().references(() => regimen.idregimen),
+  idusuario: integer().references(() => usuario.idusuario),
+  idcliente: integer().references(() => cliente.idcliente),
   emitida: text().default('P').notNull(),
   // Datos fiscales tal como los escribio el cliente al pedirla (2026-10). Las
   // facturas anteriores no los tienen y getInvoices cae a usuario/cliente.
@@ -155,7 +190,10 @@ export const factura = pgTable('factura', {
   telefono: varchar({ length: 45 }),
   domicilio: varchar({ length: 255 }),
   cp: varchar({ length: 10 }),
-});
+}, (t) => [
+  index('factura_idventa_idx').on(t.idventa),
+  index('factura_folio_idx').on(t.folio),
+]);
 
 export const grupo = pgTable('grupo', {
   idgrupo: integer().primaryKey().notNull(),
@@ -165,8 +203,11 @@ export const grupo = pgTable('grupo', {
 export const imagenes = pgTable('imagenes', {
   idImagen: integer().primaryKey().generatedByDefaultAsIdentity(),
   ruta: varchar({ length: 100 }).notNull(),
-  num_parte: varchar({ length: 100 }).notNull(),
-});
+  num_parte: varchar({ length: 100 }).notNull()
+    .references(() => producto.num_parte, { onUpdate: 'cascade', onDelete: 'cascade' }),
+}, (t) => [
+  index('imagenes_num_parte_idx').on(t.num_parte),
+]);
 
 export const kit = pgTable('kit', {
   idkit: integer().primaryKey().generatedByDefaultAsIdentity(),
@@ -190,18 +231,22 @@ export const metodo = pgTable('metodo', {
   metodopago: varchar({ length: 45 }).notNull(),
 });
 
+// Un pedido por venta (newSale con isOrder). idventa tenia el mismo doble uso
+// que concepto.idventa. idconcepto no lo escribe nadie.
 export const pedidos = pgTable('pedidos', {
   idpedido: integer().primaryKey().generatedByDefaultAsIdentity(),
-  idconcepto: integer(),
-  idusuario: integer(),
+  idconcepto: integer().references(() => concepto.idconcepto, { onDelete: 'set null' }),
+  idusuario: integer().references(() => usuario.idusuario),
   f_pedido: date().notNull(),
   f_entrega: date(),
   status: text().notNull(),
   email: varchar({ length: 100 }),
   telefono: varchar({ length: 45 }).notNull(),
-  idventa: varchar({ length: 100 }),
+  idventa: integer().references(() => venta.idVenta),
   nombre: varchar({ length: 150 }),
-});
+}, (t) => [
+  index('pedidos_idventa_idx').on(t.idventa),
+]);
 
 // No vino de `drizzle-kit pull`: es de Permisos de perfil. /api/permisos-menu
 // la crea con el mismo DDL al guardar por primera vez. Cada columna es el
@@ -218,7 +263,7 @@ export const poliza = pgTable('poliza', {
   fecha_poliza: date(),
   importe: real(),
   tipo: text(),
-  idbanco: integer(),
+  idbanco: integer().references(() => banco.idbanco),
 });
 
 export const producto = pgTable('producto', {
@@ -226,10 +271,10 @@ export const producto = pgTable('producto', {
   status: text().notNull(),
   descripcion: varchar({ length: 100 }).notNull(),
   modelo: varchar({ length: 100 }),
-  idgrupo: integer().notNull(),
-  idproveedor: integer().default(152).notNull(),
-  idmarca: integer(),
-  idcategoria: integer(),
+  idgrupo: integer().notNull().references(() => grupo.idgrupo),
+  idproveedor: integer().default(152).notNull().references(() => proveedor.idproveedor),
+  idmarca: integer().references(() => marca.idmarca),
+  idcategoria: integer().references(() => categoria.idcategoria),
   mod_ini: varchar({ length: 45 }),
   mod_fin: varchar({ length: 45 }),
   idelemento: integer(),
@@ -248,6 +293,8 @@ export const regimen = pgTable('regimen', {
   regimen: varchar({ length: 150 }).notNull(),
 });
 
+// Renglones de una compra. deleteCapture los borra antes que la compra, despues
+// de devolver la existencia: por eso la llave no borra en cascada.
 export const registro = pgTable('registro', {
   idregistro: integer().primaryKey().generatedByDefaultAsIdentity(),
   cantidad_solicitada: integer(),
@@ -258,9 +305,12 @@ export const registro = pgTable('registro', {
   descuento_tres: real().default(0).notNull(),
   importe: real(),
   neto: real(),
-  idcompra: integer(),
-  num_parte: varchar({ length: 100 }),
-});
+  idcompra: integer().references(() => compra.idcompra),
+  num_parte: varchar({ length: 100 }).references(() => producto.num_parte, { onUpdate: 'cascade' }),
+}, (t) => [
+  index('registro_idcompra_idx').on(t.idcompra),
+  index('registro_num_parte_idx').on(t.num_parte),
+]);
 
 export const sucursal = pgTable('sucursal', {
   idsucursal: integer().primaryKey().generatedByDefaultAsIdentity(),
@@ -285,7 +335,7 @@ export const usuario = pgTable('usuario', {
   domicilio: varchar({ length: 255 }).notNull(),
   categoria: varchar({ length: 45 }).notNull(),
   empleado: integer().notNull(),
-  idsucursal: integer(),
+  idsucursal: integer().references(() => sucursal.idsucursal, { onDelete: 'set null' }),
 });
 
 // No vinieron de `drizzle-kit pull`: vacaciones de los empleados.
@@ -294,13 +344,13 @@ export const usuario = pgTable('usuario', {
 // `vacacion_dias`, los dias que le tocan por ano ("<idusuario>:<anio>").
 export const vacacion = pgTable('vacacion', {
   id: varchar({ length: 30 }).primaryKey().notNull(),
-  idusuario: integer().notNull(),
+  idusuario: integer().notNull().references(() => usuario.idusuario, { onDelete: 'cascade' }),
   fecha: date().notNull(),
 });
 
 export const vacacion_dias = pgTable('vacacion_dias', {
   id: varchar({ length: 20 }).primaryKey().notNull(),
-  idusuario: integer().notNull(),
+  idusuario: integer().notNull().references(() => usuario.idusuario, { onDelete: 'cascade' }),
   anio: integer().notNull(),
   dias: integer().default(0).notNull(),
 });
@@ -310,10 +360,14 @@ export const venta = pgTable('venta', {
   folio: varchar({ length: 150 }).notNull(),
   fecha_venta: date().notNull(),
   total_venta: real().notNull(),
-  idusuario: integer().notNull(),
+  idusuario: integer().notNull().references(() => usuario.idusuario),
   status: text().notNull(),
-  idmetodo: integer().default(1).notNull(),
+  idmetodo: integer().default(1).notNull().references(() => metodo.idmetodo),
   nota: text(),
-  idsucursal: integer(),
+  idsucursal: integer().references(() => sucursal.idsucursal),
   tracking_web: varchar({ length: 150 }),
-});
+}, (t) => [
+  index('venta_folio_idx').on(t.folio),
+  index('venta_idusuario_idx').on(t.idusuario),
+  index('venta_idsucursal_idx').on(t.idsucursal),
+]);

@@ -43,7 +43,9 @@ export const TABLA_NIVELES = `CREATE TABLE IF NOT EXISTS anaquel_niveles (
   id varchar(20) PRIMARY KEY NOT NULL,
   idsucursal integer NOT NULL,
   anaquel varchar(2) NOT NULL,
-  niveles varchar(200) NOT NULL
+  niveles varchar(200) NOT NULL,
+  CONSTRAINT anaquel_niveles_idsucursal_sucursal_idsucursal_fk FOREIGN KEY (idsucursal)
+    REFERENCES sucursal (idsucursal) ON DELETE CASCADE
 )`;
 
 // "Por ubicar": la misma marca que ya usan la sucursal WEB y los registros

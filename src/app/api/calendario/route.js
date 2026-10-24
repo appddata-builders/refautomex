@@ -39,7 +39,11 @@ const CREAR_TABLA = `
     inicio date NOT NULL,
     fin date NOT NULL,
     actualizado_por integer,
-    creado timestamp(3) DEFAULT now() NOT NULL
+    creado timestamp(3) DEFAULT now() NOT NULL,
+    CONSTRAINT calendario_evento_idsucursal_sucursal_idsucursal_fk FOREIGN KEY (idsucursal)
+      REFERENCES sucursal (idsucursal) ON DELETE CASCADE,
+    CONSTRAINT calendario_evento_actualizado_por_usuario_idusuario_fk FOREIGN KEY (actualizado_por)
+      REFERENCES usuario (idusuario) ON DELETE SET NULL
   )`;
 
 const sinAcceso = (acceso) => NextResponse.json({ error: acceso.mensaje }, { status: acceso.estado });

@@ -90,11 +90,13 @@ export const calcularAvisos = async (usuario, permisos, vistos = {}, ahora = new
 
   if (ve('site')) {
     // Misma regla que En Sucursal: el pedido es de la sucursal de quien lo vendio.
+    // idventa se compara como texto: era varchar y scripts/db-pg-llaves.mjs la
+    // pasa a integer; asi sirve con las dos.
     const pedidos = await consultar(
       `SELECT p.idpedido, CASE WHEN p.f_entrega < ?::date THEN 'vencido'
                                WHEN p.f_entrega = ?::date THEN 'hoy' ELSE 'manana' END AS cuando
          FROM pedidos p
-         JOIN venta v ON p.idventa = v."idVenta"::text
+         JOIN venta v ON p.idventa::text = v."idVenta"::text
          LEFT JOIN usuario u ON u.idusuario = v.idusuario
         WHERE v.folio LIKE 'T%' AND p.status = 'P' AND p.f_entrega <= ?::date
           AND (?::int IS NULL OR u.idsucursal = ?::int)
@@ -126,7 +128,7 @@ export const calcularAvisos = async (usuario, permisos, vistos = {}, ahora = new
     const agotados = await consultar(
       `SELECT DISTINCT c.num_parte
          FROM venta v
-         JOIN concepto c ON c.idventa = v."idVenta"::text AND c.pedido = 'E'
+         JOIN concepto c ON c.idventa::text = v."idVenta"::text AND c.pedido = 'E'
          JOIN detalle d ON d.num_parte = c.num_parte AND d.idsucursal = v.idsucursal
         WHERE v.fecha_venta = ?::date AND v.status = 'A' AND d.existencia <= 0
           AND (?::int IS NULL OR v.idsucursal = ?::int)
@@ -287,7 +289,9 @@ const CREAR_TABLA = `
     id varchar(80) PRIMARY KEY NOT NULL,
     idusuario integer NOT NULL,
     clave varchar(45) NOT NULL,
-    firma varchar(64) NOT NULL
+    firma varchar(64) NOT NULL,
+    CONSTRAINT aviso_visto_idusuario_usuario_idusuario_fk FOREIGN KEY (idusuario)
+      REFERENCES usuario (idusuario) ON DELETE CASCADE
   )`;
 
 /** { clave: firma } de lo que `idusuario` ya vio. */
