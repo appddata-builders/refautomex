@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { FaWhatsapp } from 'react-icons/fa';
 import { useRouter } from 'next/navigation';
 import { IoMdCloseCircle } from "react-icons/io";
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function WhatsAppButton (){
   const { t } = useTranslation();

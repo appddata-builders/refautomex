@@ -1,8 +1,7 @@
 'use client';
 import React, { useState, useRef, useEffect } from 'react';
 import { FaPlayCircle, FaRegStopCircle } from "react-icons/fa";
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { motion } from "framer-motion";
 
 export default function VideoComponent() {
@@ -75,7 +74,7 @@ export default function VideoComponent() {
                 onPause={() => setIsPlaying(false)}
             >
                 <source src={`${multimediaSrc}refautomex.mp4`} type="video/mp4" />
-                <p className='my-8 font-bold'>Your browser does not support the video tag.</p>
+                <p className='my-8 font-bold'>{t('index.video.unsupported')}</p>
             </video>
             <button
                 type="button"

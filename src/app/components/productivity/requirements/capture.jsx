@@ -7,6 +7,7 @@ import { FaMoneyBillTransfer } from 'react-icons/fa6';
 import { FaSignature } from "react-icons/fa";
 import { MdRateReview, MdDeleteForever } from "react-icons/md";
 import NewCapture from './new-capture';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const formatCurrency = (value = 0) => {
     const numericValue = Number(value) || 0;
@@ -58,11 +59,13 @@ const escapeHtml = (value = '') => {
         .replace(/'/g, '&#39;');
 };
 
-const buildPrintableHtml = (type, providerGroups, issueDate, logoSrc) => {
-    const docTitle = type === 'revision' ? 'Contra recibos' : 'Póliza de pago';
+// `t` llega por parametro: la funcion arma el HTML de la ventana de impresion
+// fuera del arbol de React, donde el hook no esta disponible.
+const buildPrintableHtml = (type, providerGroups, issueDate, logoSrc, t) => {
+    const docTitle = type === 'revision' ? t('panel.print.receipts') : t('panel.print.policy');
     const subtitle = type === 'revision'
-        ? 'Detalle de facturas para revisión interna'
-        : 'Detalle de facturas para póliza de pago';
+        ? t('panel.print.receiptsSubtitle')
+        : t('panel.print.policySubtitle');
     const sanitizedDate = escapeHtml(issueDate);
     const sanitizedLogo = escapeHtml(logoSrc);
     const sections = providerGroups.map((group, index) => {
@@ -81,26 +84,26 @@ const buildPrintableHtml = (type, providerGroups, issueDate, logoSrc) => {
                     </tr>
                 `;
             }).join('')
-            : '<tr><td colspan="4" class="empty">Sin facturas pendientes.</td></tr>';
+            : `<tr><td colspan="4" class="empty">${escapeHtml(t('panel.capture.noPendingInvoices'))}</td></tr>`;
         return `
             <section class="provider-section${index < providerGroups.length - 1 ? ' page-break' : ''}">
                 <div class="provider-header">
                     <div>
                         <h2>${escapeHtml(group.providerName)}</h2>
-                        <p>ID ${escapeHtml(group.providerId)} · ${group.invoices.length} ${group.invoices.length === 1 ? 'factura' : 'facturas'}</p>
+                        <p>ID ${escapeHtml(group.providerId)} · ${group.invoices.length} ${escapeHtml(group.invoices.length === 1 ? t('panel.capture.invoiceOne') : t('panel.capture.invoiceMany'))}</p>
                     </div>
                     <div class="provider-total">
-                        <span>Total a pagar</span>
+                        <span>${escapeHtml(t('panel.capture.totalToPay'))}</span>
                         <strong>${escapeHtml(formatCurrency(group.total))}</strong>
                     </div>
                 </div>
                 <table>
                     <thead>
                         <tr>
-                            <th>Factura</th>
-                            <th>Fecha compra</th>
-                            <th>Fecha vencimiento</th>
-                            <th>Importe</th>
+                            <th>${escapeHtml(t('panel.capture.invoice'))}</th>
+                            <th>${escapeHtml(t('panel.capture.purchaseDate'))}</th>
+                            <th>${escapeHtml(t('panel.capture.dueDate'))}</th>
+                            <th>${escapeHtml(t('panel.capture.amount'))}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -116,7 +119,7 @@ const buildPrintableHtml = (type, providerGroups, issueDate, logoSrc) => {
         <html lang="es">
             <head>
                 <meta charSet="utf-8" />
-                <title>${docTitle} · Refautomex</title>
+                <title>${docTitle} · ${escapeHtml(t('meta.brand'))}</title>
                 <style>
                     * { box-sizing: border-box; }
                     body { font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif; margin: 32px; color: #111827; background: #fff; }
@@ -151,19 +154,19 @@ const buildPrintableHtml = (type, providerGroups, issueDate, logoSrc) => {
             <body>
                 <header class="document-header">
                     <div class="logo-block">
-                        <img src="${sanitizedLogo}" alt="Refautomex" />
+                        <img src="${sanitizedLogo}" alt="${escapeHtml(t('meta.brand'))}" />
                         <div>
-                            <strong>Refacciones Automotrices de México</strong>
-                            <span>Excelencia en Autopartes.</span>
+                            <strong>${escapeHtml(t('panel.print.companyName'))}</strong>
+                            <span>${escapeHtml(t('panel.print.companyTagline'))}</span>
                         </div>
                     </div>
                     <div class="meta">
-                        <div><span>Documento:</span> ${docTitle}</div>
-                        <div><span>Emitido:</span> ${sanitizedDate}</div>
+                        <div><span>${escapeHtml(t('panel.print.document'))}</span> ${docTitle}</div>
+                        <div><span>${escapeHtml(t('panel.print.issued'))}</span> ${sanitizedDate}</div>
                     </div>
                 </header>
                 <h1>${subtitle}</h1>
-                ${sections || '<p>No hay proveedores seleccionados para imprimir.</p>'}
+                ${sections || `<p>${escapeHtml(t('panel.capture.noProvidersToPrint'))}</p>`}
             </body>
         </html>
     `;
@@ -187,6 +190,7 @@ function PurchasesTable({
     onEdit,
     onDelete
 }) {
+    const { t } = useTranslation();
     const [expandedProviders, setExpandedProviders] = useState({});
 
     const toggleExpand = (providerId) => {
@@ -230,13 +234,13 @@ function PurchasesTable({
                                 <div>
                                     <p className="font-semibold text-[rgb(var(--color-text))]">{group.providerName}</p>
                                     <p className="text-xs text-[rgb(var(--color-muted))]">
-                                        ID {group.providerId} · {totalInvoices} {totalInvoices === 1 ? 'factura' : 'facturas'}
+                                        ID {group.providerId} · {totalInvoices} {totalInvoices === 1 ? t('panel.capture.invoiceOne') : t('panel.capture.invoiceMany')}
                                     </p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
                                 <div className="text-right">
-                                    <p className="text-xs text-[rgb(var(--color-muted))]">Total por pagar</p>
+                                    <p className="text-xs text-[rgb(var(--color-muted))]">{t('panel.capture.totalToPay')}</p>
                                     <p className="text-base font-bold text-[rgb(var(--color-text))]">
                                         {formatCurrency(group.total)}
                                     </p>
@@ -256,13 +260,13 @@ function PurchasesTable({
                                     <table className="w-full text-sm text-left text-[rgb(var(--color-text))]">
                                         <thead className="text-xs uppercase bg-[rgb(var(--color-card))]">
                                             <tr>
-                                                <th className="p-3">Sel.</th>
-                                                <th className="p-3">Factura</th>
-                                                <th className="p-3">Estado</th>
-                                                <th className="p-3">Fecha compra</th>
-                                                <th className="p-3">Fecha vencimiento</th>
-                                                <th className="p-3">Monto</th>
-                                                <th className="p-3 text-center">Acción</th>
+                                                <th className="p-3">{t('panel.capture.select')}</th>
+                                                <th className="p-3">{t('panel.capture.invoice')}</th>
+                                                <th className="p-3">{t('panel.capture.state')}</th>
+                                                <th className="p-3">{t('panel.capture.purchaseDate')}</th>
+                                                <th className="p-3">{t('panel.capture.dueDate')}</th>
+                                                <th className="p-3">{t('panel.capture.amountShort')}</th>
+                                                <th className="p-3 text-center">{t('panel.capture.action')}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -273,7 +277,7 @@ function PurchasesTable({
                                                 const isChecked = isSelectable && selectedInvoices.includes(realInvoiceId);
                                                 const amount = getInvoiceAmount(invoice);
                                                 const dueDate = getInvoiceDueDate(invoice);
-                                                const status = invoice?.estado ?? invoice?.status ?? 'Pendiente';
+                                                const status = invoice?.estado ?? invoice?.status ?? t('panel.common.pending');
                                                 return (
                                                     <tr key={rowKey} className="border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
                                                         <td className="p-3">
@@ -330,23 +334,24 @@ function PurchasesTable({
 }
 
 function PoliciesTable({ rows }) {
+    const { t } = useTranslation();
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-left text-[rgb(var(--color-text))]">
                 <thead className="text-xs uppercase bg-[rgb(var(--color-card))]">
                     <tr>
-                        <th className="p-3">No. Póliza</th>
-                        <th className="p-3">Proveedor</th>
-                        <th className="p-3">Tipo pago</th>
-                        <th className="p-3">Fecha póliza</th>
-                        <th className="p-3">Importe</th>
+                        <th className="p-3">{t('panel.capture.policyNumber')}</th>
+                        <th className="p-3">{t('panel.capture.provider')}</th>
+                        <th className="p-3">{t('panel.capture.paymentType')}</th>
+                        <th className="p-3">{t('panel.capture.policyDate')}</th>
+                        <th className="p-3">{t('panel.capture.amount')}</th>
                     </tr>
                 </thead>
                 <tbody>
                     {rows.length === 0 ? (
                         <tr>
                             <td colSpan={5} className="p-4 text-center text-[rgb(var(--color-muted))]">
-                                No hay pólizas registradas.
+                                {t('panel.capture.noPolicies')}
                             </td>
                         </tr>
                     ) : (
@@ -372,17 +377,19 @@ function PoliciesTable({ rows }) {
 }
 
 function CaptureDetailView({ header, detail, onBack }) {
+    const { t } = useTranslation();
+
     if (!header) {
         return (
             <div className="bg-white/70 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                No se encontró información de la captura seleccionada.
+                {t('panel.capture.detailMissing')}
                 <div className="mt-4">
                     <button
                         type="button"
                         onClick={onBack}
                         className="inline-flex items-center rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-slate-700"
                     >
-                        Volver
+                        {t('panel.common.goBack')}
                     </button>
                 </div>
             </div>
@@ -390,10 +397,10 @@ function CaptureDetailView({ header, detail, onBack }) {
     }
 
     const totals = [
-        { label: 'Neto', value: formatCurrency(header.neto_total ?? header.netoTotal ?? 0) },
-        { label: 'Descuento', value: formatCurrency(header.descuento_total ?? header.descuentoTotal ?? 0) },
-        { label: 'Subtotal', value: formatCurrency(header.subtotal ?? 0) },
-        { label: 'Total', value: formatCurrency(header.total ?? 0) }
+        { label: t('panel.capture.net'), value: formatCurrency(header.neto_total ?? header.netoTotal ?? 0) },
+        { label: t('panel.capture.discount'), value: formatCurrency(header.descuento_total ?? header.descuentoTotal ?? 0) },
+        { label: t('checkout.subtotal'), value: formatCurrency(header.subtotal ?? 0) },
+        { label: t('checkout.total'), value: formatCurrency(header.total ?? 0) }
     ];
 
     const detailRows = Array.isArray(detail) ? detail : [];
@@ -434,19 +441,19 @@ function CaptureDetailView({ header, detail, onBack }) {
                 <table className="w-full text-sm text-left text-[rgb(var(--color-text))]">
                     <thead className="text-xs uppercase bg-[rgb(var(--color-card))]">
                         <tr>
-                            <th className="p-3">Refacción</th>
-                            <th className="p-3">Descripción</th>
-                            <th className="p-3">Cantidad</th>
-                            <th className="p-3">Costo</th>
-                            <th className="p-3">Descuentos</th>
-                            <th className="p-3">Importe</th>
+                            <th className="p-3">{t('panel.capture.part')}</th>
+                            <th className="p-3">{t('panel.capture.descriptionLabel')}</th>
+                            <th className="p-3">{t('panel.capture.quantity')}</th>
+                            <th className="p-3">{t('panel.capture.cost')}</th>
+                            <th className="p-3">{t('panel.capture.discounts')}</th>
+                            <th className="p-3">{t('panel.capture.amount')}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {detailRows.length === 0 ? (
                             <tr>
                                 <td colSpan={6} className="p-4 text-center text-[rgb(var(--color-muted))]">
-                                    No hay detalle registrado para esta captura.
+                                    {t('panel.capture.noDetail')}
                                 </td>
                             </tr>
                         ) : (
@@ -481,6 +488,7 @@ function CaptureDetailView({ header, detail, onBack }) {
 }
 
 export default function Capture() {
+    const { t } = useTranslation();
     const [purchases, setPurchases] = useState([]);
     const [policies, setPolicies] = useState([]);
     const [providers, setProviders] = useState([]);
@@ -642,18 +650,18 @@ export default function Capture() {
         setActionError('');
         setActionSuccess('');
         if (!selectedInvoices.length) {
-            setActionError('Selecciona al menos un proveedor para imprimir.');
+            setActionError(t('panel.capture.pickProvider'));
             return;
         }
         const providersForPrint = groupedPurchases.filter((group) =>
             group.invoices.some((invoice) => selectedInvoices.includes(getInvoiceId(invoice)))
         );
         if (!providersForPrint.length) {
-            setActionError('No se encontraron proveedores asociados a tu selección.');
+            setActionError(t('panel.capture.providersNotFound'));
             return;
         }
         if (typeof window === 'undefined') {
-            setActionError('La impresión solo está disponible en el navegador.');
+            setActionError(t('panel.capture.printBrowserOnly'));
             return;
         }
         const issueDate = new Date().toLocaleString('es-MX', {
@@ -666,10 +674,10 @@ export default function Capture() {
         const baseLogo = process.env.NEXT_PUBLIC_S3 || '';
         const normalizedBase = baseLogo ? (baseLogo.endsWith('/') ? baseLogo : `${baseLogo}/`) : '';
         const logoSrc = normalizedBase ? `${normalizedBase}refautomex_bn.svg` : '/file.svg';
-        const html = buildPrintableHtml(type, providersForPrint, issueDate, logoSrc);
+        const html = buildPrintableHtml(type, providersForPrint, issueDate, logoSrc, t);
         const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
         if (!printWindow) {
-            setActionError('No se pudo abrir la ventana de impresión. Habilita los pop-ups e inténtalo nuevamente.');
+            setActionError(t('panel.capture.printPopupBlocked'));
             return;
         }
         printWindow.document.write(html);
@@ -706,7 +714,7 @@ export default function Capture() {
             }
             const data = await response.json();
             if (data.success === false || !data.header) {
-                throw new Error(data.message || 'No se pudo obtener la captura seleccionada.');
+                throw new Error(data.message || t('panel.capture.fetchError'));
             }
             setCaptureEditData(data);
         } catch (err) {
@@ -741,15 +749,15 @@ export default function Capture() {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok || payload?.success === false) {
-                throw new Error(payload?.message || 'No fue posible eliminar la captura.');
+                throw new Error(payload?.message || t('panel.capture.deleteError'));
             }
-            setActionSuccess('Captura eliminada correctamente.');
+            setActionSuccess(t('panel.capture.deleteOk'));
             setSelectedInvoices((prev) => prev.filter((id) => id !== invoiceId));
             setPendingDeleteCapture(null);
             await fetchInvoices();
         } catch (error) {
             console.error('Error deleting capture:', error);
-            setActionError(error.message || 'No fue posible eliminar la captura.');
+            setActionError(error.message || t('panel.capture.deleteError'));
         } finally {
             setIsDeletingCapture(false);
         }
@@ -785,9 +793,9 @@ export default function Capture() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
             <Title
-                title="Reporte de compras"
+                title={t('panel.capture.title')}
                 icon={HiClipboardDocumentList}
-                back="Volver al panel"
+                back={t('panel.common.back')}
                 path="/productivity"
             />
 
@@ -797,7 +805,7 @@ export default function Capture() {
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                             <div>
                                 <label className="block text-xs text-[rgb(var(--color-muted))] mb-1">
-                                    Proveedor
+                                    {t('panel.capture.provider')}
                                 </label>
                                 <select
                                     className="w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] p-2 text-sm"
@@ -809,7 +817,7 @@ export default function Capture() {
                                         setActionSuccess('');
                                     }}
                                 >
-                                    <option value="0">Todos los proveedores</option>
+                                    <option value="0">{t('panel.capture.allProviders')}</option>
                                     {selectableProviders.map((provider) => (
                                         <option key={provider.id || provider.idproveedor}
                                             value={provider.idproveedor ?? provider.idProveedor ?? provider.id}>
@@ -820,7 +828,7 @@ export default function Capture() {
                             </div>
                             <div>
                                 <label className="block text-xs text-[rgb(var(--color-text))] mb-1">
-                                    Factura
+                                    {t('panel.capture.invoice')}
                                 </label>
                                 <div className="relative">
                                     <FaSearch className="absolute left-2 top-1/2 -translate-y-1/2 text-[rgb(var(--color-muted))]" />
@@ -828,7 +836,7 @@ export default function Capture() {
                                         type="text"
                                         className="w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] pl-8 pr-3 py-2 text-sm"
                                         value={partFilter}
-                                        placeholder="Busca por folio, proveedor o refacción"
+                                        placeholder={t('panel.capture.searchPlaceholder')}
                                     onChange={(event) => {
                                         setPartFilter(event.target.value);
                                         setActionError('');
@@ -839,7 +847,7 @@ export default function Capture() {
                             </div>
                             <div>
                                 <label className="block text-xs text-[rgb(var(--color-muted))] mb-1">
-                                    Fecha
+                                    {t('panel.common.date')}
                                 </label>
                                 <div className="h-10 flex items-center rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] px-3 text-sm">
                                     {formatDate(today)}
@@ -940,18 +948,18 @@ export default function Capture() {
                 <div className="max-w-7xl mx-auto px-4">
                     {isLoadingCaptureEdit ? (
                         <div className="bg-white/70 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                            Cargando información de la captura...
+                            {t('panel.capture.loadingDetail')}
                         </div>
                     ) : editCaptureError ? (
                         <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">
-                            <p className="font-semibold">No se pudo cargar la captura.</p>
+                            <p className="font-semibold">{t('panel.capture.loadError')}</p>
                             <p className="text-sm">{editCaptureError}</p>
                             <button
                                 type="button"
                                 className="mt-3 inline-flex items-center rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-slate-700"
                                 onClick={onCancelEdit}
                             >
-                                Volver
+                                {t('panel.common.goBack')}
                             </button>
                         </div>
                     ) : (
@@ -974,26 +982,26 @@ export default function Capture() {
                 <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
                     <div className="w-full max-w-md rounded-2xl bg-[rgb(var(--color-card))] shadow-2xl border border-[rgb(var(--color-border))] p-6">
                         <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">
-                            Eliminar captura
+                            {t('panel.capture.deleteTitle')}
                         </h3>
                         <p className="text-sm text-[rgb(var(--color-muted))] mt-1">
-                            Esta acción regresará las existencias al estado anterior y eliminará definitivamente la captura.
+                            {t('panel.capture.deleteHint')}
                         </p>
                         <div className="mt-4 rounded-xl bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] p-4 text-sm">
                             <div className="flex justify-between mb-1">
-                                <span className="text-[rgb(var(--color-muted))]">Factura</span>
+                                <span className="text-[rgb(var(--color-muted))]">{t('panel.capture.invoice')}</span>
                                 <span className="font-semibold">
                                     {pendingDeleteCapture?.num_factura ?? pendingDeleteCapture?.noFactura ?? '---'}
                                 </span>
                             </div>
                             <div className="flex justify-between mb-1">
-                                <span className="text-[rgb(var(--color-muted))]">Proveedor</span>
+                                <span className="text-[rgb(var(--color-muted))]">{t('panel.capture.provider')}</span>
                                 <span className="font-semibold">
                                     {pendingDeleteCapture?.empresa ?? pendingDeleteCapture?.proveedor ?? '---'}
                                 </span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-[rgb(var(--color-muted))]">Total</span>
+                                <span className="text-[rgb(var(--color-muted))]">{t('checkout.total')}</span>
                                 <span className="font-semibold text-red-600">
                                     {formatCurrency(getInvoiceAmount(pendingDeleteCapture))}
                                 </span>
@@ -1006,7 +1014,7 @@ export default function Capture() {
                                 className="px-4 py-2 rounded-full bg-gray-200 text-gray-800 hover:bg-gray-300"
                                 disabled={isDeletingCapture}
                             >
-                                Cancelar
+                                {t('panel.common.cancel')}
                             </button>
                             <button
                                 type="button"
@@ -1014,7 +1022,7 @@ export default function Capture() {
                                 className="px-4 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 disabled:opacity-70"
                                 disabled={isDeletingCapture}
                             >
-                                {isDeletingCapture ? 'Eliminando...' : 'Eliminar'}
+                                {isDeletingCapture ? t('panel.common.deleting') : t('panel.common.delete')}
                             </button>
                         </div>
                     </div>

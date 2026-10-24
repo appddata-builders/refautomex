@@ -3,6 +3,19 @@ import { Suspense } from 'react';
 import Spinner from '@/app/components/principal/spinner';
 import RootLayoutClient from './layout-client';
 import Script from "next/script";
+import { TextProvider } from '@/app/lib/text/text-provider';
+import { getHydratedResources } from '@/app/lib/hydrate/texts';
+
+/**
+ * Sin esto Next prerenderiza la home y otras rutas en build, y los textos
+ * quedarian congelados al momento del deploy. Con force-dynamic el layout
+ * consulta la tabla `hydrate` en cada request, que es lo que permite que una
+ * edicion desde IMIN se vea sin volver a compilar.
+ *
+ * El costo esta acotado por el cache de getHydratedResources (HYDRATE_CACHE_TTL_MS,
+ * 10s por defecto): no es una consulta a Postgres por visita.
+ */
+export const dynamic = 'force-dynamic';
 
 function LoadingShell() {
   return (
@@ -12,7 +25,9 @@ function LoadingShell() {
   );
 }
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const hydratedResources = await getHydratedResources();
+
   return (
     <html lang="es" data-theme="light">
       <head>
@@ -25,9 +40,11 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased transition-colors duration-500 ease-in-out">
         <Script src="/imin-editor-bridge.js" strategy="afterInteractive" />
-        <Suspense fallback={<LoadingShell />}>
-          <RootLayoutClient>{children}</RootLayoutClient>
-        </Suspense>
+        <TextProvider resources={hydratedResources}>
+          <Suspense fallback={<LoadingShell />}>
+            <RootLayoutClient>{children}</RootLayoutClient>
+          </Suspense>
+        </TextProvider>
       </body>
     </html>
   );

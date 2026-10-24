@@ -1,14 +1,17 @@
 'use client'
 import Head from 'next/head';
 import { useEffect, useState } from 'react';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function MetaHead({ title, description }) {
     const [faviconLoaded, setFaviconLoaded] = useState(false);
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
+    const { t } = useTranslation();
+    const brand = t('meta.brand');
 
-    if (title === undefined) title = "Refautomex";
-    else title = "Refautomex | " + title;
-    if (description === undefined) description = "Powered by FRARISA.";
+    if (title === undefined) title = brand;
+    else title = `${brand} | ${title}`;
+    if (description === undefined) description = t('meta.tagline');
 
     useEffect(() => {
         const favicon = new Image();

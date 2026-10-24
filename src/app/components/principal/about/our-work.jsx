@@ -1,5 +1,4 @@
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
   export default function OurWork() {
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;

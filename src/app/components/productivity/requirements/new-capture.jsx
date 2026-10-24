@@ -8,6 +8,7 @@ import { FaFileCircleCheck } from "react-icons/fa6";
 import { IoMdCloseCircle } from "react-icons/io";
 import { IoBagRemove } from "react-icons/io5";
 import { GoAlertFill } from "react-icons/go";
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const createInitialForm = (today) => ({
         refaccion: '',
@@ -57,6 +58,7 @@ const buildDiscountMap = (detail = []) => {
 };
 
 export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
+    const { t } = useTranslation();
     const today = new Date().toISOString().split('T')[0];
     const [addItem, setAddItem] = useState(() => createInitialForm(today));
     const tableRef = useRef();
@@ -79,14 +81,14 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
 
     const isEditingMode = Boolean(captureId);
     const submitButtonLabel = isSubmitting
-        ? 'GUARDANDO...'
+        ? t('panel.newCapture.saving')
         : isEditingMode
-            ? 'ACTUALIZAR'
-            : 'CAPTURAR';
+            ? t('panel.newCapture.update')
+            : t('panel.newCapture.capture');
     const submitButtonTheme = isEditingMode
         ? 'bg-amber-500 hover:bg-amber-400 focus-visible:outline-amber-500'
         : 'bg-indigo-600 hover:bg-indigo-500 focus-visible:outline-indigo-600';
-    const cancelButtonLabel = isEditingMode ? 'REGRESAR' : 'CANCELAR';
+    const cancelButtonLabel = isEditingMode ? t('panel.newCapture.back') : t('panel.newCapture.cancel');
 
     const handleInputChange = (field, value) => {
         setAddItem((prev) => ({
@@ -118,20 +120,20 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
         setErrorMessage('');
         setSuccessMessage('');
         if (!selectedProvider) {
-            setErrorMessage('Selecciona un proveedor para habilitar los descuentos.');
+            setErrorMessage(t('panel.newCapture.pickProvider'));
             return;
         }
         if (items.length === 0) {
-            setErrorMessage('Agrega al menos una refacción antes de aplicar descuentos.');
+            setErrorMessage(t('panel.newCapture.needPartsForDiscount'));
             return;
         }
         const numericDiscount = Number(discountValue);
         if (!Number.isFinite(numericDiscount) || numericDiscount <= 0 || numericDiscount >= 1) {
-            setErrorMessage('El descuento debe ser un decimal mayor a 0 y menor a 1.');
+            setErrorMessage(t('panel.newCapture.discountRange'));
             return;
         }
         if (!tableRef.current) {
-            setErrorMessage('La tabla de captura aún no está lista.');
+            setErrorMessage(t('panel.newCapture.tableNotReady'));
             return;
         }
         if (productRef) {
@@ -150,33 +152,33 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
         setErrorMessage('');
 
         if (!validateSubmit()) {
-            setErrorMessage('Por favor, corrige los campos marcados como inválidos.');
+            setErrorMessage(t('panel.newCapture.fixFields'));
             return;
         }
 
         if (!addItem['Factura'] || !selectedProvider || !addItem['Fecha compra']) {
             const newErrors = {};
-            if (!addItem['Factura']) newErrors.factura = 'El número de factura es obligatorio.';
-            if (!selectedProvider) newErrors.provider = 'El proveedor es obligatorio.';
-            if (!addItem['Fecha compra']) newErrors.compra = 'La fecha de compra es obligatoria.';
+            if (!addItem['Factura']) newErrors.factura = t('panel.newCapture.invoiceRequired');
+            if (!selectedProvider) newErrors.provider = t('panel.newCapture.providerRequired');
+            if (!addItem['Fecha compra']) newErrors.compra = t('panel.newCapture.dateRequired');
             setErrorMessages(newErrors);
-            setErrorMessage('Por favor, completa todos los campos obligatorios.');
+            setErrorMessage(t('panel.newCapture.fillRequired'));
             return;
         }
 
         if (!items.length) {
-            setErrorMessage('Agrega al menos una refacción para capturar la compra.');
+            setErrorMessage(t('panel.newCapture.needParts'));
             return;
         }
 
         if (!tableRef.current) {
-            setErrorMessage('La tabla de captura no está disponible.');
+            setErrorMessage(t('panel.newCapture.tableUnavailable'));
             return;
         }
 
         const summary = tableRef.current.collectCapturePayload();
         if (!summary) {
-            setErrorMessage('No fue posible obtener el detalle de la captura.');
+            setErrorMessage(t('panel.newCapture.detailError'));
             return;
         }
         if (summary.errors.length) {
@@ -219,13 +221,13 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                 payloadResponse = { message: text };
             }
             if (!response.ok || (payloadResponse && payloadResponse.success === false)) {
-                throw new Error(payloadResponse?.message || 'No fue posible guardar la captura.');
+                throw new Error(payloadResponse?.message || t('panel.newCapture.saveError'));
             }
             if (isEditingMode) {
-                setSuccessMessage('Captura actualizada correctamente.');
+                setSuccessMessage(t('panel.newCapture.updateOk'));
                 onCancelEdit?.();
             } else {
-                setSuccessMessage('Captura registrada correctamente.');
+                setSuccessMessage(t('panel.newCapture.createOk'));
                 setItems([]);
                 setSelectedProvider(null);
                 setGeneralDiscount('');
@@ -446,13 +448,13 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                         {canApplyDiscount ? (
                             <div className="bg-white/90 shadow rounded-xl border border-slate-200 p-4">
                                 <div className="flex items-start justify-between mb-3">
-                                    <h2 className="text-lg font-semibold text-slate-800">Aplicar descuentos</h2>
-                                    <span className="text-xs text-slate-500">Proveedor: {selectedProvider?.label}</span>
+                                    <h2 className="text-lg font-semibold text-slate-800">{t('panel.newCapture.applyDiscounts')}</h2>
+                                    <span className="text-xs text-slate-500">{t('panel.capture.provider')}: {selectedProvider?.label}</span>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div className="flex items-center justify-between gap-2 border rounded-lg p-3 bg-slate-50">
                                         <div className="flex flex-col text-sm">
-                                            <span className="text-slate-500">Descuento sugerido</span>
+                                            <span className="text-slate-500">{t('panel.newCapture.suggestedDiscount')}</span>
                                             <span className="text-lg font-bold text-slate-900">{sugestedDiscount || '0.0'}</span>
                                         </div>
                                         {sugestedDiscount > 0 && (
@@ -462,7 +464,7 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                                                 onClick={() => applyDiscount(sugestedDiscount)}
                                             >
                                                 <CiInboxOut className="mr-1" />
-                                                Aplicar
+                                                {t('panel.newCapture.apply')}
                                             </button>
                                         )}
                                     </div>
@@ -473,7 +475,7 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                                             step="0.01"
                                             min="0"
                                             max="1"
-                                            placeholder='Descuento general (0.0-1.0)'
+                                            placeholder={t('panel.newCapture.generalDiscount')}
                                             value={generalDiscount}
                                             onChange={(e) => {
                                                 const value = parseFloat(e.target.value);
@@ -486,15 +488,15 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                                             className="inline-flex items-center rounded-md bg-indigo-500 px-3 py-1.5 text-sm font-semibold text-white shadow hover:bg-indigo-600"
                                             onClick={() => applyDiscount(generalDiscount)}
                                         >
-                                            <CiInboxOut className="mr-1" /> Aplicar
+                                            <CiInboxOut className="mr-1" /> {t('panel.newCapture.apply')}
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         ) : (
                             <div className="border border-dashed border-slate-300 rounded-xl p-6 text-center text-slate-500 bg-slate-50">
-                                <p className="font-medium">Selecciona un proveedor para habilitar los descuentos.</p>
-                                <p className="text-sm">Los descuentos sugeridos aparecerán aquí.</p>
+                                <p className="font-medium">{t('panel.newCapture.pickProvider')}</p>
+                                <p className="text-sm">{t('panel.newCapture.discountsHint')}</p>
                             </div>
                         )}
                     </div>
@@ -535,11 +537,11 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                 <div className="grid grid-cols-1 gap-x-6 gap-y-8 md:grid-cols-3 my-3">
                     <div className="">
                         <label className="block text-sm 2xl:text-lg font-medium text-[rgb(var(--color-text))]">
-                            Num Factura
+                            {t('panel.newCapture.invoiceNumber')}
                         </label>
                         <input
                             type="text"
-                            placeholder='ID de factura'
+                            placeholder={t('panel.newCapture.invoiceId')}
                             value={addItem['Factura'] || ''}
                             onChange={(e) => handleInputChange('Factura', e.target.value)}
                             className={inputClass('factura')}
@@ -551,7 +553,7 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
 
                     <div className="">
                         <label className="block text-sm 2xl:text-lg font-medium text-[rgb(var(--color-text))]">
-                            Proveedor
+                            {t('panel.capture.provider')}
                         </label>
                         <select
                             value={selectedProvider?.value || ''}
@@ -560,7 +562,7 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                                 errorMessages.provider ? 'border-red-400 bg-red-50' : 'border-slate-200'
                             } py-2 px-3 text-sm text-gray-900 shadow-sm focus:border-indigo-500 focus:ring-indigo-500`}
                         >
-                            <option value="">Selecciona un proveedor</option>
+                            <option value="">{t('panel.newCapture.selectProvider')}</option>
                             {providerOptions.map((provider) => (
                                 <option key={provider.value} value={provider.value}>
                                     {provider.label}
@@ -574,7 +576,7 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
 
                     <div className="">
                         <label className="block text-sm 2xl:text-lg font-medium text-[rgb(var(--color-text))]">
-                            Fecha Compra
+                            {t('panel.capture.purchaseDate')}
                             {/* LA FECHA PAGO ES EL RESULTADO SE SUMAR LOS DIAS DE LA BASE DE DATOS A LA FECHA DE LA COMPRA,
                             SI LA FECHA DE LA COMPRA NO TIENE DIAS DE PLAZO ENTONCES FECHA_CAPTURA = FECHA_PAGO */}
                         </label>
@@ -624,9 +626,9 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                                 <div className="relative overflow-y-auto h-[140px]">
                                     <div className="flex flex-col items-center justify-center">
                                         <h2 className="text-2xl/7 p-2 font-bold text-[rgb(var(--color-text))] sm:truncate sm:text-3xl sm:tracking-tight mb-1 border-b-2 border-slate-300 w-full">
-                                            ¿Está seguro de cancelar la captura?
+                                            {t('panel.newCapture.confirmCancel')}
                                         </h2>
-                                        <p className="text-[rgb(var(--color-text))] opacity-80">Si cancela la captura, perderán todos los cambios realizados.</p>
+                                        <p className="text-[rgb(var(--color-text))] opacity-80">{t('panel.newCapture.confirmCancelHint')}</p>
                                     </div>
                                     <div className="flex justify-center px-6 lg:px-8 mt-0.5 sm:mt-3">
                                         <a href='/productivity?load=capture'
@@ -634,7 +636,7 @@ export default function NewCapture({ onCancelEdit, captureToEdit = null }) {
                                             className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset hover:bg-gray-50"
                                         >
                                             <IoBagRemove aria-hidden="true" className="mr-1.5 -ml-0.5 size-5 text-gray-400" />
-                                            CANCELAR
+                                            {t('panel.newCapture.cancel')}
                                         </a>
                                     </div>
                                 </div>

@@ -5,6 +5,7 @@ import Select from 'react-select';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import heic2any from 'heic2any';
 import { getStorageValue } from '@/app/lib/storage-values';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const getAbsoluteApiUrl = (path) => {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
@@ -73,6 +74,7 @@ const MODEL_YEAR_OPTIONS = Array.from({ length: 36 }, (_, i) => {
 });
 
 export default function EditRegister({ prodOverview, onCancelEdit, setProdOverview, onRefreshProducts }) {
+    const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const [isSuccessfull, setIsSuccessfull] = useState(false);
     const [brandOptions, setBrandOptions] = useState([]);
@@ -282,13 +284,13 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
 
                 if (!ignore) {
                     setBranchDetails(normalized);
-                    setBranchError(normalized.length === 0 ? 'Este producto no tiene asignaciones activas.' : '');
+                    setBranchError(normalized.length === 0 ? t('panel.editRegister.noAssignments') : '');
                 }
             } catch (error) {
                 console.error('Error fetching branch details:', error);
                 if (!ignore) {
                     setBranchDetails([]);
-                    setBranchError('No se pudieron cargar los detalles por sucursal.');
+                    setBranchError(t('panel.editRegister.detailsError'));
                 }
             } finally {
                 if (!ignore) {
@@ -453,9 +455,9 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
     };
 
     const normalizeImageFile = async (file) => {
-        if (!file) throw new Error('Archivo inválido.');
+        if (!file) throw new Error(t('panel.editRegister.invalidFile'));
         if (!file.type || !file.type.startsWith('image/')) {
-            throw new Error('Selecciona únicamente archivos de imagen.');
+            throw new Error(t('panel.editRegister.onlyImages'));
         }
         if (file.type === 'image/heic' || file.type === 'image/heif') {
             const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg' });
@@ -504,7 +506,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             setImageFeedback({ error: '', success: 'Imagen agregada. Guarda el producto para subirla.' });
         } catch (error) {
             console.error('Error preparando imágenes:', error);
-            setImageFeedback({ error: 'No se pudo preparar la imagen. Intenta nuevamente.', success: '' });
+            setImageFeedback({ error: t('panel.editRegister.imagePrepError'), success: '' });
         } finally {
             setMediaUploading(false);
             if (event.target) {
@@ -545,11 +547,11 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || 'Error al subir la imagen.');
+                throw new Error(errorData.message || t('panel.editRegister.imageUploadError'));
             }
             const data = await response.json();
             if (!data.key) {
-                throw new Error('Respuesta inválida al subir la imagen.');
+                throw new Error(t('panel.editRegister.imageUploadBadResponse'));
             }
             uploadedKeys.push(data.key);
         }
@@ -639,12 +641,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             if (selectedBranchId === detail.idsucursal) {
                 setSelectedBranchId(null);
             }
-            setSuccessMessage('Detalle eliminado correctamente.');
+            setSuccessMessage(t('panel.editRegister.detailDeleted'));
             onRefreshProducts?.();
             setDetailPendingDelete(null);
         } catch (error) {
             console.error('Error deleting branch detail:', error);
-            setBranchError('No se pudo eliminar el detalle. Intenta nuevamente.');
+            setBranchError(t('panel.editRegister.detailDeleteError'));
         } finally {
             setDeletingBranchId(null);
         }
@@ -692,12 +694,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 throw new Error(`Error ${response.status}: ${response.statusText}`);
             }
 
-            setSuccessMessage('Producto dado de baja correctamente.');
+            setSuccessMessage(t('panel.editRegister.productRemoved'));
             onRefreshProducts?.();
             onCancelEdit?.();
         } catch (error) {
             console.error('Error al dar de baja producto:', error);
-            setErrorMessage('No se pudo dar de baja el producto. Intenta nuevamente.');
+            setErrorMessage(t('panel.editRegister.productRemoveError'));
         } finally {
             setProductDeleting(false);
             setProductPendingDelete(false);
@@ -727,14 +729,14 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         const resolvedGroupId = resolveGroupId();
         if (!resolvedGroupId) {
             isValid = false;
-            newErrorMessages.idgrupo = 'Selecciona un grupo.';
+            newErrorMessages.idgrupo = t('panel.addRegister.pickGroup');
         } else {
             newErrorMessages.idgrupo = '';
         }
         const resolvedCategoryId = resolveCategoryId();
         if (!resolvedCategoryId) {
             isValid = false;
-            newErrorMessages.idcategoria = 'Selecciona una categoria.';
+            newErrorMessages.idcategoria = t('panel.addRegister.pickCategory');
         } else {
             newErrorMessages.idcategoria = '';
         }
@@ -744,7 +746,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             if (key === 'costo') {
                 if (value == null || value === '' || isNaN(value) || Number(value) <= 0) {
                     isValid = false;
-                    newErrorMessages[key] = 'Costo no puede ser 0, nulo o inválido.';
+                    newErrorMessages[key] = t('panel.editRegister.costInvalid');
                 }
                 continue;
             }
@@ -766,7 +768,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         if (!isWebBranchSelected && normalizedLocalizacion && hasLeadingZeroSuffix(normalizedLocalizacion)) {
             isValid = false;
             newErrorMessages.localizacion =
-                'Índice no puede iniciar con 0, i.e. usa -1 en lugar de -01.';
+                t('panel.warehouse.indexZero');
         }
         // Validar la localización en el servidor
         if (!isWebBranchSelected) {
@@ -795,12 +797,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 }
                 const data = await response.json();
                 if (data.exists) {
-                    newErrorMessages.localizacion = data.message || 'Localización ya ocupada.';
+                    newErrorMessages.localizacion = data.message || t('panel.addRegister.locationTaken');
                     isValid = false;
                 }
             } catch (error) {
                 console.error('Error verificando localización:', error);
-                newErrorMessages.localizacion = 'Error al verificar la localización.';
+                newErrorMessages.localizacion = t('panel.warehouse.locationCheckError');
                 isValid = false;
             }
         }
@@ -816,7 +818,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         const validation = await validateSubmit();
         if (!validation.isValid) {
             setErrorMessages(validation.newErrorMessages);
-            setErrorMessage('Por favor, corrige los campos marcados como inválidos.');
+            setErrorMessage(t('panel.newCapture.fixFields'));
             return;
         }
 
@@ -871,7 +873,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             }
 
             console.log('PatchProduct response:', response.status);
-            setSuccessMessage('Registro actualizado exitosamente.');
+            setSuccessMessage(t('panel.editRegister.updateOk'));
             setErrorMessages({});
             clearPendingImages();
             updateRoutesState(mergedRoutes);
@@ -888,8 +890,8 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             if (uploadedKeys.length > 0) {
                 await deleteUploadedKeys(uploadedKeys);
             }
-            setErrorMessage('Hubo un error al guardar los datos. Intenta de nuevo.');
-            setImageFeedback({ error: 'No se pudieron guardar las imágenes. Revisa la conexión e intenta nuevamente.', success: '' });
+            setErrorMessage(t('panel.addRegister.saveRetry'));
+            setImageFeedback({ error: t('panel.editRegister.imagesSaveError'), success: '' });
             console.error('Error submitting the form:', error);
         } finally {
             setMediaUploading(false);
@@ -1021,7 +1023,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                         >
                             <img
                                 src={selectedImage}
-                                alt="Selected product"
+                                alt={t('panel.editRegister.selectedProduct')}
                                 className="h-full w-full object-cover object-center"
                             />
                         </div>
@@ -1031,7 +1033,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                 onClick={triggerImageUpload}
                                 disabled={mediaUploading}
                                 className='flex justify-center items-center my-2 opacity-80 hover:opacity-100 w-16 h-16 object-cover cursor-pointer rounded-xl mr-2 bg-[rgb(var(--color-card))] border-[rgb(var(--color-border))] border border-dashed hover:animate-out disabled:cursor-not-allowed disabled:opacity-50'
-                                title='Agregar fotos'
+                                title={t('panel.editRegister.addPhotos')}
                             >
                                 <MdAddPhotoAlternate className='h-10 w-10' />
                             </button>
@@ -1053,7 +1055,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                                     event.stopPropagation();
                                                     handleRemoveImage(ruta);
                                                 }}
-                                                aria-label='Eliminar imagen'
+                                                aria-label={t('panel.editRegister.removeImage')}
                                             >
                                                 <MdDelete className='h-3 w-3' />
                                             </button>
@@ -1062,14 +1064,14 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                 })}
                                 {pendingImages.length > 0 && (
                                     <p className='text-xs text-[rgb(var(--color-text))] mt-2 mb-1'>
-                                        Nuevas imágenes (se subirán al guardar):
+                                        {t('panel.editRegister.newImages')}
                                     </p>
                                 )}
                                 {pendingImages.map((image) => (
                                     <div key={image.id} className='relative inline-block'>
                                         <img
                                             src={image.previewUrl}
-                                            alt='pending product'
+                                            alt={t('panel.editRegister.pendingProduct')}
                                             className={`w-16 h-16 object-cover cursor-pointer my-2 rounded-xl mr-2 ${selectedImage === image.previewUrl ? 'border-2 border-[rgb(var(--color-amber))]' : 'border border-[rgb(var(--color-border))]'}`}
                                             onClick={() => handlePendingImageClick(image.id, image.previewUrl)}
                                         />
@@ -1080,7 +1082,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                                 event.stopPropagation();
                                                 handleRemovePendingImage(image.id);
                                             }}
-                                            aria-label='Eliminar imagen pendiente'
+                                            aria-label={t('panel.editRegister.removePendingImage')}
                                         >
                                             <MdDelete className='h-3 w-3' />
                                         </button>
@@ -1089,7 +1091,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             </div>
                             {(mediaUploading || imageFeedback.error || imageFeedback.success) && (
                                 <div className='w-full text-center text-xs text-[rgb(var(--color-text))] my-2'>
-                                    {mediaUploading && <p className='text-[rgb(var(--color-amber))]'>Procesando imágenes...</p>}
+                                    {mediaUploading && <p className='text-[rgb(var(--color-amber))]'>{t('panel.editRegister.processingImages')}</p>}
                                     {imageFeedback.error && <p className='text-[rgb(var(--color-error))]'>{imageFeedback.error}</p>}
                                     {imageFeedback.success && <p className='text-[rgb(var(--color-success))]'>{imageFeedback.success}</p>}
                                 </div>
@@ -1105,7 +1107,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                         Total sucursales activas: {branchDetails.length}
                                         </p>
                                         <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                            Sucursal a editar
+                                            {t('panel.editRegister.branchToEdit')}
                                         </label>
                                         <Select
                                             options={branchSelectOptions}
@@ -1113,7 +1115,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                             onChange={(option) => setSelectedBranchId(option ? option.value : null)}
                                             isDisabled={branchSelectOptions.length === 0}
                                             isLoading={branchLoading}
-                                            placeholder={branchLoading ? 'Cargando sucursales...' : 'Selecciona una sucursal'}
+                                            placeholder={branchLoading ? t('panel.personal.loadingBranches') : t('panel.editRegister.pickBranch')}
                                             classNamePrefix="react-select"
                                         />
                                         {branchError && (
@@ -1125,13 +1127,13 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                 </div>
                                 {branchLoading && (
                                     <p className="text-xs text-[rgb(var(--color-text))]/70">
-                                        Buscando detalles del producto...
+                                        {t('panel.editRegister.searchingDetails')}
                                     </p>
                                 )}
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-52 overflow-y-auto">
                                     {branchDetails.length === 0 && !branchLoading ? (
                                         <div className="rounded-2xl border border-dashed border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] p-4 text-sm text-[rgb(var(--color-text))]/70">
-                                            No hay registros activos para otras sucursales.
+                                            {t('panel.editRegister.noOtherBranches')}
                                         </div>
                                     ) : (
                                         branchDetails.map(detail => {
@@ -1166,22 +1168,22 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                                                 confirmDeleteDetail(detail);
                                                             }}
                                                             disabled={deletingBranchId === detail.idsucursal}
-                                                            title="Eliminar detalle"
+                                                            title={t('panel.editRegister.removeDetail')}
                                                         >
                                                             <MdDelete className="h-4 w-4" />
                                                         </button>
                                                     </div>
                                                     <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-[rgb(var(--color-text))]/80">
-                                                        <p><span className="font-semibold text-[rgb(var(--color-text))]">Loc:</span> {detail.localizacion || '—'}</p>
-                                                        <p><span className="font-semibold text-[rgb(var(--color-text))]">Existencia:</span> {detail.existencia ?? '—'}</p>
+                                                        <p><span className="font-semibold text-[rgb(var(--color-text))]">{t('panel.editRegister.locField')}</span> {detail.localizacion || '—'}</p>
+                                                        <p><span className="font-semibold text-[rgb(var(--color-text))]">{t('panel.addRegister.stockField')}</span> {detail.existencia ?? '—'}</p>
                                                         <p>
-                                                            <span className="font-semibold text-[rgb(var(--color-text))]">Costo:</span>{' '}
+                                                            <span className="font-semibold text-[rgb(var(--color-text))]">{t('panel.editRegister.costField')}</span>{' '}
                                                             {detail.costo !== undefined && detail.costo !== null && detail.costo !== ''
                                                                 ? `$${Number(detail.costo).toFixed(2)}`
                                                                 : '—'}
                                                         </p>
                                                         <p>
-                                                            <span className="font-semibold text-[rgb(var(--color-text))]">Precio:</span>{' '}
+                                                            <span className="font-semibold text-[rgb(var(--color-text))]">{t('panel.editRegister.priceField')}</span>{' '}
                                                             {detail.precio !== undefined && detail.precio !== null && detail.precio !== ''
                                                                 ? `$${Number(detail.precio).toFixed(2)}`
                                                                 : '—'}
@@ -1197,7 +1199,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                         <div className="mt-10 grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
                             <div className="sm:col-span-2">
                                 <label htmlFor="first-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Refacción
+                                    {t('panel.capture.part')}
                                 </label>
                                 <div className="mt-2 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] animate-up rounded-md p-1 shadow">
                                     {currentProduct.refaccion}
@@ -1205,14 +1207,14 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             </div>
                             <div className="sm:col-span-2">
                                 <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Grupo
+                                    {t('products.group')}
                                 </label>
                                 <div className="mt-2">
                                     <Select
                                         options={groupOptions}
                                         value={groupOptions.find(option => String(option.value) === String(prodOverview?.idgrupo)) || null}
                                         onChange={handleGroupChange}
-                                        placeholder="Selecciona"
+                                        placeholder={t('panel.addRegister.pickOne')}
                                         classNamePrefix="react-select"
                                     />
                                     {errorMessages.idgrupo && (
@@ -1225,14 +1227,14 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
 
                             <div className="sm:col-span-2">
                                 <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Categoria
+                                    {t('panel.addRegister.category')}
                                 </label>
                                 <div className="mt-2">
                                     <Select
                                         options={categoryOptions}
                                         value={categoryOptions.find(option => String(option.value) === String(prodOverview?.idcategoria)) || null}
                                         onChange={handleCategoryChange}
-                                        placeholder="Selecciona"
+                                        placeholder={t('panel.addRegister.pickOne')}
                                         classNamePrefix="react-select"
                                     />
                                     {errorMessages.idcategoria && (
@@ -1245,7 +1247,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
 
                             <div className="sm:col-span-2">
                                 <label htmlFor="email" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Marca de auto
+                                    {t('panel.addRegister.carBrand')}
                                 </label>
                                 <div className="mt-2">
                                     <Select
@@ -1266,7 +1268,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             </div>
                             <div className="col-span-full">
                                 <label htmlFor="descripcion" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Descripci&oacute;n
+                                    {t('panel.capture.descriptionLabel')}
                                 </label>
                                 <div className="mt-2">
                                     <textarea
@@ -1289,7 +1291,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             {!isWebBranchSelected && (
                                 <div className="sm:col-span-2">
                                     <label htmlFor="location" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                        Localizaci&oacute;n
+                                        {t('panel.tableDesc.locationTitle')}
                                     </label>
                                     <div className="mt-2">
                                         <input
@@ -1312,7 +1314,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             )}
                             <div className="sm:col-span-2">
                                 <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Modelo inicial
+                                    {t('panel.addRegister.modelFrom')}
                                 </label>
                                 <div className="mt-2">
                                     <Select
@@ -1336,7 +1338,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             </div>
                             <div className="sm:col-span-2">
                                 <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Modelo final
+                                    {t('panel.addRegister.modelTo')}
                                 </label>
                                 <div className="mt-2">
                                     <Select
@@ -1361,7 +1363,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             {!isWebBranchSelected && (
                                 <div className="sm:col-span-2">
                                     <label htmlFor="last-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                        Existencia
+                                        {t('panel.tableDesc.stockTitle')}
                                     </label>
                                     <div className="mt-2">
                                         <Select
@@ -1383,7 +1385,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             )}
                             <div className="sm:col-span-2">
                                 <label htmlFor="last-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Utilidad
+                                    {t('panel.addRegister.utility')}
                                 </label>
                                 <div className="mt-2">
                                     <Select
@@ -1401,7 +1403,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             </div>
                             <div className="sm:col-span-2">
                                 <label htmlFor="costo" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Costo de proveedor
+                                    {t('panel.editRegister.providerCost')}
                                 </label>
                                 <div className="mt-2">
                                     <input
@@ -1422,7 +1424,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             </div>
                             <div className="sm:col-span-2">
                                 <label htmlFor="last-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Precio Público Mínimo
+                                    {t('panel.editRegister.minPrice')}
                                 </label>
                                 <div className="mt-2 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] animate-up rounded-md p-1 shadow">
                                     {currentProduct.precio}
@@ -1445,7 +1447,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                         onClick={onCancelEdit}
                         type="button"
                         className="bg-gradient-to-bl hover:bg-gradient-to-tr bg-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out text-[rgb(var(--color-text))]">
-                        Regresar
+                        {t('panel.newCapture.back')}
                         </button>
                         <button
                         type="button"
@@ -1453,14 +1455,14 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                         className="bg-gradient-to-bl from-red-500 via-rose-500 to-red-700 text-white shadow p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 disabled:opacity-60"
                         disabled={productDeleting}
                         >
-                        {productDeleting ? 'Dando de baja...' : 'Dar de baja'}
+                        {productDeleting ? t('panel.editRegister.removing') : t('panel.editRegister.remove')}
                         </button>
                         <button
                         type="submit"
                         className={isSuccessfull ? 'bg-gradient-to-bl hover:bg-gradient-to-tr bg-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out cursor-not-allowed' : 'bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer'}
                         disabled={isSuccessfull}
                         >
-                        Guardar
+                        {t('panel.personal.save')}
                         </button>
                     </div>
                 </div>
@@ -1469,12 +1471,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <div className="bg-[rgb(var(--color-card))] rounded-2xl shadow-2xl max-w-md w-full p-6 border border-[rgb(var(--color-border))]">
                         <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">
-                            {productPendingDelete ? 'Dar de baja producto' : 'Confirmar eliminación'}
+                            {productPendingDelete ? t('panel.editRegister.removeProductTitle') : t('panel.editRegister.confirmDelete')}
                         </h3>
                         <p className="text-sm text-[rgb(var(--color-text))]/80 mt-2">
                             {productPendingDelete
-                                ? '¿Deseas dar de baja este producto? Se eliminarán todos sus detalles.'
-                                : '¿Estás seguro que deseas dar de baja el detalle de esta sucursal?'}
+                                ? t('panel.editRegister.confirmProductHint')
+                                : t('panel.editRegister.confirmDetailHint')}
                         </p>
                         <div className="mt-6 flex justify-end gap-3">
                             <button
@@ -1483,7 +1485,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                 onClick={productPendingDelete ? cancelProductDelete : cancelDeleteDetail}
                                 disabled={!!deletingBranchId || productDeleting}
                             >
-                                Cancelar
+                                {t('panel.common.cancel')}
                             </button>
                             <button
                                 type="button"
@@ -1492,8 +1494,8 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                 disabled={!!deletingBranchId || productDeleting}
                             >
                                 {productPendingDelete
-                                    ? (productDeleting ? 'Dando de baja...' : 'Dar de baja')
-                                    : (deletingBranchId ? 'Eliminando...' : 'Eliminar')}
+                                    ? (productDeleting ? t('panel.editRegister.removing') : t('panel.editRegister.remove'))
+                                    : (deletingBranchId ? t('panel.common.deleting') : t('panel.common.delete'))}
                             </button>
                         </div>
                     </div>
@@ -1506,13 +1508,13 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                             type="button"
                             className="absolute -top-4 -right-4 bg-white text-black rounded-full px-3 py-1 shadow-lg text-sm font-semibold"
                             onClick={closeImageViewer}
-                            aria-label="Cerrar visor de imagen"
+                            aria-label={t('panel.editRegister.closeViewer')}
                         >
-                            Cerrar
+                            {t('common.close')}
                         </button>
                         <img
                             src={selectedImage}
-                            alt="Vista previa de producto"
+                            alt={t('panel.editRegister.previewAlt')}
                             className="rounded-3xl shadow-2xl w-full max-h-[80vh] object-contain bg-[rgb(var(--color-card))]"
                             onClick={closeImageViewer}
                         />

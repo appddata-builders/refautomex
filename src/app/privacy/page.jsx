@@ -1,14 +1,12 @@
 import Privacy from './privacy';
+import { getServerT, resolveLocale } from '@/app/lib/text/server-text';
 
 export async function generateMetadata({ searchParams }) {
     const params = await searchParams;
-    const lang = (params && params.lang) || 'es';
+    const t = await getServerT(resolveLocale(params && params.lang));
     return {
-        title: lang === 'en' ? 'Privacy Notice' : 'Aviso de Privacidad',
-        description:
-        lang === 'en'
-            ? 'Legal privacy terms for Refautomex users.'
-            : 'Términos legales de privacidad para los usuarios de Refautomex.',
+        title: t('meta.privacy.title'),
+        description: t('meta.privacy.description'),
         robots: 'index,follow',
     };
 }

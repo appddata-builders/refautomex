@@ -4,16 +4,21 @@ import Beginning from '@/app/components/principal/beginning';
 import Slider from '@/app/components/principal/slider';
 import Intro from '@/app/components/principal/intro';
 import Features from '@/app/components/principal/features';
+import { getServerT, resolveLocale } from '@/app/lib/text/server-text';
 
-export const metadata = {
-  title: {
-    default: "Refautomex",
-  },
-  description: "Refacciones automotrices de México",
-  icons: {
-    icon: "/favicon.ico",
-  },
-};
+export async function generateMetadata({ searchParams }) {
+  const params = await searchParams;
+  const t = await getServerT(resolveLocale(params && params.lang));
+  return {
+    title: {
+      default: t('meta.home.title'),
+    },
+    description: t('meta.home.description'),
+    icons: {
+      icon: "/favicon.ico",
+    },
+  };
+}
 
 export default function Home() {
   const multimediaSrc = process.env.NEXT_PUBLIC_S3;

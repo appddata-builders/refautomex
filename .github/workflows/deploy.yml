@@ -1,0 +1,79 @@
+# Copiado por `make workflow APP=refautomex` desde infrastructure-terraform-appddata
+# (resources/github-deploy.yml). Los cambios se hacen alla y se vuelven a copiar.
+#
+# Cada push a main construye la imagen aqui, en un runner x86 de GitHub, y la
+# manda al servidor por ssh. Nada se construye en la Mac y no hay registry de
+# por medio.
+#
+# Necesita, en Settings -> Secrets and variables -> Actions del repo (los carga
+# `make github APP=refautomex`):
+#   secrets.DEPLOY_SSH_KEY      llave privada; en el servidor solo puede desplegar refautomex
+#   secrets.DEPLOY_HOST         IP reservada del servidor
+#   secrets.DEPLOY_KNOWN_HOSTS  huella del servidor, para no aceptar a un impostor
+#   vars.NEXT_PUBLIC_ENV        las lineas NEXT_PUBLIC_*=... que Next congela al compilar
+
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Un despliegue a la vez por repo. Entre repos distintos los ordena el
+# servidor.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  APP: refautomex
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Next incrusta toda variable NEXT_PUBLIC_* en el JavaScript que descarga
+      # el navegador. Un nombre como NEXT_PUBLIC_SECRET_KEY le entrega el
+      # secreto a cualquiera que abra la pagina: se corta antes de construir.
+      - name: Revisar variables publicas
+        env:
+          NEXT_PUBLIC_ENV: ${{ vars.NEXT_PUBLIC_ENV }}
+        run: |
+          bad=$(printf '%s\n' "$NEXT_PUBLIC_ENV" | grep -oE '^NEXT_PUBLIC_[A-Za-z0-9_]*' \
+            | grep -E 'SECRET|ACCESS_KEY|PRIVATE|PASSWORD|TOKEN|CREDENTIAL' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Estas variables se incrustarian en el bundle publico: $bad"
+            exit 1
+          fi
+
+      # El tag es el SHA del commit: identifica la version y es a donde vuelve
+      # `make rollback`.
+      - name: Construir
+        env:
+          NEXT_PUBLIC_ENV: ${{ vars.NEXT_PUBLIC_ENV }}
+        run: |
+          TAG=$(git rev-parse --short HEAD)
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          docker build --build-arg NEXT_PUBLIC_ENV="$NEXT_PUBLIC_ENV" -t "appddata/$APP:$TAG" .
+
+      # Si la version nueva no pasa el healthcheck, el servidor vuelve solo a
+      # la anterior y este paso sale en rojo con los logs de la app.
+      - name: Desplegar
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          docker save "appddata/$APP:$TAG" | gzip -1 \
+            | ssh -i ~/.ssh/deploy -o BatchMode=yes -o IdentitiesOnly=yes "deploy@$HOST" "deploy $TAG"

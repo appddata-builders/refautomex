@@ -2,8 +2,7 @@ import { FaMap } from 'react-icons/fa'
 import { IoTelescope } from "react-icons/io5";
 import { GiSkills } from "react-icons/gi";
 import Title from '../title';
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation'
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function OurValues() {
     const { t } = useTranslation();

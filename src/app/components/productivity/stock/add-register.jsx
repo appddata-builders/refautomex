@@ -6,6 +6,7 @@ import { IoTicket } from 'react-icons/io5';
 import FindProducts from '@/app/components/productivity/sales/find-products';
 import ComponentToPrint from '@/app/components/productivity/sales/component-print';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const parseRoutes = (raw) => {
     if (!raw) return [];
@@ -36,13 +37,17 @@ const hasLeadingZeroSuffix = (location = '') => {
     return suffix.length > 1 && suffix.startsWith('0');
 };
 
-const NOT_ASSIGNED_OPTION = { value: '__NOT_ASSIGNED__', label: 'Selecciona', isDisabled: true };
+// La opcion vacia de los selects se arma con `t` porque su etiqueta sale de la
+// base; solo el `value` centinela es constante.
+const NOT_ASSIGNED_VALUE = '__NOT_ASSIGNED__';
 
-const withDefaultOption = (options = []) => [NOT_ASSIGNED_OPTION, ...options];
+const buildNotAssignedOption = (t) => ({ value: NOT_ASSIGNED_VALUE, label: t('panel.addRegister.pickOne'), isDisabled: true });
 
-const getSelectValue = (options = [], value) => {
-    if (!value) return NOT_ASSIGNED_OPTION;
-    return options.find((option) => option.value === value) || NOT_ASSIGNED_OPTION;
+const withDefaultOption = (options = [], t) => [buildNotAssignedOption(t), ...options];
+
+const getSelectValue = (options = [], value, t) => {
+    if (!value) return buildNotAssignedOption(t);
+    return options.find((option) => option.value === value) || buildNotAssignedOption(t);
 };
 
 const normalizeNumber = (value, fallback = 0) => {
@@ -58,6 +63,7 @@ const formatPhoneInput = (value) => {
 };
 
 export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
+    const { t } = useTranslation();
     const { userData } = useContext(AuthContext);
     const DEFAULT_CATEGORY_ID = 1;
     const [productForm, setProductForm] = useState({
@@ -201,7 +207,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             return { ok: true };
         } catch (error) {
             console.error('Error actualizando grupo para web:', error);
-            return { ok: false, message: 'No se pudo asignar grupo para web.' };
+            return { ok: false, message: t('panel.addRegister.webGroupError') };
         }
     };
 
@@ -310,7 +316,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                         detail => String(detail.idsucursal) === String(value)
                     );
                     if (existsInBranch) {
-                        clone.idsucursal = 'Este producto ya está activo en la sucursal seleccionada.';
+                        clone.idsucursal = t('panel.addRegister.alreadyActive');
                     } else {
                         delete clone.idsucursal;
                     }
@@ -344,22 +350,22 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
         if (!productForm.idgrupo) {
             valid = false;
-            newErrors.idgrupo = 'Selecciona un grupo.';
+            newErrors.idgrupo = t('panel.addRegister.pickGroup');
         }
 
         if (!productForm.idcategoria) {
             valid = false;
-            newErrors.idcategoria = 'Selecciona una categoria.';
+            newErrors.idcategoria = t('panel.addRegister.pickCategory');
         }
 
         if (!productForm.idmarca) {
             valid = false;
-            newErrors.idmarca = 'Selecciona una marca.';
+            newErrors.idmarca = t('panel.addRegister.pickBrand');
         }
 
         if (!productForm.idproveedor) {
             valid = false;
-            newErrors.idproveedor = 'Selecciona un proveedor.';
+            newErrors.idproveedor = t('panel.addRegister.pickProvider');
         }
 
         setErrorMessages(newErrors);
@@ -381,14 +387,14 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
         if (!selectedPendingProduct) {
             valid = false;
-            newErrors.selectedProduct = 'Selecciona un producto pendiente.';
+            newErrors.selectedProduct = t('panel.addRegister.pickPending');
         }
         const webBranchSelected = isWebBranchValue(detailForm.idsucursal);
         const effectiveGroupId = detailGroupId || selectedProductGroupId;
         if (selectedPendingProduct && webBranchSelected && !effectiveGroupId) {
             valid = false;
             newErrors.selectedProduct =
-                'Este producto no tiene grupo asignado.';
+                t('panel.addRegister.noGroup');
         }
 
         const isWebBranch = webBranchSelected;
@@ -399,7 +405,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
         if (!detailForm.idsucursal) {
             valid = false;
-            newErrors.idsucursal = 'Selecciona una sucursal.';
+            newErrors.idsucursal = t('panel.addRegister.pickBranch');
         }
 
         Object.entries(patterns).forEach(([field, regex]) => {
@@ -415,7 +421,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
         if (!isWebBranch && normalizedForm.localizacion && hasLeadingZeroSuffix(normalizedForm.localizacion)) {
             valid = false;
             newErrors.localizacion =
-                'Índice no puede iniciar con 0, i.e. usa -1 en lugar de -01.';
+                t('panel.warehouse.indexZero');
         }
 
         setErrorMessages(newErrors);
@@ -441,12 +447,12 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             }
             const data = await response.json();
             if (data.exists) {
-                return { ok: false, message: data.message || 'Localización ya ocupada.' };
+                return { ok: false, message: data.message || t('panel.addRegister.locationTaken') };
             }
             return { ok: true };
         } catch (error) {
             console.error('Error verificando localización:', error);
-            return { ok: false, message: 'Error al verificar la localización.' };
+            return { ok: false, message: t('panel.warehouse.locationCheckError') };
         }
     };
 
@@ -457,7 +463,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
         setErrorMessage('');
 
         if (!validateProductForm()) {
-            setErrorMessage('Por favor, corrige los campos marcados como inválidos.');
+            setErrorMessage(t('panel.newCapture.fixFields'));
             return;
         }
 
@@ -487,10 +493,10 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             });
 
             if (!response.ok) {
-                throw new Error('Error al guardar el registro');
+                throw new Error(t('panel.addRegister.saveError'));
             }
 
-            setSuccessMessage('Producto registrado como existente.');
+            setSuccessMessage(t('panel.addRegister.savedPending'));
             setProductForm({
                 refaccion: '',
                 descripcion: '',
@@ -506,7 +512,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             onRefreshProducts?.();
         } catch (error) {
             console.error('Error al guardar registro:', error);
-            setErrorMessage('Hubo un error al guardar los datos. Intenta de nuevo.');
+            setErrorMessage(t('panel.addRegister.saveRetry'));
         }
     };
 
@@ -521,14 +527,14 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
         if (webBranchSelected && !effectiveGroupId) {
             setErrorMessages(prev => ({
                 ...prev,
-                selectedProduct: 'Este producto no tiene grupo asignado. Selecciona un grupo para web antes de continuar.',
+                selectedProduct: t('panel.addRegister.noGroupWeb'),
             }));
-            setErrorMessage('Selecciona un grupo para web antes de guardar el detalle.');
+            setErrorMessage(t('panel.addRegister.pickWebGroup'));
             return;
         }
 
         if (!validateDetailForm()) {
-            setErrorMessage('Por favor, corrige los campos marcados como inválidos.');
+            setErrorMessage(t('panel.newCapture.fixFields'));
             return;
         }
 
@@ -576,10 +582,10 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             });
 
             if (!response.ok) {
-                throw new Error('Error al asignar el detalle');
+                throw new Error(t('panel.addRegister.detailError'));
             }
 
-            setSuccessMessage('Detalle asignado correctamente.');
+            setSuccessMessage(t('panel.addRegister.detailOk'));
             setDetailForm({
                 idsucursal: '',
                 localizacion: '',
@@ -595,7 +601,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             onRefreshProducts?.();
         } catch (error) {
             console.error('Error al asignar detalle:', error);
-            setErrorMessage('Hubo un error al asignar el detalle. Intenta de nuevo.');
+            setErrorMessage(t('panel.addRegister.detailRetry'));
         }
     };
 
@@ -899,14 +905,15 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
         );
         const categorySelectOptions = categoryOptions.length
             ? categoryOptions
-            : [{ value: DEFAULT_CATEGORY_ID, label: 'Categoria 1' }];
-        const brandSelectOptions = withDefaultOption(brandOptions);
+            : [{ value: DEFAULT_CATEGORY_ID, label: t('panel.addRegister.category1') }];
+        const brandSelectOptions = withDefaultOption(brandOptions, t);
         const providerSelectOptions = providerOptions.slice(2);
         const yearOptions = withDefaultOption(
             Array.from({ length: 36 }, (_, i) => {
                 const year = 1990 + i;
                 return { value: year, label: `${year}` };
-            })
+            }),
+            t
         );
 
         return (
@@ -914,7 +921,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             <div className="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
                 <div className="sm:col-span-2">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Refacción
+                        {t('panel.capture.part')}
                     </label>
                     <input
                         type="text"
@@ -929,7 +936,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="col-span-full">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Descripción
+                        {t('panel.capture.descriptionLabel')}
                     </label>
                     <textarea
                         value={productForm.descripcion}
@@ -943,7 +950,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="sm:col-span-3">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Grupo
+                        {t('products.group')}
                     </label>
                     <Select
                         options={groupSelectOptions}
@@ -953,7 +960,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                         onChange={(selectedOption) =>
                             handleProductInputChange('idgrupo', selectedOption ? selectedOption.value : '')
                         }
-                        placeholder="Selecciona un grupo"
+                        placeholder={t('panel.addRegister.pickGroupPlaceholder')}
                         classNamePrefix="react-select"
                     />
                     {errorMessages.idgrupo && (
@@ -963,7 +970,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="sm:col-span-3">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Categoria
+                        {t('panel.addRegister.category')}
                     </label>
                     <Select
                         options={categorySelectOptions}
@@ -975,7 +982,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                         onChange={(selectedOption) =>
                             handleProductInputChange('idcategoria', selectedOption ? selectedOption.value : '')
                         }
-                        placeholder="Selecciona una categoria"
+                        placeholder={t('panel.addRegister.pickCategoryPlaceholder')}
                         classNamePrefix="react-select"
                     />
                     {errorMessages.idcategoria && (
@@ -985,7 +992,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="sm:col-span-3">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Proveedor
+                        {t('panel.capture.provider')}
                     </label>
                     <Select
                         options={providerSelectOptions}
@@ -995,7 +1002,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                         onChange={(selectedOption) =>
                             handleProductInputChange('idproveedor', selectedOption ? selectedOption.value : '')
                         }
-                        placeholder="Selecciona un proveedor"
+                        placeholder={t('panel.newCapture.selectProvider')}
                         classNamePrefix="react-select"
                     />
                     {errorMessages.idproveedor && (
@@ -1005,11 +1012,11 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="sm:col-span-3">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Modelo inicial
+                        {t('panel.addRegister.modelFrom')}
                     </label>
                     <Select
                         options={yearOptions}
-                        value={getSelectValue(yearOptions, productForm.mod_ini)}
+                        value={getSelectValue(yearOptions, productForm.mod_ini, t)}
                         onChange={(selectedOption) =>
                             handleProductInputChange('mod_ini', selectedOption ? selectedOption.value : '')
                         }
@@ -1023,11 +1030,11 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="sm:col-span-3">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Modelo final
+                        {t('panel.addRegister.modelTo')}
                     </label>
                     <Select
                         options={yearOptions}
-                        value={getSelectValue(yearOptions, productForm.mod_fin)}
+                        value={getSelectValue(yearOptions, productForm.mod_fin, t)}
                         onChange={(selectedOption) =>
                             handleProductInputChange('mod_fin', selectedOption ? selectedOption.value : '')
                         }
@@ -1041,11 +1048,11 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 <div className="sm:col-span-3">
                     <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                        Marca de auto
+                        {t('panel.addRegister.carBrand')}
                     </label>
                     <Select
                         options={brandSelectOptions}
-                        value={getSelectValue(brandSelectOptions, productForm.idmarca)}
+                        value={getSelectValue(brandSelectOptions, productForm.idmarca, t)}
                         onChange={(selectedOption) =>
                             handleProductInputChange('idmarca', selectedOption ? selectedOption.value : '')
                         }
@@ -1064,13 +1071,13 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                     onClick={onCancelEdit}
                     className="px-4 py-2 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"
                 >
-                    Cancelar
+                    {t('panel.common.cancel')}
                 </button>
                 <button
                     type="submit"
                     className="px-4 py-2 rounded-full bg-indigo-600 text-white hover:bg-indigo-700"
                 >
-                    Guardar producto
+                    {t('panel.addRegister.saveProduct')}
                 </button>
             </div>
         </form>
@@ -1078,13 +1085,13 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
     };
 
     const renderDetailForm = () => {
-        const baseSucursalOptions = withDefaultOption(sucursalOptions);
-        const quantitySelectOptions = withDefaultOption(quantityOptions);
+        const baseSucursalOptions = withDefaultOption(sucursalOptions, t);
+        const quantitySelectOptions = withDefaultOption(quantityOptions, t);
         const utilitySelectOptions = withDefaultOption([
             { value: 1.25, label: '25%' },
             { value: 1.3, label: '30%' },
             { value: 1.35, label: '35%' },
-        ]);
+        ], t);
 
         const activeBranchIds = new Set(
             selectedActiveProduct?.detalles?.map(detail => String(detail.idsucursal)) || []
@@ -1100,7 +1107,8 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
         const webOption = { value: 1, label: 'WEB' };
         const displayedSucursalOptions = selectedActiveProduct
             ? withDefaultOption(
-                canAssignWebOnly ? [...availablePhysicalOptions, webOption] : availablePhysicalOptions
+                canAssignWebOnly ? [...availablePhysicalOptions, webOption] : availablePhysicalOptions,
+                t
             )
             : baseSucursalOptions;
         const noAvailableSucursal =
@@ -1129,26 +1137,26 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                 <div className="grid grid-cols-1 gap-x-2 gap-y-8 sm:grid-cols-6">
                     <div className="sm:col-span-3">
                         <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                            Producto seleccionado
+                            {t('panel.addRegister.selectedProduct')}
                         </label>
                         {selectedPendingProduct ? (
                             <div className="mt-2 p-3 rounded-xl bg-[rgb(var(--color-bg))] text-xs text-[rgb(var(--color-text))] shadow-inner space-y-2">
                                 <div>
-                                    <p><span className="font-semibold">Descripción:</span> {selectedPendingProduct.descripcion}</p>
-                                    <p><span className="font-semibold">Modelos:</span> {selectedPendingProduct.mod_ini} - {selectedPendingProduct.mod_fin}</p>
+                                    <p><span className="font-semibold">{t('panel.addRegister.descriptionField')}</span> {selectedPendingProduct.descripcion}</p>
+                                    <p><span className="font-semibold">{t('panel.addRegister.modelsField')}</span> {selectedPendingProduct.mod_ini} - {selectedPendingProduct.mod_fin}</p>
                                     <p>
-                                        <span className="font-semibold">Grupo:</span>{' '}
-                                        {selectedProductGroupLabel || '— (asignar antes de subir a web)'}
+                                        <span className="font-semibold">{t('panel.addRegister.groupField')}</span>{' '}
+                                        {selectedProductGroupLabel || t('panel.addRegister.assignBeforeWeb')}
                                     </p>
                                     {webBranchSelected && isMissingGroup && (
                                         <p className="text-[rgb(var(--color-error))] font-semibold">
-                                            Este producto no tiene grupo.
+                                            {t('panel.addRegister.noGroupShort')}
                                         </p>
                                     )}
                                 </div>
                             {selectedActiveProduct?.detalles?.length > 0 && (
                                 <div className="space-y-1">
-                                    <p className="font-semibold text-emerald-500">Asignaciones existentes</p>
+                                    <p className="font-semibold text-emerald-500">{t('panel.addRegister.existingAssignments')}</p>
                                     {selectedActiveProduct.detalles.map((detail, idx) => (
                                         <button
                                             type="button"
@@ -1157,13 +1165,13 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                             className="flex flex-col rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left hover:border-emerald-400 hover:shadow transition"
                                         >
                                             <span className="text-gray-500">
-                                                <span className="font-semibold">Sucursal:</span> {detail.sucursal || detail.idsucursal}
+                                                <span className="font-semibold">{t('panel.addRegister.branchField')}</span> {detail.sucursal || detail.idsucursal}
                                             </span>
                                             <span className="text-gray-500">
-                                                <span className="font-semibold">Localización:</span> {detail.localizacion || '—'}
+                                                <span className="font-semibold">{t('panel.addRegister.locationField')}</span> {detail.localizacion || '—'}
                                             </span>
                                             <span className="text-gray-500">
-                                                <span className="font-semibold">Existencia:</span> {detail.existencia ?? '—'}
+                                                <span className="font-semibold">{t('panel.addRegister.stockField')}</span> {detail.existencia ?? '—'}
                                             </span>
                                         </button>
                                     ))}
@@ -1172,7 +1180,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             </div>
                         ) : (
                             <div className="mt-2 p-3 rounded-xl bg-amber-50 text-amber-700 text-sm border border-amber-200">
-                                No has seleccionado ninguna refacción.
+                                {t('panel.addRegister.noPartSelected')}
                             </div>
                         )}
                         {errorMessages.selectedProduct && (
@@ -1182,17 +1190,17 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-3">
                         <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                            Sucursal por asignar
+                            {t('panel.addRegister.branchToAssign')}
                         </label>
                         {noAvailableSucursal ? (
                             <div className="mt-2 p-3 rounded-xl bg-amber-50 text-amber-700 text-sm border border-amber-200">
-                                Producto asignado en todas las sucursales. No se puede asignar nuevamente.
+                                {t('panel.addRegister.allBranchesAssigned')}
                             </div>
                         ) : (
                             <>
                                 <Select
                                     options={displayedSucursalOptions}
-                                    value={getSelectValue(displayedSucursalOptions, detailForm.idsucursal)}
+                                    value={getSelectValue(displayedSucursalOptions, detailForm.idsucursal, t)}
                                     onChange={(selectedOption) =>
                                         handleDetailInputChange('idsucursal', selectedOption ? selectedOption.value : '')
                                     }
@@ -1210,7 +1218,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                     {webBranchSelected && (
                         <div className="sm:col-span-3">
                             <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                                Grupo (para Web)
+                                {t('panel.addRegister.webGroup')}
                             </label>
                             <Select
                                 options={groupOptions}
@@ -1223,11 +1231,11 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                 }
                                 onChange={(selectedOption) => setDetailGroupId(selectedOption?.value || null)}
                                 classNamePrefix="react-select"
-                                placeholder="Selecciona un grupo"
+                                placeholder={t('panel.addRegister.pickGroupPlaceholder')}
                             />
                             {disableDetail && (
                                 <span className="text-red-600 text-sm">
-                                    Asigna un grupo para poder activar en web.
+                                    {t('panel.addRegister.assignGroupWeb')}
                                 </span>
                             )}
                         </div>
@@ -1235,7 +1243,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                            Localización
+                            {t('panel.tableDesc.locationTitle')}
                         </label>
                         <input
                             type="text"
@@ -1255,7 +1263,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                            Existencia
+                            {t('panel.tableDesc.stockTitle')}
                         </label>
                         {webBranchSelected ? (
                             <input
@@ -1267,7 +1275,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                         ) : (
                             <Select
                                 options={quantitySelectOptions}
-                                value={getSelectValue(quantitySelectOptions, detailForm.existencia)}
+                                value={getSelectValue(quantitySelectOptions, detailForm.existencia, t)}
                                 onChange={(selectedOption) =>
                                     handleDetailInputChange('existencia', selectedOption ? selectedOption.value : '')
                                 }
@@ -1283,11 +1291,11 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                            Utilidad
+                            {t('panel.addRegister.utility')}
                         </label>
                         <Select
                             options={utilitySelectOptions}
-                            value={getSelectValue(utilitySelectOptions, detailForm.utilidad)}
+                            value={getSelectValue(utilitySelectOptions, detailForm.utilidad, t)}
                             onChange={(selectedOption) =>
                                 handleDetailInputChange('utilidad', selectedOption ? selectedOption.value : '')
                             }
@@ -1302,7 +1310,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-gray-500">
-                            Costo
+                            {t('panel.capture.cost')}
                         </label>
                         <input
                             type="text"
@@ -1317,7 +1325,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-gray-500">
-                            A IVA
+                            {t('panel.addRegister.aiva')}
                         </label>
                         <input
                             type="text"
@@ -1332,7 +1340,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                     <div className="sm:col-span-2">
                         <label className="block text-sm font-medium text-[rgb(var(--color-text))]">
-                            Precio
+                            {t('panel.invoice.price')}
                         </label>
                         <input
                             type="text"
@@ -1354,7 +1362,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                     onClick={onCancelEdit}
                     className="px-4 py-2 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300"
                 >
-                    Cancelar
+                    {t('panel.common.cancel')}
                 </button>
                 <button
                     type="submit"
@@ -1365,7 +1373,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             : 'bg-indigo-600 hover:bg-indigo-700'
                     }`}
                 >
-                    Guardar detalle
+                    {t('panel.addRegister.saveDetail')}
                 </button>
             </div>
         </form>
@@ -1374,22 +1382,22 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
     const renderTicketConfigurator = () => {
         const previewItems = [
-            { cantidad: 2, refaccion: '0111', descripcion: 'Balata Ejemplo', aIva: 120, monto: 240 },
-            { cantidad: 1, refaccion: '0112', descripcion: 'Filtro Ejemplo', aIva: 80, monto: 80 },
+            { cantidad: 2, refaccion: '0111', descripcion: t('panel.addRegister.sampleItemOne'), aIva: 120, monto: 240 },
+            { cantidad: 1, refaccion: '0112', descripcion: t('panel.addRegister.sampleItemTwo'), aIva: 80, monto: 80 },
         ];
         const previewDate = new Date().toLocaleDateString('es-MX', {
             year: 'numeric',
             month: 'long',
             day: 'numeric',
         });
-        const previewNotes = 'NOTA DE PEDIDO VA AQUÍ: PAGADO POR ENTREGAR...';
+        const previewNotes = t('panel.addRegister.sampleNote');
         const selectedBranch = sucursalOptions.find(
             (option) => String(option.value) === String(ticketBranchId)
         );
 
         const handleTicketSave = async () => {
             if (!ticketBranchId) {
-                setTicketSaveError('Selecciona una sucursal para guardar.');
+                setTicketSaveError(t('panel.addRegister.pickBranchSave'));
                 return;
             }
 
@@ -1418,7 +1426,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || errorData.error || 'No se pudo actualizar la sucursal.');
+                    throw new Error(errorData.message || errorData.error || t('panel.addRegister.branchUpdateError'));
                 }
 
                 setSucursalOptions((prev) =>
@@ -1437,9 +1445,9 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                 );
 
                 setTicketPreviewKey((prev) => prev + 1);
-                setTicketSaveMessage('Datos actualizados correctamente.');
+                setTicketSaveMessage(t('panel.addRegister.branchUpdateOk'));
             } catch (error) {
-                setTicketSaveError(error.message || 'No se pudo actualizar la sucursal.');
+                setTicketSaveError(error.message || t('panel.addRegister.branchUpdateError'));
             } finally {
                 setTicketSaving(false);
             }
@@ -1451,10 +1459,10 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div>
                             <p className="text-2xl font-semibold text-[rgb(var(--color-text))]">
-                                Tickets y contactos
+                                {t('panel.addRegister.ticketsTitle')}
                             </p>
                             <p className="text-sm text-[rgb(var(--color-text))]/70 mt-1">
-                                Personaliza los datos del ticket por sucursal antes de imprimirlo.
+                                {t('panel.addRegister.ticketsSubtitle')}
                             </p>
                         </div>
                         <button
@@ -1462,7 +1470,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             onClick={() => setShowTicketPreview(false)}
                             className="inline-flex items-center justify-center rounded-full border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-4 py-2 text-sm font-semibold text-[rgb(var(--color-text))] shadow hover:bg-[rgb(var(--color-amber))]/20 transition"
                         >
-                            Volver a alta
+                            {t('panel.addRegister.backToForm')}
                         </button>
                     </div>
                 </div>
@@ -1470,19 +1478,19 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                 <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
                     <div className="order-1 rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))]/70 p-6 shadow-md lg:flex-[1.2]">
                         <p className="text-xs font-semibold uppercase tracking-widest text-[rgb(var(--color-text))]/70">
-                            Datos del ticket
+                            {t('panel.addRegister.ticketData')}
                         </p>
                         <div className="mt-4 space-y-3 text-sm text-[rgb(var(--color-text))]">
                             <div>
                                 <label className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--color-text))]/70">
-                                    Sucursal
+                                    {t('panel.common.branch')}
                                 </label>
                                 <select
                                     value={ticketBranchId}
                                     onChange={(e) => setTicketBranchId(e.target.value)}
                                     className="mt-1 w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-sm"
                                 >
-                                    <option value="">Selecciona sucursal</option>
+                                    <option value="">{t('panel.common.pickBranch')}</option>
                                     {sucursalOptions.map((option) => (
                                         <option key={option.value} value={option.value}>
                                         {option.label}
@@ -1498,7 +1506,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                                 <div>
                                     <label className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--color-text))]/70">
-                                        Teléfono 1
+                                        {t('panel.addRegister.phone1')}
                                     </label>
                                     <input
                                         type="text"
@@ -1510,7 +1518,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--color-text))]/70">
-                                        Teléfono 2
+                                        {t('panel.addRegister.phone2')}
                                     </label>
                                     <input
                                         type="text"
@@ -1522,7 +1530,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--color-text))]/70">
-                                        WhatsApp 1
+                                        {t('panel.addRegister.whatsapp1')}
                                     </label>
                                     <input
                                         type="text"
@@ -1534,7 +1542,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                 </div>
                                 <div>
                                     <label className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--color-text))]/70">
-                                        WhatsApp 2
+                                        {t('panel.addRegister.whatsapp2')}
                                     </label>
                                     <input
                                         type="text"
@@ -1547,13 +1555,13 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             </div>
                             <div>
                                 <label className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--color-text))]/70">
-                                    Dirección
+                                    {t('panel.providers.address')}
                                 </label>
                                 <textarea
                                     rows={3}
                                     value={ticketAddress}
                                     onChange={(e) => setTicketAddress(e.target.value)}
-                                    placeholder="Calle, colonia, municipio, CP"
+                                    placeholder={t('panel.addRegister.addressPlaceholder')}
                                     className="mt-1 w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-3 py-2 text-sm text-[rgb(var(--color-text))] shadow-sm"
                                 />
                             </div>
@@ -1564,7 +1572,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                     disabled={ticketSaving || !ticketBranchId}
                                     className="inline-flex items-center justify-center rounded-full bg-[rgb(var(--color-galaxy))] px-4 py-2 text-sm font-semibold text-white shadow hover:bg-[rgb(var(--color-galaxy))]/80 transition disabled:cursor-not-allowed disabled:opacity-60"
                                 >
-                                    {ticketSaving ? 'Guardando...' : 'Guardar cambios'}
+                                    {ticketSaving ? t('panel.providers.saving') : t('panel.providers.save')}
                                 </button>
                                 {ticketSaveMessage && (
                                     <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full">
@@ -1588,8 +1596,8 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                 discount={0}
                                 total={320}
                                 currentDate={previewDate}
-                                employee="Isaac Odriozola"
-                                folio="T-01234567"
+                                employee={t('panel.addRegister.previewEmployee')}
+                                folio={t('panel.addRegister.previewFolio')}
                                 notes={previewNotes}
                                 useDefaults={false}
                                 branchId={ticketBranchId}
@@ -1611,13 +1619,13 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="rounded-3xl bg-[rgb(var(--color-card))] shadow-lg p-6 border border-[rgb(var(--color-border))]">
                     <p className="text-sm text-[rgb(var(--color-text))] uppercase tracking-widest">
-                        Alta de productos
+                        {t('panel.addRegister.title')}
                     </p>
                     <h2 className="text-2xl font-semibold text-[rgb(var(--color-text))] mt-2">
-                        Registra y ubica tus refacciones
+                        {t('panel.addRegister.subtitle')}
                     </h2>
                     <p className="text-sm text-[rgb(var(--color-text))]/70 mt-2">
-                        Primero da de alta el producto y luego asina su detalle a una sucursal para activarlo.
+                        {t('panel.addRegister.hint')}
                     </p>
                     <div className="flex flex-wrap gap-3 mt-4">
                         <button
@@ -1630,7 +1638,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             onClick={() => setActiveStep('product')}
                         >
                             <MdAddCircle className="text-lg" />
-                            Paso 1: Producto
+                            {t('panel.addRegister.step1')}
                         </button>
                         <button
                             type="button"
@@ -1642,7 +1650,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                             onClick={() => handleStepChange('detail')}
                         >
                             <MdAssignmentAdd className="text-lg" />
-                            Paso 2: Detalle
+                            {t('panel.addRegister.step2')}
                         </button>
                     </div>
                 </div>
@@ -1650,31 +1658,31 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                 <div className="relative rounded-3xl overflow-hidden shadow-lg bg-gradient-to-br from-[rgb(var(--color-galaxy))] via-[rgb(var(--color-bg))] to-[rgb(var(--color-card))] text-[rgb(var(--color-text))] p-6">
                     <div className="relative space-y-4">
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                            <p className="text-lg font-semibold">Estado de productos</p>
+                            <p className="text-lg font-semibold">{t('panel.addRegister.statusTitle')}</p>
                             <button
                                 type="button"
                                 onClick={() => setShowTicketPreview(true)}
                                 className="inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow hover:bg-[rgb(var(--color-amber))]/20 transition"
                             >
                                 <IoTicket className="text-[rgb(var(--color-amber))]" />
-                                Tickets y contactos
+                                {t('panel.addRegister.ticketsTitle')}
                             </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="border rounded-2xl p-4 bg-amber-50 text-amber-700 shadow-inner">
-                        <p className="text-xs uppercase tracking-wide">Productos existentes</p>
+                        <p className="text-xs uppercase tracking-wide">{t('panel.addRegister.existing')}</p>
                         <p className="text-3xl font-bold">{pendingProducts.length}</p>
-                                <p className="text-xs">Pendientes de asignación</p>
+                                <p className="text-xs">{t('panel.addRegister.pendingAssign')}</p>
                             </div>
                             <div className="border rounded-2xl p-4 bg-emerald-50 text-emerald-700 shadow-inner">
-                                <p className="text-xs uppercase tracking-wide">Productos activos</p>
+                                <p className="text-xs uppercase tracking-wide">{t('panel.addRegister.activeProducts')}</p>
                                 <p className="text-3xl font-bold">{activeProducts.length}</p>
-                                <p className="text-xs">Con detalle en sucursales</p>
+                                <p className="text-xs">{t('panel.addRegister.withDetail')}</p>
                             </div>
                         </div>
                         <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                             <div>
-                                <p className="font-semibold text-amber-600 mb-1">Existentes</p>
+                                <p className="font-semibold text-amber-600 mb-1">{t('panel.addRegister.existingShort')}</p>
                                 <div className="space-y-1 max-h-28 overflow-y-auto pr-2">
                                     {pendingProducts.slice(0, 6).map((product) => (
                                         <div key={`pending-${product.num_parte}`} className="flex items-center gap-2 bg-[rgb(var(--color-card))/80] rounded-lg px-2 py-1 border border-amber-200">
@@ -1682,11 +1690,11 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                             <span className="truncate">{product.num_parte} - {product.descripcion}</span>
                                         </div>
                                     ))}
-                                    {pendingProducts.length === 0 && <p className="text-[rgb(var(--color-text))]/70">Sin productos pendientes.</p>}
+                                    {pendingProducts.length === 0 && <p className="text-[rgb(var(--color-text))]/70">{t('panel.addRegister.noPending')}</p>}
                                 </div>
                             </div>
                             <div>
-                                <p className="font-semibold text-emerald-600 mb-1">Activos</p>
+                                <p className="font-semibold text-emerald-600 mb-1">{t('panel.addRegister.activeShort')}</p>
                                 <div className="space-y-1 max-h-28 overflow-y-auto pr-2">
                                     {activeProducts.slice(0, 6).map((product) => (
                                         <div key={`active-${product.num_parte}`} className="flex items-center gap-2 bg-[rgb(var(--color-card))/80] rounded-lg px-2 py-1 border border-emerald-200">
@@ -1694,7 +1702,7 @@ export default function AddRegister({ onCancelEdit, onRefreshProducts }) {
                                             <span className="truncate">{product.num_parte} - {product.descripcion}</span>
                                         </div>
                                     ))}
-                                    {activeProducts.length === 0 && <p className="text-[rgb(var(--color-text))]/70">Sin productos activos.</p>}
+                                    {activeProducts.length === 0 && <p className="text-[rgb(var(--color-text))]/70">{t('panel.addRegister.noActive')}</p>}
                                 </div>
                             </div>
                         </div>

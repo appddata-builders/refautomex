@@ -4,14 +4,14 @@ import { TbWorld } from "react-icons/tb";
 import { IoMdCloseCircle } from "react-icons/io";
 import { useState, useEffect } from 'react';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function LangModeButton() {
     const [isOpen, setIsOpen] = useState(false);
     const router = useRouter();
     const pathname = usePathname();
     const searchParams = useSearchParams();
-    const { i18n } = useTranslation();
+    const { i18n, t } = useTranslation();
 
     const changeLanguage = (lang) => {
 
@@ -50,7 +50,7 @@ export default function LangModeButton() {
                             <img
                                 loading="lazy"
                                 src="https://flagsapi.com/MX/shiny/64.png"
-                                alt="Mexico flag"
+                                alt={t('alt.flagMx')}
                                 className='h-7 md:h-8 2xl:h-12'
                             />
                         </button>
@@ -62,7 +62,7 @@ export default function LangModeButton() {
                             <img
                                 loading="lazy"
                                 src="https://flagsapi.com/US/shiny/64.png"
-                                alt="US flag"
+                                alt={t('alt.flagUs')}
                                 className='h-7 md:h-8 2xl:h-12'
                             />
                         </button>

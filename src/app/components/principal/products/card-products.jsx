@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { motion, Variants } from 'framer-motion';
 import { CgMoreO } from 'react-icons/cg';
 import { MdOutlineViewInAr, MdDelete } from 'react-icons/md';
@@ -11,7 +11,10 @@ import Spinner from '@/app/components/principal/spinner';
 import ProductOverview from '@/app/components/principal/products/product-overview';
 import { useCart } from '@/app/lib/shopping-context';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import '@/app/translations/i18next-translation';
+import {
+  parseProductRoutes,
+  resolveProductImage,
+} from '@/app/lib/product-images';
 
 const GROUP_PAGE_SIZE = 16;
 
@@ -50,9 +53,11 @@ function normalizeGrupo(grupo) {
   return (grupo || '').toLowerCase().trim();
 }
 
-function displayGrupo(grupo) {
+// `emptyLabel` llega desde el componente porque este helper vive fuera del
+// arbol de React y no puede leer los textos con el hook.
+function displayGrupo(grupo, emptyLabel = '') {
   const g = normalizeGrupo(grupo);
-  if (!g) return 'Sin grupo';
+  if (!g) return emptyLabel;
   return g.charAt(0).toUpperCase() + g.slice(1);
 }
 
@@ -76,7 +81,6 @@ function useCategories(products) {
 }
 
 export default function CardProducts({ showSearchBar = true }) {
-  const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
   const { t } = useTranslation();
 
   const [products, setProducts] = useState([]);
@@ -118,16 +122,11 @@ export default function CardProducts({ showSearchBar = true }) {
         const payload = await response.json();
         if (!isMounted) return;
         const raw = payload?.[0] ?? [];
+        // `rutas` llega como array desde Postgres (json_agg) y como string
+        // JSON desde el MySQL original: parseProductRoutes acepta las dos.
         const parsed = raw.map(p => ({
           ...p,
-          rutasParsed: (() => {
-            try {
-              const arr = JSON.parse(p.rutas || '[]');
-              return Array.isArray(arr) ? arr : [];
-            } catch {
-              return [];
-            }
-          })(),
+          rutasParsed: parseProductRoutes(p.rutas),
         }));
         setProducts(parsed);
       } catch (err) {
@@ -164,7 +163,7 @@ export default function CardProducts({ showSearchBar = true }) {
       if (!map.has(key)) {
         map.set(key, {
           key,
-          label: displayGrupo(product.grupo),
+          label: displayGrupo(product.grupo, t('products.noGroup')),
           items: [],
         });
       }
@@ -286,7 +285,7 @@ export default function CardProducts({ showSearchBar = true }) {
   if (error) {
     return (
       <div className="px-6 py-20 text-center text-[rgb(var(--color-text))] space-y-4">
-        <p className="text-lg font-semibold">{t('common.error', { defaultValue: 'An error occurred while loading products.' })}</p>
+        <p className="text-lg font-semibold">{t('common.errorProducts')}</p>
         {error?.message && (
           <p className="text-sm text-[rgb(var(--color-text))]/70 break-words">
             {error.message}
@@ -297,7 +296,7 @@ export default function CardProducts({ showSearchBar = true }) {
           onClick={() => setRefreshIndex((prev) => prev + 1)}
           className="inline-flex items-center rounded-full bg-[rgb(var(--color-text))] px-6 py-2 text-sm font-semibold text-[rgb(var(--color-card))] shadow shadow-[rgb(var(--color-med))]/70 hover:opacity-90 transition"
         >
-          {t('common.retry', { defaultValue: 'Reintentar' })}
+          {t('common.retry')}
         </button>
       </div>
     );
@@ -325,10 +324,10 @@ export default function CardProducts({ showSearchBar = true }) {
 
       <div className="mx-auto max-w-7xl px-6 lg:px-8 text-center">
         <h2 className="text-4xl font-bold tracking-tight sm:text-5xl gradient-text-title py-1 pt-3">
-          {t('products.title', { defaultValue: 'Productos' })}
+          {t('products.title')}
         </h2>
         <p className="mt-4 text-lg text-[rgb(var(--color-text))]/70 max-w-2xl mx-auto">
-          {t('products.subtitle', { defaultValue: 'Explora por categoría o visualiza todo el catálogo.' })}
+          {t('products.subtitle')}
         </p>
 
         <div className="mt-4 flex flex-col sm:flex-row justify-center items-center gap-4">
@@ -337,9 +336,9 @@ export default function CardProducts({ showSearchBar = true }) {
             onChange={(e) => setSelectedSection(e.target.value)}
             className="rounded-full bg-[rgb(var(--color-bg))] border border-[rgb(var(--color-text))]/20 text-[rgb(var(--color-text))] px-5 py-3 focus:ring-2 focus:ring-amber-400 outline-none"
           >
-            <option value="Todos">{t('common.all', { defaultValue: 'Todos' })}</option>
+            <option value="Todos">{t('common.all')}</option>
             {categories.map((g) => (
-              <option key={g} value={g}>{displayGrupo(g)}</option>
+              <option key={g} value={g}>{displayGrupo(g, t('products.noGroup'))}</option>
             ))}
           </select>
 
@@ -347,7 +346,7 @@ export default function CardProducts({ showSearchBar = true }) {
             <input
               type="text"
               name="products-search"
-              placeholder={t('products.filter', { defaultValue: 'Buscar producto…' })}
+              placeholder={t('products.filter')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full max-w-md rounded-full px-5 py-3 bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))] border border-[rgb(var(--color-text))]/20 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-galaxy))] placeholder:text-[rgb(var(--color-text))]/50"
@@ -369,7 +368,7 @@ export default function CardProducts({ showSearchBar = true }) {
         >
           {groupedItems.length === 0 && (
             <p className="col-span-full text-[rgb(var(--color-text))]/70 text-lg">
-              {t('products.empty', { defaultValue: 'No se encontraron productos.' })}
+              {t('products.empty')}
             </p>
           )}
 
@@ -382,11 +381,11 @@ export default function CardProducts({ showSearchBar = true }) {
               <Fragment key={section.key}>
                 <div className="col-span-full flex flex-col sm:flex-row sm:items-center sm:justify-between bg-[rgb(var(--color-bg))]/60 border border-dashed border-[rgb(var(--color-text))]/20 rounded-2xl px-5 py-3 mb-4">
                   <div className="text-left">
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(var(--color-text))]/50">Categoría</p>
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(var(--color-text))]/50">{t('products.category')}</p>
                     <p className="text-lg font-semibold text-[rgb(var(--color-text))]">{section.label}</p>
                   </div>
                   <span className="text-xs text-[rgb(var(--color-text))]/60 mt-2 sm:mt-0">
-                    {section.items.length} {section.items.length === 1 ? 'producto' : 'productos'}
+                    {section.items.length} {section.items.length === 1 ? t('products.countOne') : t('products.countMany')}
                   </span>
                 </div>
                 {groupPageItems.map((product) => {
@@ -396,12 +395,10 @@ export default function CardProducts({ showSearchBar = true }) {
                   const inputValue = productInCart
                     ? (productInCart.quantity || MIN_QTY)
                     : (storedValue === undefined ? MIN_QTY : storedValue);
-                  const img = product.rutasParsed?.[0]
-                    ? `${multimediaSrc}${product.rutasParsed[0]}`
-                    : `${multimediaSrc}productos/no-img.png`;
+                  const img = resolveProductImage(product.rutasParsed?.[0]);
                   const inCart = Boolean(productInCart);
                   const cardIndex = animationCounter++;
-                  const groupLabel = displayGrupo(product.grupo);
+                  const groupLabel = displayGrupo(product.grupo, t('products.noGroup'));
 
                   return (
                     <CardComponent
@@ -425,7 +422,7 @@ export default function CardProducts({ showSearchBar = true }) {
                           type="button"
                           onClick={() => handleOpenOverview(product)}
                           className="absolute top-3 right-3 z-10 flex items-center justify-center h-9 w-9 rounded-full bg-[rgb(var(--color-bg))]/80 shadow text-[rgb(var(--color-text))] hover:scale-105 transition-all"
-                          aria-label={t('products.details', { defaultValue: 'Ver detalles' })}
+                          aria-label={t('products.details')}
                         >
                           <CgMoreO />
                         </button>
@@ -452,7 +449,7 @@ export default function CardProducts({ showSearchBar = true }) {
                               onClick={() => handleDecrement(productId)}
                               className={`${inCart ? 'cursor-not-allowed opacity-0 pointer-events-none' : 'cursor-pointer'} flex items-center justify-center h-6 w-6 rounded-full shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-med))] hover:bg-[rgb(var(--color-bg))]/60 transition`}
                               disabled={inCart}
-                              aria-label={t('products.decrease', { defaultValue: 'Disminuir' })}
+                              aria-label={t('products.decrease')}
                             >
                               <FaCircleMinus />
                             </button>
@@ -472,7 +469,7 @@ export default function CardProducts({ showSearchBar = true }) {
                               onClick={() => handleIncrement(productId)}
                               className={`${inCart ? 'cursor-not-allowed opacity-0 pointer-events-none' : 'cursor-pointer'} flex items-center justify-center h-6 w-6 rounded-full shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-med))] hover:bg-[rgb(var(--color-bg))]/60 transition`}
                               disabled={inCart}
-                              aria-label={t('products.increase', { defaultValue: 'Incrementar' })}
+                              aria-label={t('products.increase')}
                             >
                               <FaCirclePlus />
                             </button>
@@ -491,7 +488,7 @@ export default function CardProducts({ showSearchBar = true }) {
                                 className="flex items-center gap-2 rounded-full bg-red-500/90 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition-all"
                               >
                                 <MdDelete className="text-base" />
-                                {t('products.remove', { defaultValue: 'Quitar' })}
+                                {t('products.remove')}
                               </ActionButton>
                             ) : (
                               <ActionButton
@@ -504,7 +501,7 @@ export default function CardProducts({ showSearchBar = true }) {
                                 onClick={() => handleAddProduct(product)}
                                 className="rounded-full cursor-pointer bg-[rgb(var(--color-text))] px-4 py-2 text-sm font-semibold text-[rgb(var(--color-card))] transition-all"
                               >
-                                {t('products.add', { defaultValue: 'Agregar' })}
+                                {t('products.add')}
                               </ActionButton>
                             )}
                           </div>
@@ -523,11 +520,10 @@ export default function CardProducts({ showSearchBar = true }) {
                       disabled={currentGroupPage === 1}
                       className="rounded-full px-4 py-2 text-xs font-semibold shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-text))] disabled:opacity-40"
                     >
-                      {t('common.prev', { defaultValue: 'Anterior' })}
+                      {t('common.prev')}
                     </button>
                     <span className="text-[rgb(var(--color-text))]/70 text-xs">
                       {t('common.pageOf', {
-                        defaultValue: '{{category}}: Página {{page}} de {{total}}',
                         category: section.label,
                         page: currentGroupPage,
                         total: totalGroupPages,
@@ -541,7 +537,7 @@ export default function CardProducts({ showSearchBar = true }) {
                       disabled={currentGroupPage === totalGroupPages}
                       className="rounded-full px-4 py-2 text-xs font-semibold shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-text))] disabled:opacity-40"
                     >
-                      {t('common.next', { defaultValue: 'Siguiente' })}
+                      {t('common.next')}
                     </button>
                   </div>
                 )}
@@ -571,7 +567,7 @@ export default function CardProducts({ showSearchBar = true }) {
                 <div>
                   <p className="flex items-center gap-2 text-xs uppercase tracking-[0.35em] text-[rgb(var(--color-text))]/50">
                     <MdOutlineViewInAr className="h-4 w-4" />
-                    Detalle del producto
+                    {t('products.detailTitle')}
                   </p>
                   <h3 className="mt-1 text-lg font-semibold line-clamp-2">
                     {prodOverview.descripcion}
@@ -580,9 +576,9 @@ export default function CardProducts({ showSearchBar = true }) {
                 <button
                   onClick={handleCloseModal}
                   className="rounded-full border border-[rgb(var(--color-text))]/30 px-4 py-1 text-sm font-semibold text-[rgb(var(--color-text))] transition hover:bg-[rgb(var(--color-card))]"
-                  aria-label={t('common.close', { defaultValue: 'Cerrar' })}
+                  aria-label={t('common.close')}
                 >
-                  {t('common.close', { defaultValue: 'Cerrar' })}
+                  {t('common.close')}
                 </button>
               </div>
               <div className="max-h-[80vh] overflow-y-auto px-4 py-6 sm:px-8">

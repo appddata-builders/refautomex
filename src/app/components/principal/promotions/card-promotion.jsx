@@ -38,6 +38,7 @@ export default function CardPromotion({elements}) {
               <Atropos className="aspect-w-1 aspect-h-1 min-h-[160px] w-full" activeOffset={10} shadowScale={0.8}>
                 <img
                   src={element.url}
+                  alt={element.title}
                   className="h-full w-full object-cover object-center rounded-xl"
                 />
               </Atropos>

@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function FindFilter({ isOpen, onClose, onFilter }) {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState('provider'); // Controla la pestaña activa
     const [providerName, setProviderName] = useState('');
     const [refaccion, setRefaccion] = useState('');
@@ -22,33 +24,33 @@ export default function FindFilter({ isOpen, onClose, onFilter }) {
     return (
         <div className="fixed inset-0 bg-black opacity-50 flex justify-center items-center z-50">
             <div className="bg-[rgb(var(--color-card-white))] rounded-lg p-6 shadow-lg w-96 text-[rgb(var(--color-text))]">
-                <h2 className="text-lg font-semibold">Filtrar Proveedores</h2>
+                <h2 className="text-lg font-semibold">{t('panel.findFilter.title')}</h2>
                 {/* Tabs */}
                 <div className="flex justify-center mt-2 mb-4">
                     <button
                         className={`px-4 py-2 rounded-l-lg ${activeTab === 'provider' ? 'bg-amber-500 text-white' : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]'}`}
                         onClick={() => setActiveTab('provider')}
                     >
-                        Proveedor
+                        {t('panel.capture.provider')}
                     </button>
                     <button
                         className={`px-4 py-2 ${activeTab === 'refaccion' ? 'bg-amber-500 text-white' : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]'}`}
                         onClick={() => setActiveTab('refaccion')}
                     >
-                        Refacción
+                        {t('panel.capture.part')}
                     </button>
                     <button
                         className={`px-4 py-2 rounded-r-lg ${activeTab === 'date' ? 'bg-amber-500 text-white' : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]'}`}
                         onClick={() => setActiveTab('date')}
                     >
-                        Fecha
+                        {t('panel.common.date')}
                     </button>
                 </div>
 
                 {/* Tab Content */}
                 {activeTab === 'provider' && (
                     <div>
-                        <label className="block text-sm">Proveedor:</label>
+                        <label className="block text-sm">{t('panel.capture.provider')}:</label>
                         <input
                             type="text"
                             className="w-full p-2 border rounded bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
@@ -59,7 +61,7 @@ export default function FindFilter({ isOpen, onClose, onFilter }) {
                 )}
                 {activeTab === 'refaccion' && (
                     <div>
-                        <label className="block text-sm">Refacción:</label>
+                        <label className="block text-sm">{t('panel.capture.part')}:</label>
                         <input
                             type="text"
                             className="w-full p-2 border rounded bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
@@ -70,7 +72,7 @@ export default function FindFilter({ isOpen, onClose, onFilter }) {
                 )}
                 {activeTab === 'date' && (
                     <div>
-                        <label className="block text-sm">Fechas de Captura:</label>
+                        <label className="block text-sm">{t('panel.findFilter.dates')}</label>
                         <div className="flex gap-2">
                             <input
                                 type="date"
@@ -88,13 +90,13 @@ export default function FindFilter({ isOpen, onClose, onFilter }) {
                         className="px-4 py-2 bg-[rgb(var(--color-card))] rounded text-[rgb(var(--color-text))]"
                         onClick={onClose}
                     >
-                        Cancelar
+                        {t('panel.common.cancel')}
                     </button>
                     <button
                         className="px-4 py-2 bg-blue-500 text-white rounded"
                         onClick={handleApplyFilter}
                     >
-                        Filtrar
+                        {t('panel.common.filter')}
                     </button>
                 </div>
             </div>

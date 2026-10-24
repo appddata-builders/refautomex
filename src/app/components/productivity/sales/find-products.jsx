@@ -1,12 +1,13 @@
 'use client';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import { useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { useContext, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { AuthContext } from '@/app/lib/auth-tracker';
 import Spinner from '@/app/components/principal/spinner';
 import { FaDeleteLeft, FaStar } from "react-icons/fa6";
 import { LuListPlus } from "react-icons/lu";
 import { TiInfo } from "react-icons/ti";
 import { IoClose } from "react-icons/io5";
-import { getStorageValue } from '@/app/lib/storage-values';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const parseProductRoutes = (raw) => {
     if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -182,6 +183,15 @@ const PRODUCT_STATUS_VARIANTS = {
     },
 };
 
+// Los modos de busqueda son valores de logica; la etiqueta visible sale de la
+// base con esta tabla.
+const SEARCH_TYPE_KEYS = {
+    Descripcion: 'panel.findProducts.byDescription',
+    Parte: 'panel.findProducts.byPart',
+    Localizacion: 'panel.findProducts.byLocation',
+    Existentes: 'panel.findProducts.byStock',
+};
+
 const FindProducts = forwardRef(({
     onAddProduct,
     onRemoveProduct,
@@ -198,10 +208,23 @@ const FindProducts = forwardRef(({
     hideSearchModeToggle = false,
     allowedSearchTypes,
     hideSearchInput = false,
+    branch,
+    // Para modulos que solo muestran parte del catalogo (Asignacion: lo que
+    // esta por ubicar). Se aplica antes de buscar, asi que tambien cuenta en
+    // los resultados.
+    productFilter,
+    // En modo selector (onProductPick), boton visible en cada tarjeta con la
+    // accion del modulo; sin el, la tarjeta completa sigue siendo el boton.
+    pickActionLabel,
+    emptyMessage,
+    // Para modulos que saben mas que la copia de getAllProducts (Asignacion:
+    // la ubicacion actual despues de mover). Recibe y devuelve un producto.
+    decorateProduct,
 }, ref) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [products, setProducts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const [images, setImages] = useState([]);
     const [error, setError] = useState(null);
@@ -211,18 +234,13 @@ const FindProducts = forwardRef(({
     const [filteredProducts, setFilteredProducts] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
     const [stockAlerts, setStockAlerts] = useState({});
-    const deleteTooltip = createTooltip(FaDeleteLeft, 'Eliminar', 'delete', visibleTooltip, setVisibleTooltip);
+    const deleteTooltip = createTooltip(FaDeleteLeft, t('panel.common.delete'), 'delete', visibleTooltip, setVisibleTooltip);
     const isPickerMode = typeof onProductPick === 'function';
 
-    const cognitoUserSession = getStorageValue('CognitoUserSession');
-    const username = cognitoUserSession?.idToken?.payload?.["cognito:username"];
-    const userData = username ? getStorageValue(`user_${username}`) : null;
-    const resolvedBranchId = userData?.idsucursal ?? 2;
+    const { userData } = useContext(AuthContext);
+    const resolvedBranchId = branch?.id ?? userData?.idsucursal ?? 2;
     const userBranchId = resolvedBranchId ? String(resolvedBranchId) : null;
-    useEffect(() => {
-        console.log('Sucursal activa en FindProducts:', resolvedBranchId);
-    }, [resolvedBranchId]);
-    const userBranchLabel = userData?.sucursal || '';
+    const userBranchLabel = branch?.label ?? userData?.sucursal ?? '';
 
     const handleSearchChange = (event) => {
         setSearchTerm(event.target.value);
@@ -255,12 +273,12 @@ const FindProducts = forwardRef(({
 
     const buildBadgeLabel = (product) => {
         if (product.__origin === 'web') {
-            return 'Web';
+            return t('panel.findProducts.badgeWeb');
         }
         if (product.__origin === 'pending') {
-            return product.sucursal || 'Por asignar';
+            return product.sucursal || t('panel.findProducts.badgeUnassigned');
         }
-        return product.sucursal || 'Sucursal';
+        return product.sucursal || t('panel.common.branch');
     };
 
     const mergeProducts = (records = []) => {
@@ -337,7 +355,8 @@ const FindProducts = forwardRef(({
         }
 
         const payload = await response.json();
-        const rawProducts = Array.isArray(payload?.[0]) ? payload[0] : [];
+        if (!Array.isArray(payload?.[0])) throw new Error('Invalid products response');
+        const rawProducts = payload[0];
         return rawProducts.map((product) => createProductRecord(product, branchId === 1 ? 'web' : 'active'));
     };
 
@@ -355,7 +374,7 @@ const FindProducts = forwardRef(({
         const formattedExisting = (data?.[0] || []).map(product => createProductRecord({
             ...product,
             idsucursal: product.idsucursal ?? null,
-            sucursal: product.sucursal || 'Pendiente',
+            sucursal: product.sucursal || t('panel.common.pending'),
             existencia: product.existencia ?? 0,
             precio: product.precio ?? 0,
             costo: product.costo ?? 0,
@@ -415,9 +434,11 @@ const FindProducts = forwardRef(({
     }, [userBranchId, showAllBranches, includePendingProducts, includeWebBranch]);
 
     useEffect(() => {
-        const result = filterProductsByCategory(products, searchTerm, searchType);
+        let source = productFilter ? products.filter(productFilter) : products;
+        if (decorateProduct) source = source.map(decorateProduct);
+        const result = filterProductsByCategory(source, searchTerm, searchType);
         setFilteredProducts(result.dataProducts);
-    }, [searchTerm, products, searchType]);
+    }, [searchTerm, products, searchType, productFilter, decorateProduct]);
 
     useEffect(() => {
         setCurrentPage(1);
@@ -530,10 +551,11 @@ const FindProducts = forwardRef(({
 
     return (
         <div className="relative w-full max-w-[480px] lg:max-w-[520px] mx-auto overflow-x-hidden">
+            {branch && <p className="px-3 pt-3 text-sm text-center">{t('panel.common.branch')}: {branch.label}</p>}
             {hideSearchInput ? (
                 <div className="flex justify-center items-center py-3">
                     <div className="font-bold uppercase tracking-wide bg-[rgb(var(--color-card))] py-1 px-2 rounded-md shadow shadow-[rgb(var(--color-galaxy))] inline-flex items-center gap-2 text-xs">
-                        <span className="opacity-70">RESULTADOS:</span>
+                        <span className="opacity-70">{t('panel.findProducts.results')}</span>
                         <span className='text-[rgb(var(--color-refautomex))]'>{filteredProducts.length}</span>
                     </div>
                 </div>
@@ -542,7 +564,7 @@ const FindProducts = forwardRef(({
                     <div className='flex justify-center px-5 py-2 gap-x-4'>
                         <div className="flex justify-between items-center px-3 text-xs text-[rgb(var(--color-text))]">
                             <div className="font-bold uppercase tracking-wide bg-[rgb(var(--color-card))] py-1 px-2 rounded-md shadow shadow-[rgb(var(--color-galaxy))] inline-flex items-center gap-2">
-                                <span className="opacity-50">RESULTADOS:</span>
+                                <span className="opacity-50">{t('panel.findProducts.results')}</span>
                                 <span className='text-[rgb(var(--color-text))]'>{filteredProducts.length}</span>
                             </div>
                         </div>
@@ -553,8 +575,8 @@ const FindProducts = forwardRef(({
                                     onClick={handleTypeClick}
                                     className="inline-flex items-center gap-2 px-4 py-1 rounded-md w-[240px] bg-[rgb(var(--color-card))] cursor-pointer text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] text-xs font-semibold tracking-wide uppercase transition hover:scale-105 hover:shadow-md"
                                 >
-                                    <span className="opacity-50">POR:</span>
-                                    <span className='text-[rgb(var(--color-text))]'>{searchType.toUpperCase()}</span>
+                                    <span className="opacity-50">{t('panel.findProducts.by')}</span>
+                                    <span className='text-[rgb(var(--color-text))]'>{t(SEARCH_TYPE_KEYS[searchType] ?? 'panel.findProducts.byDescription')}</span>
                                 </button>
                             </div>
                         )}
@@ -563,7 +585,7 @@ const FindProducts = forwardRef(({
                         <input
                             type="text"
                             name="client-search"
-                            placeholder='Buscar productos'
+                            placeholder={t('panel.findProducts.searchPlaceholder')}
                             value={searchTerm}
                             onChange={handleSearchChange}
                             className="uppercase w-[300px] block border-0 rounded-full py-1.5 p-3 -mt-1 text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] placeholder:text-[rgb(var(--color-text))] bg-[rgb(var(--color-bg))] sm:text-sm sm:leading-6"
@@ -582,14 +604,14 @@ const FindProducts = forwardRef(({
                     <div className='flex flex-row items-center justify-center mt-1 mb-2'>
                         {searchTerm && (
                             <div className="italic text-[rgb(var(--color-text))] font-bold ml-5 text-sm mt-1">
-                                Buscando: {searchTerm.toUpperCase()}
+                                {t('panel.findProducts.searching')} {searchTerm.toUpperCase()}
                             </div>
                         )}
                         {isWarehouse && searchTerm.trim() && !isPickerMode && (
                             <button
                                 onClick={handleAddAllClick}
                                 className="ml-2 h-5 w-5 p-1 cursor-pointer rounded-full bg-amber-700 text-white flex items-center justify-center shadow-lg mt-0.5"
-                                title="Agregar todos los resultados"
+                                title={t('panel.findProducts.addAll')}
                             >
                                 <LuListPlus className="size-4" />
                             </button>
@@ -600,12 +622,19 @@ const FindProducts = forwardRef(({
             <div className='flex justify-center overflow-y-auto h-[570px] w-full max-w-[520px] mx-auto'>
             {isLoading ? (
                 <Spinner />
+            ) : error ? (
+                <div role="alert" className="p-6 text-center">
+                    <p>{t('common.errorProducts')}</p>
+                    <button type="button" onClick={fetchProducts} className="mt-3 underline">{t('common.retry')}</button>
+                </div>
+            ) : paginatedProducts.length === 0 ? (
+                <p role="status" className="p-6 text-center">{emptyMessage || t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') })}</p>
             ) : (
                 showCards && (
                     <div className="relative min-h-[30rem] w-full grow [container-type:inline-size] max-lg:mx-auto max-lg:max-w-sm">
                         <div className="absolute left-1/2 top-6 z-10 flex items-center space-x-1 bg-[rgb(var(--color-slate))] px-2 py-1 rounded-full transform -translate-x-1/2 shadow shadow-[rgb(var(--color-galaxy))]">
                             <FaStar className="w-3 h-3 text-amber-400 animate-bounce"/>
-                            <p className="text-xs font-medium text-gray-300">Refacciones</p>
+                            <p className="text-xs font-medium text-gray-300">{t('panel.findProducts.parts')}</p>
                         </div>
                         <div className="absolute inset-x-2 sm:inset-x-1 xl:inset-x-10 bottom-0 top-2.5 rounded-t-[12cqw] overflow-x-hidden overflow-y-auto border-x-[1cqw] border-t-[1cqw] shadow shadow-[rgb(var(--color-galaxy))] border-[rgb(var(--color-slate))] bg-[rgb(var(--color-gray))] pt-5 ">
                             <div className="p-1 mt-5">
@@ -717,16 +746,28 @@ const FindProducts = forwardRef(({
                                                             </p>
                                                             )}
                                                         </div>
+                                                        {isPickerMode && pickActionLabel && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={(event) => {
+                                                                    event.stopPropagation();
+                                                                    onProductPick(product);
+                                                                }}
+                                                                className="mt-1 w-full rounded-lg bg-amber-500 py-1.5 text-xs font-semibold text-slate-900 shadow transition hover:bg-amber-400"
+                                                            >
+                                                                {pickActionLabel}
+                                                            </button>
+                                                        )}
                                                     </div>
                                                     {stockAlerts[product.num_parte] && product.existencia === 0 && (
                                                     <div className="absolute left-2 right-2 bottom-2 rounded-full bg-amber-400/90 text-[rgb(var(--color-card))] text-[10px] font-semibold flex items-center justify-center gap-1 py-1 shadow-lg shadow-amber-500/40">
                                                         <TiInfo className="text-base" />
-                                                        <span>Sin existencia</span>
+                                                        <span>{t('panel.findProducts.noStock')}</span>
                                                         <button
                                                         type="button"
                                                         onClick={(e) => dismissStockAlert(product.num_parte, e)}
                                                         className="ml-2 text-[rgb(var(--color-card))] hover:text-white"
-                                                        aria-label="Cerrar alerta"
+                                                        aria-label={t('panel.findProducts.closeAlert')}
                                                         >
                                                         <IoClose className="text-base" />
                                                         </button>
@@ -796,5 +837,7 @@ const FindProducts = forwardRef(({
         </div>
     );
 });
+
+FindProducts.displayName = 'FindProducts';
 
 export default FindProducts;

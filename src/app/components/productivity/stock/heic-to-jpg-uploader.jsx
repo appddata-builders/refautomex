@@ -1,17 +1,20 @@
 import React, { useRef } from 'react';
 import heic2any from 'heic2any';
 import { FaImage } from 'react-icons/fa6';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const HeicToJpgUploader = ({
     setProfile,
     setProfileError,
     mediaUploading,
     onProfileSelect,
-    label = 'Seleccionar foto',
+    label,
     className = '',
     iconClassName = '',
 }) => {
+    const { t } = useTranslation();
     const fileInputRef = useRef();
+    const buttonLabel = label ?? t('account.photoSelect');
 
     const triggerUpload = () => {
         if (mediaUploading) return;
@@ -59,10 +62,10 @@ const HeicToJpgUploader = ({
                     updateProfile(file);
                 }
             } catch (error) {
-                setProfileError('Error al convertir la imagen. Por favor intenta con otra imagen.');
+                setProfileError(t('panel.uploader.convertError'));
             }
         } else {
-            setProfileError('Por favor, selecciona una imagen.');
+            setProfileError(t('panel.uploader.pickImage'));
         }
     };
     
@@ -86,7 +89,7 @@ const HeicToJpgUploader = ({
                 } ${className}`}
             >
                 <FaImage className={`text-stone-600 ${iconClassName}`} />
-                <span>{label}</span>
+                <span>{buttonLabel}</span>
             </button>
         </div>
     );

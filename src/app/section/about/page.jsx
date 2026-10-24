@@ -1,14 +1,12 @@
 import About from "./about";
+import { getServerT, resolveLocale } from "@/app/lib/text/server-text";
 
 export async function generateMetadata({ searchParams }) {
     const params = await searchParams;
-    const lang = (params && params.lang) || "es";
+    const t = await getServerT(resolveLocale(params && params.lang));
     return {
-        title: lang === "en" ? "Refautomex | About" : "Refautomex | Nosotros",
-        description:
-        lang === "en"
-            ? "Learn more about Refautomex"
-            : "Conoce más sobre Refautomex",
+        title: t("meta.about.title"),
+        description: t("meta.about.description"),
     };
 }
 

@@ -1,14 +1,12 @@
 import Shopping from "./shopping";
+import { getServerT, resolveLocale } from "@/app/lib/text/server-text";
 
 export async function generateMetadata({ searchParams }) {
     const params = await searchParams;
-    const lang = (params && params.lang) || "es";
+    const t = await getServerT(resolveLocale(params && params.lang));
     return {
-        title: lang === "en" ? "Refautomex | Shopping" : "Refautomex | Carrito",
-        description:
-        lang === "en"
-            ? "Shopping Refautomex"
-            : "Carrito Refautomex",
+        title: t("meta.shopping.title"),
+        description: t("meta.shopping.description"),
     };
 }
 

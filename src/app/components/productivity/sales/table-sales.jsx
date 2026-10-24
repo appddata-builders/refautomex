@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { MdDelete } from "react-icons/md";
 import { IoText } from 'react-icons/io5';
 import Select from 'react-select';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const customStyles = {
     control: (base, state) => ({
@@ -56,8 +57,6 @@ const customStyles = {
 };
 
 const MAX_QUANTITY_OPTIONS = 300;
-const STOCK_WARNING_LABEL = 'disponibles en esta sucursal';
-
 const getMaxAllowedQuantity = (item) => {
     const stock = Number(item.existencia);
     if (Number.isFinite(stock) && stock > 0) {
@@ -75,6 +74,7 @@ const buildQuantityOptions = (item) => {
 };
 
 export default function TableSales({ items, buttonConfigs, completeConfigs, onRemoveProduct, onUpdateProduct, handleMouseEnter, handleMouseLeave, onShowTextArea, visibleTooltip, discount, folio, onDiscountChange, onTogglePedido, setItems, handleAddNote, notes }) {
+    const { t } = useTranslation();
     const [quantities, setQuantities] = useState(() =>
         items.reduce((acc, item) => ({ ...acc, [item.refaccion]: item.cantidad ?? 1 }), {})
     );
@@ -109,7 +109,7 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
                 next[item.refaccion] = safeQty;
                 if (safeQty !== normalizedQty) {
                     changed = true;
-                    clampedWarnings[item.refaccion] = `Solo hay ${limit} ${STOCK_WARNING_LABEL}.`;
+                    clampedWarnings[item.refaccion] = t('panel.tableSales.stockWarning', { count: limit });
                 }
             });
 
@@ -193,8 +193,8 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
         setWarnings((prev) => {
             const next = { ...prev };
             if (newQuantity > maxAllowed) {
-                next[product.refaccion] = `Solo hay ${maxAllowed} ${STOCK_WARNING_LABEL}.`;
-            } else if (next[product.refaccion] && next[product.refaccion].includes(STOCK_WARNING_LABEL)) {
+                next[product.refaccion] = t('panel.tableSales.stockWarning', { count: maxAllowed });
+            } else if (next[product.refaccion] && next[product.refaccion].includes(t('panel.tableSales.stockWarningMatch'))) {
                 delete next[product.refaccion];
             }
             return next;
@@ -208,7 +208,7 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
             setPrices(prevPrices => ({ ...prevPrices, [product.refaccion]: "" }));
             setWarnings(prevWarnings => ({
                 ...prevWarnings,
-                [product.refaccion]: "El precio no puede ser cero o vacío"
+                [product.refaccion]: t('panel.tableSales.priceZero')
             }));
         } else {
             setPrices(prevPrices => ({ ...prevPrices, [product.refaccion]: newPrice }));
@@ -231,8 +231,8 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
             setWarnings(prevWarnings => ({
                 ...prevWarnings,
                 [product.refaccion]: newPrice < product.precio
-                    ? "El precio es menor al permitido por el producto"
-                    : (newMonto <= 0 ? "El monto es cero o menor" : "")
+                    ? t('panel.tableSales.priceTooLow')
+                    : (newMonto <= 0 ? t('panel.tableSales.amountZero') : "")
             }));
         }
     };
@@ -270,12 +270,12 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
             );
             setWarnings(prevWarnings => ({
                 ...prevWarnings,
-                [product.refaccion]: newMonto <= 0 ? "El monto no puede ser cero" : ""
+                [product.refaccion]: newMonto <= 0 ? t('panel.tableSales.amountCantBeZero') : ""
             }));
         } else {
             setWarnings(prevWarnings => ({
                 ...prevWarnings,
-                [product.refaccion]: "El AIVA debe ser mayor a cero"
+                [product.refaccion]: t('panel.tableSales.aivaZero')
             }));
         }
     };
@@ -400,13 +400,13 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
                 <table className="w-[845px] xl:w-[900px] text-sm text-left shadow-sm">
                     <thead className="text-xs uppercase bg-[rgb(var(--color-gray))] text-[rgb(var(--color-text))]">
                         <tr>
-                            <th className="p-3">REFACCIÓN</th>
-                            <th className="p-3">CANTIDAD</th>
-                            <th className="p-3">DESCRIPCIÓN</th>
-                            <th className="p-3">A.IVA</th>
-                            <th className="p-3">PRECIO</th>
-                            <th className="p-3">MONTO</th>
-                            <th className="p-3">ACCIONES</th>
+                            <th className="p-3">{t('panel.table.part')}</th>
+                            <th className="p-3">{t('panel.table.quantity')}</th>
+                            <th className="p-3">{t('panel.table.description')}</th>
+                            <th className="p-3">{t('panel.table.aiva')}</th>
+                            <th className="p-3">{t('panel.table.price')}</th>
+                            <th className="p-3">{t('panel.table.amountShort')}</th>
+                            <th className="p-3">{t('panel.table.actions')}</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -468,7 +468,7 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
                                             onChange={(e) => handleDescriptionChange(item, index, e.target.value)}
                                             onFocus={() => handleDescriptionFocus(item)}
                                             disabled={!!folio}
-                                            placeholder='Descripción'
+                                            placeholder={t('panel.capture.descriptionLabel')}
                                             className={`w-full p-2 rounded-full text-xs uppercase
                                                 ${item.descripcion.trim() === "" ? "bg-red-100 placeholder-gray-800" : "border-gray-300"}
                                                 bg-[rgb(var(--color-bg))] placeholder-[rgb(var(--color-text))] text-[rgb(var(--color-text))] shadow-md shadow-[rgb(var(--color-galaxy))]`}
@@ -533,7 +533,7 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
                                     value={notes}
                                     onChange={(e) => handleAddNote(e.target.value)}
                                     className="w-full p-1 border border-gray-300 rounded text-xs text-[rgb(var(--color-text))] focus:ring-blue-500 focus:border-blue-500 bg-[rgb(var(--color-bg))] uppercase"
-                                    placeholder="Pagado por entregar (¿Que?)"
+                                    placeholder={t('panel.table.notePlaceholder')}
                                     rows="3"
                                     maxLength="80"
                                     disabled={!!folio}
@@ -542,9 +542,9 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
                             </tr>
                         )}
                         <tr className="border-b bg-[rgb(var(--color-card))] border-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))]">
-                            <td className="py-4 px-3 font-bold">DESCUENTO:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.discountRow')}</td>
                             <td className="py-4 px-1 font-bold text-md" colSpan="5">
-                                {discountAmount.toFixed(2)} MXN
+                                {discountAmount.toFixed(2)} {t('promotions.currency')}
                             </td>
                             <td className="py-4 px-1">
                                 <Select
@@ -557,16 +557,16 @@ export default function TableSales({ items, buttonConfigs, completeConfigs, onRe
                             </td>
                         </tr>
                         <tr className="border-b bg-[rgb(var(--color-card))] border-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))]">
-                            <td className="py-4 px-3 font-bold">SUBTOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.subtotal')}</td>
                             <td className="py-4 px-1 font-bold text-md" colSpan="6">
-                                {subtotal.toFixed(2)} MXN
+                                {subtotal.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
 
                         <tr className="border-b bg-[rgb(var(--color-card))] border-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))]">
-                            <td className="py-4 px-3 font-bold">TOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.total2')}</td>
                             <td className="py-4 px-1 font-bold text-xl text-[rgb(var(--color-success))]" colSpan="6">
-                                $ {totalWithDiscount.toFixed(2)} MXN
+                                $ {totalWithDiscount.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                     </tbody>

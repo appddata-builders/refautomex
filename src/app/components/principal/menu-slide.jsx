@@ -8,8 +8,10 @@ import { getStorageValue } from "@/app/lib/storage-values";
 import { XMarkIcon } from '@heroicons/react/20/solid';
 import RefautomexLogo from '@/app/components/refautomex-logo';
 import Link from 'next/link'
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function MenuSlide({menuItems, callsToAction, selectedLanguage, pathPage, cartItemCount }) {
+    const { t } = useTranslation();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const [profileImageUrl, setProfileImageUrl] = useState('');
@@ -160,7 +162,7 @@ export default function MenuSlide({menuItems, callsToAction, selectedLanguage, p
                     className="rounded-md focus:outline-none focus:ring-2 focus:ring-white"
                     onClick={() => setMobileMenuOpen(false)}
                 >
-                    <span className="sr-only">Close panel</span>
+                    <span className="sr-only">{t('common.closePanel')}</span>
                     <XMarkIcon className="h-6 w-6 text-red-500" aria-hidden="true" />
                 </button>
                 </div>

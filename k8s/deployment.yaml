@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: refautomex-admin
+  namespace: refautomex
+  labels:
+    app: refautomex-admin
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: refautomex-admin
+
+  template:
+    metadata:
+      labels:
+        app: refautomex-admin
+    spec:
+      containers:
+        - name: refautomex-admin
+          image: __IMAGE__
+          imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 3000
+
+          env:
+            - name: NODE_OPTIONS
+              value: --max-old-space-size=256
+          envFrom:
+            - secretRef:
+                name: refautomex-secrets
+                optional: true
+
+            - secretRef:
+                name: postgres-credentials
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+
+          resources:
+            requests:
+              cpu: 98m
+              memory: 240Mi
+            limits:
+              cpu: 450m
+              memory: 384Mi
