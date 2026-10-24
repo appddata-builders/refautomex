@@ -155,7 +155,6 @@ export default function SignUp() {
                     email: email || "",
                     cognitoid: userSub,
                     domicilio: placeId || "",
-                    categoria: "G",
                     empleado: "0"
                 };
 

@@ -42,25 +42,30 @@ const compareBySuffix = (a, b) => {
     return suffixA.localeCompare(suffixB);
 };
 
+// Productos agrupados por localización principal, cada grupo ordenado por su
+// índice: el orden en que se pegan en el anaquel.
+const groupByMainLocation = (products) => {
+    const groups = products.reduce((acc, product) => {
+        const mainLocation = getMainLocation(product.localizacion);
+        if (!acc[mainLocation]) {
+            acc[mainLocation] = [];
+        }
+        acc[mainLocation].push(product);
+        return acc;
+    }, {});
+    return Object.entries(groups).map(([mainLocation, locationProducts]) => [
+        mainLocation,
+        locationProducts.slice().sort(compareBySuffix),
+    ]);
+};
+
 export default function Labels({ products }) {
     const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
 
-    // Agrupar productos por localización principal
-    const groupedProducts = products.reduce((groups, product) => {
-        const mainLocation = getMainLocation(product.localizacion);
-        if (!groups[mainLocation]) {
-            groups[mainLocation] = [];
-        }
-        groups[mainLocation].push(product);
-        return groups;
-    }, {});
-
     return (
         <div className="p-4 print-no-scroll">
-            {Object.entries(groupedProducts).map(([mainLocation, locationProducts]) => {
-                const sortedProducts = locationProducts.slice().sort(compareBySuffix);
-
+            {groupByMainLocation(products).map(([mainLocation, sortedProducts]) => {
                 return (
                 <div
                     key={mainLocation}
@@ -144,6 +149,103 @@ export default function Labels({ products }) {
                     </div>
                 </div>
             )})}
+        </div>
+    );
+}
+
+const avoidBreak = { breakInside: 'avoid', pageBreakInside: 'avoid' };
+
+/**
+ * Los mismos rótulos para la impresora térmica de los tickets. Van uno debajo
+ * de otro, en blanco y negro y separados para cortarlos con tijera.
+ *
+ * Miden y se acomodan como el ticket de venta (component-print): 55 mm
+ * centrados y con el mismo margen por dentro. La impresora solo marca el
+ * centro del rollo (unos 48 mm en uno de 58), así que lo que queda pegado a la
+ * orilla se pierde. El tamaño de la hoja lo pone el papel que se elige al
+ * imprimir.
+ *
+ * Su @page aplica a todo el documento y react-to-print copia todos los <style>
+ * de la página: si se quedara montado, los rótulos normales también saldrían
+ * sin margen. Por eso solo se monta mientras se imprime.
+ */
+export function ThermalLabels({ products }) {
+    const { t } = useTranslation();
+    const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
+    const logoSrc = `${multimediaSrc}refautomex_n.svg`;
+
+    return (
+        <div className="mx-auto w-[55mm] bg-white px-4 pb-[15mm] text-black">
+            <style>
+                {`
+                @page {
+                    margin: 0;
+                }
+                @media print {
+                    * {
+                        -webkit-print-color-adjust: exact;
+                        print-color-adjust: exact;
+                    }
+                    body {
+                        margin: 0;
+                    }
+                }
+                `}
+            </style>
+            {groupByMainLocation(products).map(([mainLocation, sortedProducts]) => (
+                <section
+                    key={mainLocation}
+                    className="space-y-[3mm] border-b-2 border-dashed border-black py-[3mm]"
+                >
+                    <div className="rounded-lg border-2 border-black p-[2mm] text-center" style={avoidBreak}>
+                        <img loading="eager" className="mx-auto h-[6mm]" src={logoSrc} alt={t('meta.brand')} />
+                        <p className="mt-[1mm] break-all text-[12mm] font-bold uppercase leading-none">
+                            {mainLocation}
+                        </p>
+                    </div>
+
+                    {sortedProducts.map((product, index) => {
+                        const displayedIndex = getLocationSuffix(product.localizacion) || index + 1;
+
+                        return (
+                            <div
+                                key={`${product.refaccion}-${index}`}
+                                className="rounded-lg border border-black p-[1.5mm]"
+                                style={avoidBreak}
+                            >
+                                <div className="flex gap-[2mm]">
+                                    <img
+                                        loading="eager"
+                                        src={resolveLabelImageSrc(product, multimediaSrc)}
+                                        alt={product.refaccion}
+                                        className="size-[16mm] shrink-0 object-contain grayscale"
+                                        onError={(event) => {
+                                            event.currentTarget.src = `${multimediaSrc}productos/no-img.png`;
+                                        }}
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <img loading="eager" className="ml-auto h-[3.5mm]" src={logoSrc} alt={t('meta.brand')} />
+                                        {/* break-words: una palabra larga sin espacios
+                                            ("CONTROL(UNIDAD)MANDO") se cortaba a la derecha. */}
+                                        <h3 className="mt-[0.5mm] line-clamp-3 break-words text-[2.8mm] italic leading-tight">
+                                            {product.descripcion}
+                                        </h3>
+                                        {product.category && <p className="text-[2.2mm]">{product.category}</p>}
+                                    </div>
+                                </div>
+                                {/* A todo el ancho: un número de parte largo se parte en
+                                    vez de cortarse, como en el ticket de venta. */}
+                                <div className="mt-[1mm] flex items-center justify-between gap-[1.5mm]">
+                                    <p className="min-w-0 break-all text-[4.5mm] font-bold leading-none">{product.refaccion}</p>
+                                    <span className="grid size-[7mm] shrink-0 place-items-center rounded-full bg-black text-[3.8mm] font-bold text-white">
+                                        {displayedIndex}
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </section>
+            ))}
         </div>
     );
 }

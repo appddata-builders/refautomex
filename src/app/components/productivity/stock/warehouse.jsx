@@ -1,17 +1,21 @@
 import React, { useContext, useState, useRef, useEffect } from 'react';
+import { flushSync } from 'react-dom';
 import Title from '../title';
 import FindProducts from '@/app/components/productivity/sales/find-products';
 import TableDescription from './table-description';
 import { FaExchangeAlt } from 'react-icons/fa';
 import { FaBoxesPacking } from 'react-icons/fa6';
 import { IoSaveSharp } from 'react-icons/io5';
-import { PiStickerFill } from 'react-icons/pi';
+import { PiReceiptFill, PiStickerFill } from 'react-icons/pi';
+import { FiLock } from 'react-icons/fi';
 import EditRegister from './edit-register';
 import MigrateModal from './migrate-modal';
-import Labels from './labels';
+import Labels, { ThermalLabels } from './labels';
 import { useReactToPrint } from 'react-to-print';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { perfilDeCategoria, puedeEditar } from '@/app/lib/permisos-menu';
+import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 const hasLeadingZeroSuffix = (location = '') => {
@@ -25,7 +29,10 @@ export default function Warehouse() {
     const { t } = useTranslation();
     const { userData } = useContext(AuthContext);
     const userBranchId = userData?.idsucursal || null;
-    const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
+    // Editar, guardar y migrar matrices lo decide Permisos de perfil: con
+    // solo lectura se buscan productos e imprimen rotulos y listas.
+    const permisos = usePermisosMenu();
+    const canEdit = puedeEditar(permisos, 'warehouse', perfilDeCategoria(userData?.categoria));
     const [items, setItems] = useState([]);
     const [hasChanges, setHasChanges] = useState(false);
     const [visibleTooltip, setVisibleTooltip] = useState({});
@@ -37,6 +44,8 @@ export default function Warehouse() {
     const [isSaving, setIsSaving] = useState(false);
     const findProductsRef = useRef();
     const labelsRef = useRef(null);
+    const thermalLabelsRef = useRef(null);
+    const [isPrintingThermal, setIsPrintingThermal] = useState(false);
 
     // Configuración de la impresión
     const handlePrint = useReactToPrint({
@@ -45,6 +54,14 @@ export default function Warehouse() {
             // Opcional: alguna acción después de imprimir
             console.log('Etiquetas impresas');
         }
+    });
+
+    // Rótulos para la impresora térmica: se desmontan al terminar (ThermalLabels
+    // explica por qué no se quedan montados).
+    const handleThermalPrint = useReactToPrint({
+        contentRef: thermalLabelsRef,
+        onAfterPrint: () => setIsPrintingThermal(false),
+        onPrintError: () => setIsPrintingThermal(false),
     });
 
     const handleMouseEnter = (id) => {
@@ -361,7 +378,19 @@ export default function Warehouse() {
             alert(t('panel.warehouse.noLabels'));
             return;
         }
+        // Por si una impresión térmica quedó abierta: su @page achicaría la hoja.
+        flushSync(() => setIsPrintingThermal(false));
         handlePrint();
+    };
+
+    const handleThermalLabelsPrint = () => {
+        if (items.length === 0) {
+            alert(t('panel.warehouse.noLabels'));
+            return;
+        }
+        // Montar ya, para que react-to-print encuentre el contenido.
+        flushSync(() => setIsPrintingThermal(true));
+        handleThermalPrint();
     };
 
     const onCancelEdit = () => {
@@ -380,7 +409,7 @@ export default function Warehouse() {
             label: t('panel.warehouse.migrate'), id: 'migrate', path: '',
             event: handleMigrateLocation,
             disabled: isSaving,
-            adminOnly: true,
+            editOnly: true,
         },
         {
             icon: IoSaveSharp,
@@ -388,7 +417,7 @@ export default function Warehouse() {
             label: isSaving ? t('panel.warehouse.saving') : t('panel.warehouse.updateList'), id: 'update', path: '',
             event: handleSaveClick,
             disabled: isSaving,
-            adminOnly: true,
+            editOnly: true,
         },
         {
             icon: PiStickerFill,
@@ -396,8 +425,15 @@ export default function Warehouse() {
             label: t('panel.warehouse.label'), id: 'list', path: '',
             event: handleLabelsStickerPrint,
             disabled: isSaving,
+        },
+        {
+            icon: PiReceiptFill,
+            btnconf:`relative blue-circle-button tooltip-button`,
+            label: t('panel.warehouse.thermalLabel'), id: 'thermal', path: '',
+            event: handleThermalLabelsPrint,
+            disabled: isSaving,
         }
-    ].filter((config) => !config.adminOnly || isAdmin);
+    ].filter((config) => !config.editOnly || canEdit);
 
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
@@ -409,6 +445,12 @@ export default function Warehouse() {
             />
             <div className={isEditing ? 'hidden' : 'block'}>
             <div className="mx-auto max-w-[1700px] xl:px-8 mt-5 overflow-hidden">
+                    {!canEdit && (
+                        <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] px-3 py-1 text-xs font-semibold text-[rgb(var(--color-text))] shadow-sm">
+                            <FiLock className="text-[rgb(var(--color-galaxy))]" aria-hidden="true" />
+                            {t('panel.warehouse.readOnly')}
+                        </div>
+                    )}
                     {saveStatus.message && (
                         <div
                             className={`text-sm font-semibold mb-2 ${saveStatus.type === 'error' ? 'text-red-600' : 'text-green-600'}`}
@@ -437,7 +479,7 @@ export default function Warehouse() {
                                 visibleTooltip={visibleTooltip}
                                 onEditClick={handleEditClick}
                                 isSaving={isSaving}
-                                isAdmin={isAdmin}
+                                canEdit={canEdit}
                             />
                         </div>
                     </div>
@@ -463,6 +505,13 @@ export default function Warehouse() {
                     <Labels products={items} />
                 </div>
             </div>
+            {isPrintingThermal && (
+                <div className="print-labels-root">
+                    <div ref={thermalLabelsRef}>
+                        <ThermalLabels products={items} />
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

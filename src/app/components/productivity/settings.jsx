@@ -224,7 +224,6 @@ export default function Settings() {
             email: email || "",
             cognitoid: cognitoid,
             domicilio: placeId || "",
-            categoria: "G",
             empleado: empleado || "",
         };
 

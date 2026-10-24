@@ -1,13 +1,14 @@
 'use client';
 
 import { Fragment, useState } from 'react';
-import { FiShield } from 'react-icons/fi';
+import { FiLock, FiShield, FiUnlock } from 'react-icons/fi';
 import { useTranslation } from '@/app/lib/text/text-provider';
-import { MODULOS, PERFILES, esFijo } from '@/app/lib/permisos-menu';
+import { MODULOS, PERFILES, admiteLectura, esFijo } from '@/app/lib/permisos-menu';
 import { guardarPermisos, usePermisosMenu } from '@/app/lib/use-permisos-menu';
 
-const TEXTO_PERFIL = {
+export const TEXTO_PERFIL = {
     admin: 'panel.permissions.admin',
+    supervisor: 'panel.permissions.supervisor',
     empleado: 'panel.permissions.employee',
 };
 
@@ -26,6 +27,9 @@ const GRUPOS = MODULOS.reduce((grupos, modulo) => {
  * estado las casillas que se tocaron; lo demas viene de lo guardado, asi que
  * si la respuesta del servidor llega despues de abrir la pestana no se pisa
  * nada de lo que el admin ya marco.
+ *
+ * La casilla dice si el perfil ve el modulo. Donde existe solo lectura
+ * (admiteLectura) va junto un boton que la prende y la apaga.
  */
 export default function ProfilePermissions() {
     const { t } = useTranslation();
@@ -42,9 +46,17 @@ export default function ProfilePermissions() {
         0
     );
 
-    const cambiar = (clave, perfil, marcado) => {
+    const cambiar = (clave, perfil, nivel) => {
         setAviso(null);
-        setCambios((prev) => ({ ...prev, [clave]: { ...prev[clave], [perfil]: marcado } }));
+        setCambios((prev) => ({ ...prev, [clave]: { ...prev[clave], [perfil]: nivel } }));
+    };
+
+    // Volver a marcar regresa a lo guardado; si estaba sin acceso, al nivel
+    // mas bajo que el modulo tenga.
+    const marcar = (modulo, perfil, marcado) => {
+        const guardado = guardados[modulo.clave][perfil];
+        const nivel = guardado !== 'no' ? guardado : admiteLectura(modulo, perfil) ? 'lectura' : 'total';
+        cambiar(modulo.clave, perfil, marcado ? nivel : 'no');
     };
 
     const guardar = async () => {
@@ -73,6 +85,7 @@ export default function ProfilePermissions() {
                     {t('panel.permissions.title')}
                 </h2>
                 <p className="mt-2 text-sm text-[rgb(var(--color-text))]/80">{t('panel.permissions.help')}</p>
+                <p className="mt-1 text-sm text-[rgb(var(--color-text))]/80">{t('panel.permissions.readOnlyHelp')}</p>
                 <p className="mt-1 text-sm text-[rgb(var(--color-text))]/80">{t('panel.permissions.actionsNote')}</p>
             </div>
 
@@ -82,7 +95,7 @@ export default function ProfilePermissions() {
                         <tr className="border-b border-[rgb(var(--color-border))]/80 text-[rgb(var(--color-text))]/70">
                             <th scope="col" className="px-3 py-2 text-left font-normal">{t('panel.permissions.module')}</th>
                             {PERFILES.map((perfil) => (
-                                <th key={perfil} scope="col" className="w-24 px-3 py-2 text-center font-normal">
+                                <th key={perfil} scope="col" className="w-28 px-3 py-2 text-center font-normal">
                                     {t(TEXTO_PERFIL[perfil])}
                                 </th>
                             ))}
@@ -107,6 +120,9 @@ export default function ProfilePermissions() {
                                             <th scope="row" className="px-3 py-2 text-left font-medium">{nombre}</th>
                                             {PERFILES.map((perfil) => {
                                                 const fijo = esFijo(modulo, perfil);
+                                                const nivel = valor(modulo.clave, perfil);
+                                                const soloLectura = nivel === 'lectura';
+                                                const LockIcon = soloLectura ? FiLock : FiUnlock;
                                                 // Lo marcado y aun sin guardar se resalta hasta guardar.
                                                 const sinGuardar = cambiado(modulo.clave, perfil);
                                                 return (
@@ -114,15 +130,30 @@ export default function ProfilePermissions() {
                                                         key={perfil}
                                                         className={`px-3 py-2 text-center ${sinGuardar ? 'bg-[rgb(var(--color-galaxy))]/20' : ''}`}
                                                     >
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={valor(modulo.clave, perfil)}
-                                                            disabled={fijo || guardando}
-                                                            onChange={(e) => cambiar(modulo.clave, perfil, e.target.checked)}
-                                                            title={fijo ? t('panel.permissions.locked') : undefined}
-                                                            aria-label={`${nombre} — ${t(TEXTO_PERFIL[perfil])}`}
-                                                            className="h-5 w-5 cursor-pointer accent-[rgb(var(--color-galaxy))] disabled:cursor-not-allowed disabled:opacity-50"
-                                                        />
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={nivel !== 'no'}
+                                                                disabled={fijo || guardando}
+                                                                onChange={(e) => marcar(modulo, perfil, e.target.checked)}
+                                                                title={fijo ? t('panel.permissions.locked') : undefined}
+                                                                aria-label={`${nombre} — ${t(TEXTO_PERFIL[perfil])}`}
+                                                                className="h-5 w-5 cursor-pointer accent-[rgb(var(--color-galaxy))] disabled:cursor-not-allowed disabled:opacity-50"
+                                                            />
+                                                            {admiteLectura(modulo, perfil) && (
+                                                                <button
+                                                                    type="button"
+                                                                    aria-pressed={soloLectura}
+                                                                    disabled={nivel === 'no' || guardando}
+                                                                    onClick={() => cambiar(modulo.clave, perfil, soloLectura ? 'total' : 'lectura')}
+                                                                    aria-label={`${nombre} — ${t(TEXTO_PERFIL[perfil])}: ${t('panel.permissions.readOnly')}`}
+                                                                    className={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${soloLectura ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]/70'}`}
+                                                                >
+                                                                    <LockIcon className="h-3 w-3" aria-hidden="true" />
+                                                                    {t('panel.permissions.readOnly')}
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                 );
                                             })}

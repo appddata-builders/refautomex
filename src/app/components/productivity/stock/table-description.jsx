@@ -32,7 +32,8 @@ export default function TableDescription({
     visibleTooltip,
     onEditClick,
     isSaving = false,
-    isAdmin = false,
+    // Sin permiso de editar (Permisos de perfil) los campos se muestran como texto.
+    canEdit = false,
 }) {
     const { t } = useTranslation();
     const [QuantityOptions, setQuantityOptions] = useState([]);
@@ -214,7 +215,7 @@ export default function TableDescription({
                                     <td className="p-2">
                                         <div className='italic text-xs flex flex-col justify-center items-start'>
                                             <div className='text-base w-32'>
-                                            {isAdmin && (
+                                            {canEdit && (
                                                 <button
                                                     onClick={() => onEditClick(item)}
                                                     className={`bg-amber-400 mr-1 text-white rounded-full p-1 hover:bg-yellow-600 ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
@@ -241,7 +242,7 @@ export default function TableDescription({
                                         </div>
                                     </td>
                                     <td className="p-2">
-                                        {isAdmin ? (
+                                        {canEdit ? (
                                             <input
                                                 type="text"
                                                 value={item.descripcion}
@@ -255,7 +256,7 @@ export default function TableDescription({
                                         )}
                                     </td>
                                     <td className="p-2">
-                                        {isAdmin ? (
+                                        {canEdit ? (
                                             <input
                                                 type="text"
                                                 value={item.localizacion}
@@ -269,7 +270,7 @@ export default function TableDescription({
                                         )}
                                     </td>
                                     <td className="py-2">
-                                        {isAdmin ? (
+                                        {canEdit ? (
                                             <Select
                                                 id="existencia"
                                                 name="existencia"
@@ -285,7 +286,7 @@ export default function TableDescription({
                                         )}
                                     </td>
                                     <td className="p-2">
-                                        {isAdmin ? (
+                                        {canEdit ? (
                                             <input
                                                 id={`costo-${item.refaccion}`}
                                                 type="number"
@@ -300,7 +301,7 @@ export default function TableDescription({
                                         )}
                                     </td>
                                     <td className="p-2">
-                                        {isAdmin ? (
+                                        {canEdit ? (
                                             <input
                                                 id={`precio-${item.refaccion}`}
                                                 type="number"
@@ -315,17 +316,14 @@ export default function TableDescription({
                                         )}
                                     </td>
                                     <td className="p-2">
-                                        {isAdmin ? (
-                                            <button
-                                                onClick={() => handleRemoveClick(item)}
-                                                className={`bg-red-500 mx-2 text-white rounded-full p-2 hover:bg-red-700 ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
-                                                disabled={isSaving}
-                                            >
-                                                <MdDelete />
-                                            </button>
-                                        ) : (
-                                            <span className="text-xs text-[rgb(var(--color-text))]/70">-</span>
-                                        )}
+                                        {/* Solo lo quita de esta lista, como Limpiar: tambien en solo lectura. */}
+                                        <button
+                                            onClick={() => handleRemoveClick(item)}
+                                            className={`bg-red-500 mx-2 text-white rounded-full p-2 hover:bg-red-700 ${isSaving ? 'opacity-60 cursor-not-allowed' : ''}`}
+                                            disabled={isSaving}
+                                        >
+                                            <MdDelete />
+                                        </button>
                                     </td>
                                 </tr>
                             );

@@ -1,6 +1,6 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import Title from '../title';
-import ProfilePermissions from './profile-permissions';
+import ProfilePermissions, { TEXTO_PERFIL } from './profile-permissions';
 import { FaStar } from 'react-icons/fa';
 import { FaUsersViewfinder } from 'react-icons/fa6';
 import { BiSolidUserCircle } from 'react-icons/bi';
@@ -13,6 +13,7 @@ import {
     FiMapPin,
     FiPhone,
     FiSearch,
+    FiShield,
     FiSun,
     FiTag,
     FiUser,
@@ -24,6 +25,7 @@ import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { getStorageValue, setStorageValue } from '@/app/lib/storage-values';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import { obtenerIdToken } from '@/app/lib/respaldo-diario';
+import { CATEGORIA_DE_PERFIL, PERFILES, perfilDeCategoria } from '@/app/lib/permisos-menu';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 const isLikelyPlaceId = (val) => {
@@ -32,6 +34,19 @@ const isLikelyPlaceId = (val) => {
     if (trimmed.length < 5 || trimmed.length > 250) return false;
     if (/\s/.test(trimmed)) return false;
     return true;
+};
+
+// Colores de cada rol: la etiqueta de la tarjeta y el boton elegido en Rol.
+const ROLE_CLASSES = {
+    admin: { active: 'bg-amber-500 text-white border-amber-400', soft: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
+    supervisor: { active: 'bg-sky-500 text-white border-sky-400', soft: 'bg-sky-50 text-sky-700 border-sky-200', dot: 'bg-sky-500' },
+    empleado: { active: 'bg-emerald-500 text-white border-emerald-400', soft: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+};
+
+const ACTIVE_LABEL = {
+    admin: 'panel.personal.activeAdmin',
+    supervisor: 'panel.personal.activeSupervisor',
+    empleado: 'panel.personal.activeEmployee',
 };
 
 export default function Personal() {
@@ -167,7 +182,7 @@ export default function Personal() {
         setExpandedUserId((prev) => (prev === userKey ? null : userKey));
     };
 
-    const updateUserEmployment = async ({ idusuario, empleado, idsucursal }) => {
+    const updateUserEmployment = async ({ idusuario, empleado, idsucursal, categoria }) => {
         const response = await fetch(buildApiUrl('/patchUserEmployment'), {
             method: 'PATCH',
             cache: 'no-store',
@@ -179,6 +194,7 @@ export default function Personal() {
                 idusuario,
                 empleado,
                 idsucursal,
+                categoria,
             }),
         });
 
@@ -462,8 +478,10 @@ export default function Personal() {
         }
     };
 
-    // Activar solo cambia el estado; la sucursal se asigna despues en
-    // Empleados, donde la cuenta queda arriba y marcada hasta tener una.
+    // Activar deja la cuenta como Empleado, el rol con menos permisos (la
+    // categoria de una cuenta externa no dice nada). La sucursal y el rol se
+    // cambian despues en Empleados, donde la cuenta queda arriba y marcada
+    // hasta tener sucursal.
     const handleActivateUser = async (userKey, userId) => {
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
         if (!isAdmin) return;
@@ -480,11 +498,12 @@ export default function Personal() {
 
         setSavingUserId(userKey);
         try {
-            await updateUserEmployment({ idusuario: userId, empleado: 1, idsucursal: null });
+            const categoria = CATEGORIA_DE_PERFIL.empleado;
+            await updateUserEmployment({ idusuario: userId, empleado: 1, idsucursal: null, categoria });
             setUsers((prevUsers) => prevUsers.map((user) => {
                 const key = getUserKey(user);
                 if (key !== userKey) return user;
-                return { ...user, empleado: 1, idsucursal: null, sucursal: null };
+                return { ...user, empleado: 1, idsucursal: null, sucursal: null, categoria };
             }));
             setActiveTab('employees');
         } catch (error) {
@@ -497,67 +516,46 @@ export default function Personal() {
         }
     };
 
-    const handlePromoteAdmin = async (userKey, userId) => {
+    // Lo que puede hacer cada rol se configura en Permisos de perfil. Nadie se
+    // cambia el suyo: un admin podria quedarse sin acceso a Permisos.
+    const handleChangeRole = async (employee, perfil) => {
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
         if (!isAdmin) return;
-        if (!userId) {
+        const userKey = getUserKey(employee);
+        if (!employee.idusuario) {
             if (typeof window !== 'undefined') {
                 window.alert(t('panel.personal.noUser'));
             }
             return;
         }
-        const confirmPromotion = typeof window === 'undefined'
-            ? true
-            : window.confirm(t('panel.personal.confirmPromote'));
-        if (!confirmPromotion) return;
-
-        try {
-            await updateUserCategory({ idusuario: userId, categoria: 'A' });
-            setUsers((prevUsers) => prevUsers.map((user) => {
-                const key = getUserKey(user);
-                if (key !== userKey) return user;
-                return { ...user, categoria: 'A' };
-            }));
-        } catch (error) {
-            console.error('Error promoting admin:', error);
+        if (currentUserId != null && String(employee.idusuario) === String(currentUserId)) {
             if (typeof window !== 'undefined') {
-                window.alert(t('panel.personal.roleError'));
-            }
-        }
-    };
-
-    const handleDemoteAdmin = async (userKey, userId) => {
-        const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
-        if (!isAdmin) return;
-        if (!userId) {
-            if (typeof window !== 'undefined') {
-                window.alert(t('panel.personal.noUser'));
+                window.alert(t('panel.personal.cantChangeOwnRole'));
             }
             return;
         }
-        if (currentUserId != null && String(userId) === String(currentUserId)) {
-            if (typeof window !== 'undefined') {
-                window.alert(t('panel.personal.cantDemoteSelf'));
-            }
-            return;
-        }
-        const confirmDemotion = typeof window === 'undefined'
+        const nombre = [employee.nombre, employee.apellido].filter(Boolean).join(' ') || employee.email;
+        const confirmChange = typeof window === 'undefined'
             ? true
-            : window.confirm(t('panel.personal.confirmDemote'));
-        if (!confirmDemotion) return;
+            : window.confirm(t('panel.personal.confirmRole', { nombre, rol: t(TEXTO_PERFIL[perfil]) }));
+        if (!confirmChange) return;
 
+        const categoria = CATEGORIA_DE_PERFIL[perfil];
+        setSavingUserId(userKey);
         try {
-            await updateUserCategory({ idusuario: userId, categoria: 'G' });
+            await updateUserCategory({ idusuario: employee.idusuario, categoria });
             setUsers((prevUsers) => prevUsers.map((user) => {
                 const key = getUserKey(user);
                 if (key !== userKey) return user;
-                return { ...user, categoria: 'G' };
+                return { ...user, categoria };
             }));
         } catch (error) {
-            console.error('Error demoting admin:', error);
+            console.error('Error changing role:', error);
             if (typeof window !== 'undefined') {
                 window.alert(t('panel.personal.roleError'));
             }
+        } finally {
+            setSavingUserId(null);
         }
     };
 
@@ -642,16 +640,17 @@ export default function Personal() {
         const active = isEmployee(user);
         const fullName = [user.nombre, user.apellido].filter(Boolean).join(' ') || 'Sin nombre';
         const expanded = expandedUserId === userKey;
-        const isUserAdmin = String(user.categoria || '').toUpperCase() === 'A';
-        // La etiqueta distingue a los admins; las opciones de Otros siguen
-        // diciendo "Empleado activo" porque activar no da rol de admin.
-        const groupMeta = active && isUserAdmin
+        const userProfile = perfilDeCategoria(user.categoria);
+        const isUserAdmin = userProfile === 'admin';
+        // La etiqueta dice el rol. En Otros, "Empleado activo" es justo lo que
+        // deja activar (ver handleActivateUser).
+        const groupMeta = active
             ? {
-                label: t('panel.personal.activeAdmin'),
-                softClass: 'bg-amber-50 text-amber-700 border-amber-200',
-                dotClass: 'bg-amber-500',
+                label: t(ACTIVE_LABEL[userProfile]),
+                softClass: ROLE_CLASSES[userProfile].soft,
+                dotClass: ROLE_CLASSES[userProfile].dot,
             }
-            : groupOptions.find((option) => option.value === (active ? 1 : 0));
+            : groupOptions.find((option) => option.value === 0);
         const address = user.domicilio ? (placeCache[user.domicilio] || user.domicilio) : user.domicilio;
 
         const primaryDetails = [
@@ -681,8 +680,6 @@ export default function Personal() {
         const isAdmin = String(currentUserCategory || '').toUpperCase() === 'A';
         // Editar escribe el telefono en la base: solo administradores.
         const canEdit = active && !showActivation && isAdmin;
-        const canPromoteAdmin = canEdit && isAdmin && !isUserAdmin && !isSelf;
-        const canDemoteAdmin = canEdit && isAdmin && isUserAdmin && !isSelf;
 
         const renderInfoItem = (item) => {
             const Icon = item.icon;
@@ -801,25 +798,6 @@ export default function Personal() {
                                     {t('panel.personal.remove')}
                                 </button>
                             )}
-                            {canPromoteAdmin && (
-                                <button
-                                    type="button"
-                                    onClick={() => handlePromoteAdmin(userKey, user.idusuario)}
-                                    className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 shadow-sm transition hover:-translate-y-0.5"
-                                >
-                                    {t('panel.personal.makeAdmin')}
-                                </button>
-                            )}
-                            {canDemoteAdmin && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleDemoteAdmin(userKey, user.idusuario)}
-                                    disabled={isSelf}
-                                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:border-[rgb(var(--color-border))]/60 disabled:bg-[rgb(var(--color-bg))] disabled:text-[rgb(var(--color-text))]/60"
-                                >
-                                    {t('panel.personal.removeAdmin')}
-                                </button>
-                            )}
                             <button
                                 type="button"
                                 onClick={() => toggleDetails(userKey)}
@@ -902,6 +880,36 @@ export default function Personal() {
                             )}
                         </div>
                     ) : null}
+
+                    {canEdit && (
+                        <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))]/70 p-3">
+                            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-[rgb(var(--color-text))]">
+                                <FiShield className="text-[rgb(var(--color-text))]" />
+                                {t('panel.personal.roleTitle')}
+                            </div>
+                            <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label={t('panel.personal.roleTitle')}>
+                                {PERFILES.map((perfil) => {
+                                    const selected = perfil === userProfile;
+                                    return (
+                                        <button
+                                            key={perfil}
+                                            type="button"
+                                            aria-pressed={selected}
+                                            onClick={() => handleChangeRole(user, perfil)}
+                                            disabled={selected || isSelf || isSaving}
+                                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition disabled:cursor-default ${selected ? ROLE_CLASSES[perfil].active : 'border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))] hover:border-[rgb(var(--color-text))]/60 disabled:opacity-50'}`}
+                                        >
+                                            {perfil === 'admin' && <FaStar className="h-3 w-3" aria-hidden="true" />}
+                                            {t(TEXTO_PERFIL[perfil])}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            <p className="mt-2 text-xs text-[rgb(var(--color-text))]">
+                                {isSelf ? t('panel.personal.cantChangeOwnRole') : t('panel.personal.roleHint')}
+                            </p>
+                        </div>
+                    )}
 
                     {!showActivation && isAdmin && (
                         <div className="rounded-xl border border-[rgb(var(--color-border))]/70 bg-[rgb(var(--color-bg))]/70 p-3">

@@ -26,6 +26,7 @@
  */
 
 import { consultar, escribir } from '@/app/lib/refautomex-db';
+import { CATEGORIA_DE_PERFIL } from '@/app/lib/permisos-menu';
 
 import { PROCEDIMIENTOS } from './endpoints-procedimientos';
 import { ESCRITURAS } from './endpoints-escrituras';
@@ -34,6 +35,10 @@ const faltan = (detalle) => ({
   estado: 400,
   cuerpo: { error: 'Bad Request', details: detalle },
 });
+
+// 'A' admin, 'S' supervisor, 'E' empleado (ver perfilDeCategoria).
+const CATEGORIAS = Object.values(CATEGORIA_DE_PERFIL);
+const esCategoria = (valor) => CATEGORIAS.includes(valor);
 
 // ---------------------------------------------------------------------------
 // GET
@@ -175,6 +180,8 @@ const tablaCompleta = (tabla) => async () => ({
 const valorDeUsuario = (body, campo) =>
   campo === 'f_nacimiento' ? body?.[campo] || null : body?.[campo] ?? null;
 
+// Toda cuenta nueva empieza como empleado, el rol con menos permisos, aunque
+// el registro mande otra cosa: el rol solo lo cambia un admin desde Permisos.
 const newUser = async ({ body }) => {
   const campos = [
     'email', 'cognitoid', 'nombre', 'apellido', 'telefono', 'f_nacimiento',
@@ -182,7 +189,8 @@ const newUser = async ({ body }) => {
   ];
 
   const marcadores = campos.map(() => '?').join(', ');
-  const valores = campos.map((c) => valorDeUsuario(body, c));
+  const valores = campos.map((c) =>
+    c === 'categoria' ? CATEGORIA_DE_PERFIL.empleado : valorDeUsuario(body, c));
 
   return {
     cuerpo: await escribir(
@@ -198,10 +206,12 @@ const newUser = async ({ body }) => {
 // PATCH
 // ---------------------------------------------------------------------------
 
+// Lo usa Configuracion para los datos propios. No toca `categoria`: la mandaba
+// fija en 'G', y el rol solo lo cambia un admin desde Permisos.
 const patchUser = async ({ body }) => {
   const campos = [
     'email', 'cognitoid', 'nombre', 'apellido', 'telefono', 'f_nacimiento',
-    'genero', 'rfc', 'domicilio', 'categoria', 'empleado',
+    'genero', 'rfc', 'domicilio', 'empleado',
   ];
 
   const asignaciones = campos.map((c) => `${c} = ?`).join(', ');
@@ -215,18 +225,22 @@ const patchUser = async ({ body }) => {
   };
 };
 
+// `categoria` es opcional: al activar una cuenta Permisos la manda para que
+// empiece con un rol; al removerla no viene y se conserva.
 const patchUserEmployment = async ({ body }) => {
   if (!body?.idusuario) return faltan('Missing idusuario.');
+  if (body.categoria != null && !esCategoria(body.categoria)) return faltan('Invalid categoria.');
   return {
     cuerpo: await escribir(
-      'UPDATE usuario SET empleado = ?, idsucursal = ? WHERE idusuario = ?',
-      [body.empleado ?? null, body.idsucursal ?? null, body.idusuario]
+      'UPDATE usuario SET empleado = ?, idsucursal = ?, categoria = COALESCE(?, categoria) WHERE idusuario = ?',
+      [body.empleado ?? null, body.idsucursal ?? null, body.categoria ?? null, body.idusuario]
     ),
   };
 };
 
 const patchUserCategory = async ({ body }) => {
   if (!body?.idusuario || !body?.categoria) return faltan('Missing idusuario or categoria.');
+  if (!esCategoria(body.categoria)) return faltan('Invalid categoria.');
   return {
     cuerpo: await escribir('UPDATE usuario SET categoria = ? WHERE idusuario = ?', [
       body.categoria,
