@@ -79,9 +79,6 @@ export default function RootLayoutClient({ children }) {
     TagManager.initialize(tagManagerArgs);
   }, [tagManagerArgs]);
 
-  // La pagina se arma debajo del loader desde el primer momento; el loader
-  // solo la tapa hasta que esta lista. Al navegar entre rutas la espera la
-  // pinta app/loading.jsx, y un cambio de ?load= no espera nada.
   return (
     <EntradaContext.Provider value={entradaTerminada ? null : retener}>
       <Script
