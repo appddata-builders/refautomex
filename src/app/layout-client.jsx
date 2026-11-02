@@ -13,16 +13,8 @@ import { ThemeProvider } from '@/app/lib/theme-context';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
-// No es una espera: es el tope para que algo que nunca termina (una imagen de
-// S3 que no contesta, una pantalla esperando datos) no deje el loader de
-// entrada puesto para siempre.
 const TOPE_ENTRADA_MS = 10_000;
 
-/**
- * La pagina termino de cargar de verdad: el `load` del documento (HTML,
- * estilos, imagenes y scripts del inicio) y las fuentes, para que no se vea el
- * cambio de tipografia al quitar el loader.
- */
 function usePaginaCargada() {
   const [cargada, setCargada] = useState(false);
 
