@@ -28,7 +28,7 @@ export default function OurValues() {
     ]
 
     return(
-        <div className="bg-[rgb(var(--color-bg))] h-full min-h-screen flex justify-center items-center">
+        <div className="bg-[rgb(var(--color-bg))] h-full min-h-[min(100vh,60rem)] py-16 flex justify-center items-center">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <Title title={t('about.values.subtitle')} desc={t('about.values.title')} leyend={t('about.values.leyend')} />
                 <div className="mt-10">

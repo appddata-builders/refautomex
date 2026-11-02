@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { obtenerIdToken } from '@/app/lib/respaldo-diario';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { PERMISOS_DE_SIEMPRE, completarPermisos } from '@/app/lib/permisos-menu';
 
 /**

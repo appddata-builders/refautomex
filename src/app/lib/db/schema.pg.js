@@ -46,7 +46,7 @@
  * secuencias con mayusculas en el nombre; la cache ya vale 1 y no cambia nada.
  */
 
-import { date, index, integer, numeric, pgTable, real, text, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { date, index, integer, numeric, pgTable, real, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
 // No vino de `drizzle-kit pull`: los niveles de cada anaquel en Asignacion de
 // productos ("A,B,C,ENC"). /patchShelfLevels la crea con el mismo DDL
@@ -322,6 +322,9 @@ export const sucursal = pgTable('sucursal', {
   direccion: varchar({ length: 255 }),
 });
 
+// `username` no vino de `drizzle-kit pull`: es el usuario para entrar sin el
+// correo (lib/usuario-acceso.js), siempre en minusculas. /api/acceso crea la
+// columna y su indice con el mismo DDL la primera vez que alguien lo guarda.
 export const usuario = pgTable('usuario', {
   idusuario: integer().primaryKey().generatedByDefaultAsIdentity(),
   email: varchar({ length: 100 }).notNull(),
@@ -336,7 +339,10 @@ export const usuario = pgTable('usuario', {
   categoria: varchar({ length: 45 }).notNull(),
   empleado: integer().notNull(),
   idsucursal: integer().references(() => sucursal.idsucursal, { onDelete: 'set null' }),
-});
+  username: varchar({ length: 30 }),
+}, (t) => [
+  uniqueIndex('usuario_username_unique').on(t.username),
+]);
 
 // No vinieron de `drizzle-kit pull`: vacaciones de los empleados.
 // /api/vacaciones las crea con el mismo DDL al escribir por primera vez.

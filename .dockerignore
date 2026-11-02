@@ -19,3 +19,7 @@ k8s
 Dockerfile
 .dockerignore
 README.md
+
+# respaldos de la base local de desarrollo: datos de clientes
+.db-local
+compose.local.yaml

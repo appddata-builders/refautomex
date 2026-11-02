@@ -33,10 +33,10 @@ const leerCuerpo = async (request) => {
 };
 
 // Fallas que no son del endpoint sino de que la API no alcanza Postgres. En
-// local casi siempre es el tunel cerrado (README: `npm run db:tunnel`) o una
-// credencial vieja en .env.local. Se responde 503 con un mensaje que el login
-// muestra tal cual, en vez de un 500 con "connect ECONNREFUSED 127.0.0.1:5433"
-// que el usuario veia como "Error al verificar el estado de empleado".
+// local casi siempre es la base de compose.local.yaml apagada (Docker cerrado)
+// o una credencial vieja en .env.local. Se responde 503 con un mensaje que el
+// login muestra tal cual, en vez de un 500 con "connect ECONNREFUSED" que el
+// usuario veia como "Error al verificar el estado de empleado".
 const SIN_RED = new Set(['ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT', 'EHOSTUNREACH', 'ECONNRESET', 'EAI_AGAIN']);
 const EN_LOCAL = process.env.NODE_ENV !== 'production';
 const SIN_BASE = 'No hay conexión con la base de datos. Intenta de nuevo en unos minutos.';
@@ -49,13 +49,13 @@ const faltaDeBase = (error) => {
 
   if (sinRed) {
     return EN_LOCAL
-      ? 'No hay conexión con la base de datos. Abre `npm run db:tunnel` en otra terminal y vuelve a intentar.'
+      ? 'No hay conexión con la base local. Abre Docker Desktop y vuelve a correr `npm run dev`, que la levanta.'
       : SIN_BASE;
   }
   // 28P01: usuario o contrasena rechazados por Postgres.
   if (error?.code === '28P01') {
     return EN_LOCAL
-      ? 'La base rechazó las credenciales. Revisa DATABASE_URL en .env.local y reinicia Next.'
+      ? 'La base local rechazó las credenciales. DATABASE_URL en .env.local debe coincidir con compose.local.yaml; reinicia Next.'
       : SIN_BASE;
   }
   return null;

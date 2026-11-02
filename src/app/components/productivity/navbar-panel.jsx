@@ -1,17 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useContext, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 import { FaUsersViewfinder, FaBoxesPacking, FaUserShield } from 'react-icons/fa6';
 import { AiOutlineDashboard, AiOutlineLogout } from 'react-icons/ai';
 import { HiClipboardDocumentList, HiMiniCog6Tooth } from "react-icons/hi2";
 import { IoIosArrowDown, IoIosArrowUp } from 'react-icons/io';
-import { getStorageValue, setStorageValue } from "@/app/lib/storage-values";
-import { userPool } from '@/app/lib/cognito-manager';
+import { getStorageValue } from "@/app/lib/storage-values";
+import { AuthContext } from '@/app/lib/auth-tracker';
 import { GiAutoRepair } from 'react-icons/gi';
 import { MdSell } from "react-icons/md";
-import { LuDatabaseBackup } from 'react-icons/lu';
 import { BiSolidUserCircle } from 'react-icons/bi';
 import RefautomexLogo from '@/app/components/refautomex-logo';
 import NotificationBell from './notification-bell';
@@ -87,6 +86,7 @@ export default function NavbarPanel() {
     const id = userData?.idusuario;
 
     const router = useRouter();
+    const { cerrarSesion } = useContext(AuthContext);
     const searchParams = useSearchParams();
     const lang = searchParams.get('lang') || 'es';
 
@@ -142,7 +142,6 @@ export default function NavbarPanel() {
         { name: t('panel.nav.home'), icon: AiOutlineDashboard, href: '/productivity?load=home', modulo: 'home' },
         { name: t('panel.nav.settings'), icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings', modulo: 'user-settings' },
         { name: t('panel.nav.personal'), icon: FaUserShield, href: '/productivity?load=personal', modulo: 'personal' },
-        { name: t('panel.nav.backups'), icon: LuDatabaseBackup, href: '/productivity?load=backups', modulo: 'backups' },
     ];
 
     const filteredNavItems = navItems
@@ -241,13 +240,8 @@ export default function NavbarPanel() {
                         key="salir"
                         className="px-3 bg-[rgb(var(--color-card))] text-[rgb(var(--color-error))] cursor-pointer w-full"
                         onClick={() => {
-                            try {
-                            setStorageValue('CognitoUserSession', null);
-                            userPool.getCurrentUser()?.signOut();
+                            cerrarSesion();
                             router.replace(`/calidad?lang=${lang}`);
-                            } catch (err) {
-                            console.log('No existe cuenta activa', err);
-                            }
                         }}
                         >
                         <div className="flex items-center py-2">

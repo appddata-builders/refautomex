@@ -1,20 +1,34 @@
 'use client';
-import { FaStar } from "react-icons/fa6";
-import { useTranslation } from '@/app/lib/text/text-provider';
+import { Cielo, FONDO_LOADER, StarOrbit, useRetenerEntrada } from '@/app/components/principal/star-loader';
 
-export default function Spinner() {
-    const { t } = useTranslation();
+/**
+ * Cualquier espera: la misma orbita de la entrada al sitio (star-loader.jsx).
+ * Por omision ocupa la pantalla; `compact` es para dentro de un panel, como el
+ * buscador de productos.
+ */
+export default function Spinner({ compact = false }) {
+    if (compact) return <SpinnerCompacto />;
+    return <SpinnerPantalla />;
+}
 
+function SpinnerCompacto() {
     return (
-        <div className="bg-[rgb(var(--color-card))]">
-            <div className="flex flex-col justify-center items-center h-screen w-screen
-            bg-gradient-to-bl from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-galaxy))]/50" >
-                <FaStar className="animate-bounce text-6xl text-yellow-500 h-12 w-12" />
-                <div className="gradient-text-title italic font-semibold text-xl animate-pulse">
-                    {t('navbar.spinner')}
-                </div>
-            </div>
+        <div className="flex min-h-64 w-full items-center justify-center py-8">
+            <StarOrbit tam="chico" />
         </div>
+    );
+}
 
+// Ocupa la pantalla: si todavia esta el loader de entrada, lo mantiene puesto.
+function SpinnerPantalla() {
+    useRetenerEntrada();
+    return (
+        <div
+            className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-[rgb(var(--color-bg))]"
+            style={{ backgroundImage: FONDO_LOADER }}
+        >
+            <Cielo />
+            <StarOrbit />
+        </div>
     );
 }

@@ -5,17 +5,16 @@ import { MdArrowForward, MdLocationOn, MdOutlineCalendarMonth, MdOutlineMail, Md
 import { AiOutlineLogout } from "react-icons/ai";
 import { FaUserCog } from "react-icons/fa";
 import Spinner from "@/app/components/principal/spinner";
-import { userPool } from '@/app/lib/cognito-manager';
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthContext } from '@/app/lib/auth-tracker';
-import { getStorageValue, setStorageValue } from "@/app/lib/storage-values";
+import { getStorageValue } from "@/app/lib/storage-values";
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Refautomex({ loading, websiteData }) {
     const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const [imgError, setImgError] = useState(false);
-    const { isAuthenticated } = useContext(AuthContext);
+    const { isAuthenticated, cerrarSesion } = useContext(AuthContext);
     const router = useRouter();
     const searchParams = useSearchParams();
     const lang = searchParams.get('lang') || 'es';
@@ -184,13 +183,8 @@ export default function Refautomex({ loading, websiteData }) {
                             type="button"
                             className="w-full rounded-3xl border border-red-200/60 bg-[rgb(var(--color-error))]/30 p-5 mt-5 text-left shadow hover:shadow-lg transition cursor-pointer"
                             onClick={() => {
-                                try {
-                                    setStorageValue('CognitoUserSession', null);
-                                    userPool.getCurrentUser()?.signOut();
-                                    router.replace('/');
-                                } catch (err) {
-                                    console.log('No existe cuenta activa', err);
-                                }
+                                cerrarSesion();
+                                router.replace('/');
                             }}
                         >
                             <div className="flex items-center gap-3">

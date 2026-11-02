@@ -1,12 +1,13 @@
-import Spinner from '@/app/components/principal/spinner'
-import { createContext, useState, useEffect } from 'react';
+import { createContext, useCallback, useState, useEffect } from 'react';
 import { userPool } from '@/app/lib/cognito-manager';
 import { getStorageValue, setStorageValue } from '@/app/lib/storage-values';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 
 export const AuthContext = createContext();
 
-export const AuthChecker = ({ children }) => {
+// Mientras revisa la sesion no pinta nada: el loader de entrada
+// (layout-client.jsx) sigue encima hasta que `alRevisar` le avisa.
+export const AuthChecker = ({ children, alRevisar }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [authStatusChecked, setAuthStatusChecked] = useState(false);
     const [userData, setUserData] = useState(null);
@@ -39,6 +40,24 @@ export const AuthChecker = ({ children }) => {
             setStorageValue('CognitoUserSession', null);
             setAuthStatusChecked(true);
         }
+    }, []);
+
+    useEffect(() => {
+        if (authStatusChecked) alRevisar?.();
+    }, [authStatusChecked, alRevisar]);
+
+    // Salir tiene que pasar por aqui y no solo por Cognito: este contexto sigue
+    // montado al cambiar de ruta y, sin avisarle, /calidad veria la sesion como
+    // abierta y regresaria al panel.
+    const cerrarSesion = useCallback(() => {
+        try {
+            userPool.getCurrentUser()?.signOut();
+        } catch (error) {
+            console.warn('No habia una sesion de Cognito que cerrar:', error);
+        }
+        setStorageValue('CognitoUserSession', null);
+        setIsAuthenticated(false);
+        setUserData(null);
     }, []);
 
     useEffect(() => {
@@ -85,14 +104,8 @@ export const AuthChecker = ({ children }) => {
     }, [username, forceRefreshUser]);
 
     return (
-        <AuthContext.Provider value={{ isAuthenticated, authStatusChecked, userData, setUserData }}>
-            {authStatusChecked ? (
-                children
-            ) : (
-                <div className="fixed inset-0 flex justify-center items-center h-screen bg-gradient-to-tl from-blue-200 via-slate-100 to-slate-50">
-                    <Spinner />
-                </div>
-            )}
+        <AuthContext.Provider value={{ isAuthenticated, authStatusChecked, userData, setUserData, cerrarSesion }}>
+            {authStatusChecked ? children : null}
         </AuthContext.Provider>
     );
 };

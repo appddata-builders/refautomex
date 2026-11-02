@@ -14,7 +14,7 @@
  */
 import { NextResponse } from 'next/server';
 
-import { exigirAdmin, exigirEmpleado } from '@/app/lib/respaldos-auth';
+import { exigirAdmin, exigirEmpleado } from '@/app/lib/sesion-auth';
 import { consultar, enTransaccion } from '@/app/lib/refautomex-db';
 import { perfilDeCategoria } from '@/app/lib/permisos-menu';
 import { fechaTienda } from '@/app/lib/avisos';

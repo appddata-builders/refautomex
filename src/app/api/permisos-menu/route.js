@@ -14,7 +14,7 @@
  */
 import { NextResponse } from 'next/server';
 
-import { exigirAdmin } from '@/app/lib/respaldos-auth';
+import { exigirAdmin } from '@/app/lib/sesion-auth';
 import { esNivel } from '@/app/lib/permisos-menu';
 import { escribirPermisos, leerPermisos } from '@/app/lib/permisos-menu-db';
 

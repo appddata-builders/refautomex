@@ -2,21 +2,44 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-### PostgreSQL del droplet en desarrollo
+### Base local de desarrollo
 
-Antes de iniciar la app, ejecuta `npm run db:tunnel` en otra terminal y mantenla
-abierta. Usa la IP del state de `../../../infrastructure-terraform-appddata`, la
-llave `~/.ssh/appddata_admin` y descubre la IP actual del contenedor de PostgreSQL.
-SSH puede pedir la contraseña de la llave. El puerto local es `127.0.0.1:5433`.
+En desarrollo la app usa su propio PostgreSQL en `127.0.0.1:5432`
+(`compose.local.yaml`, Docker), aparte de producción. Necesita Docker Desktop
+abierto; `npm run dev` levanta la base antes de iniciar Next (`predev`).
 
-Las URLs de `.env.local` deben usar las credenciales vigentes del droplet con ese
-host y puerto: `DATABASE_URL` y `DATABASE_URL_UNPOOLED` apuntan a `refautomex`;
-`APPSTRACT_DATABASE_URL` apunta a `appddata`. Reinicia Next.js después de cambiar
-credenciales, porque el pool de conexiones se conserva durante la recarga.
-Si falta `hydrate`, los textos se leen del JSON local.
+La primera vez, y cuando quieras datos más nuevos, llénala con
+`npm run db:local:cargar`. No se conecta a producción: baja de
+`s3://appddata-logs/Dump/<último día>/` el `refautomex.dump` y el CSV de
+`hydrate` (los textos), los restaura en local y recorta con
+`scripts/db-local-recorte.sql`:
 
-Puedes ajustar las rutas con `REFAUTOMEX_INFRA_DIR`, `REFAUTOMEX_SSH_KEY` y
-`REFAUTOMEX_DB_PORT`. Las llaves y credenciales no se guardan en el repositorio.
+- catálogos, productos, inventario y ubicaciones completos;
+- los empleados tal cual, para entrar con la misma cuenta de Cognito;
+- las 2000 ventas más recientes (`REFAUTOMEX_LOCAL_VENTAS`) y las compras del
+  último año;
+- clientes, pedidos y facturas anonimizados con correos `@local.test`.
+
+Pide la sesión de AWS del perfil `refautomex-download`
+(`aws login --profile refautomex-download`; otro con `REFAUTOMEX_AWS_PROFILE`).
+Los respaldos quedan en `.db-local/`, fuera de git y de la imagen. Volver a
+cargar reemplaza la base local completa. `npm run db:local:estado` dice de qué
+respaldo vino y cuántos renglones tiene cada tabla.
+
+`.env.local` apunta `DATABASE_URL` y `DATABASE_URL_UNPOOLED` a
+`postgresql://refautomex:refautomex@127.0.0.1:5432/refautomex` y
+`APPSTRACT_DATABASE_URL` a `.../appddata` del mismo contenedor.
+
+### PostgreSQL del droplet (solo a propósito)
+
+`npm run db:tunnel` abre un túnel SSH al PostgreSQL de producción en
+`127.0.0.1:5433`. Usa la IP del state de `../../../infrastructure-terraform-appddata`,
+la llave `~/.ssh/appddata_admin` y descubre la IP actual del contenedor; SSH
+puede pedir la contraseña de la llave. La app ya no lo usa: es para operar sobre
+producción con los scripts de abajo, pasándoles la URL de producción en
+`DATABASE_URL` en el mismo comando. Puedes ajustar las rutas con
+`REFAUTOMEX_INFRA_DIR`, `REFAUTOMEX_SSH_KEY` y `REFAUTOMEX_DB_PORT`. Las llaves y
+credenciales no se guardan en el repositorio.
 
 `npm run db:pg:check` compara las tablas, columnas, tipos, nulabilidad, claves
 primarias, identidades y valores por defecto de Drizzle con la base configurada,
@@ -33,9 +56,17 @@ datos lo guarda antes en el esquema `respaldo_llaves`. `-- --revertir` deja la
 base como estaba antes de aplicarlas. En una base con datos va antes de
 `db:pg:push`.
 
-En desarrollo se consulta actualmente la base del droplet mediante el túnel:
-no hay una copia local de inventario. `npm run db:pg:push` modifica esa base;
-solo debe usarse después de revisar los cambios de esquema. No sincroniza datos.
+`npm run db:web:catalogo` revisa la sucursal WEB de la tienda en línea: los
+productos activos con foto que existe en S3 y sin renglón en WEB. Es de solo
+lectura. Con `-- --aplicar` les crea su renglón copiado de TLALNEPANTLA
+(precio, costo y existencia; ubicación `0`) y lo anota en el esquema
+`respaldo_web`; `-- --revertir` borra exactamente esos renglones. La tienda solo
+muestra los que además tienen categoría (`idgrupo > 0`).
+
+Estos scripts y `npm run db:pg:push` usan `DATABASE_URL`: con `.env.local` tal
+cual, trabajan sobre la base local. `db:pg:push` modifica la base a la que
+apunta; contra producción solo después de revisar los cambios de esquema. No
+sincroniza datos.
 
 Por ahora tickets opera con TLALNEPANTLA (sucursal 2), independientemente de la
 sucursal asignada al empleado. El buscador, la venta y la impresión usan esa

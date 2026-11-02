@@ -17,7 +17,7 @@ export default function OurScope() {
 
     return (
     <div className="relative bg-gradient-to-b from-[rgb(var(--color-card))] via-[rgb(var(--color-gray))] to-[rgb(var(--color-gray-base))] 
-    z-0 h-full min-h-screen w-full text-gray-50 overflow-hidden">
+    z-0 h-full min-h-[min(100vh,60rem)] w-full text-gray-50 overflow-hidden">
         {bubblesData.map((bubble, index) => (
         <div
             key={index}

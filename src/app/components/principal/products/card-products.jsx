@@ -12,6 +12,7 @@ import ProductOverview from '@/app/components/principal/products/product-overvie
 import { useCart } from '@/app/lib/shopping-context';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import {
+  PRODUCT_FALLBACK_IMAGE,
   parseProductRoutes,
   resolveProductImage,
 } from '@/app/lib/product-images';
@@ -430,6 +431,11 @@ export default function CardProducts({ showSearchBar = true }) {
                           src={img}
                           alt={product.descripcion}
                           className="h-full w-full object-contain object-center bg-white"
+                          // Una ruta que ya no existe en S3 dejaba el texto
+                          // alternativo encima de la etiqueta de la tarjeta.
+                          onError={(evento) => {
+                            if (!evento.currentTarget.src.endsWith('no-img.png')) evento.currentTarget.src = PRODUCT_FALLBACK_IMAGE;
+                          }}
                         />
                       </ImageWrapper>
 

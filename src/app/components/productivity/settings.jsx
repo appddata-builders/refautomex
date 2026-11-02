@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
@@ -11,6 +11,8 @@ import { useTranslation } from '@/app/lib/text/text-provider';
 import GooglePlacesAutocomplete from '@/app/components/principal/account/google-places';
 import { FaStarHalfAlt } from 'react-icons/fa';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { AuthContext } from '@/app/lib/auth-tracker';
+import UsernameField from '@/app/components/productivity/username-field';
 
 const HeicToJpgUploader = dynamic(() => import('@/app/components/productivity/stock/heic-to-jpg-uploader'), { ssr: false });
 
@@ -76,6 +78,10 @@ export default function Settings() {
     const username = cognitoUserSession.idToken.payload["cognito:username"];
     const userData = getStorageValue(`user_${username}`);
     const idUsuario = userData?.idusuario || 0;
+    // El de la sesion llega de la base al cargar (auth-tracker) y puede ser mas
+    // nuevo que el guardado en el navegador.
+    const { userData: cuenta, setUserData } = useContext(AuthContext);
+    const usuarioDeAcceso = (cuenta ?? userData)?.username ?? '';
 
     const [isEditable, setEditable] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -109,6 +115,15 @@ export default function Settings() {
     // hasta el siguiente envio.
     const clearFieldError = (field) =>
         setErrorMessages((prev) => (prev[field] ? { ...prev, [field]: '' } : prev));
+
+    // Se lee de nuevo del almacenamiento: `userData` es el del ultimo render y
+    // guardar el usuario no vuelve a pintar esta pantalla. La sesion tambien se
+    // actualiza para que Configuracion lo muestre al volver a abrirla.
+    const handleUsernameSaved = (nuevo) => {
+        const actual = getStorageValue(`user_${username}`);
+        if (actual) setStorageValue(`user_${username}`, { ...actual, username: nuevo });
+        setUserData((prev) => (prev ? { ...prev, username: nuevo } : prev));
+    };
 
     const toggleEdit = (event) => {
         event.preventDefault();
@@ -411,6 +426,8 @@ export default function Settings() {
                                     </div>
                                 </div>
                             </section>
+
+                            <UsernameField initial={usuarioDeAcceso} onSaved={handleUsernameSaved} />
 
                             <section className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 shadow-md">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -621,7 +621,7 @@ const FindProducts = forwardRef(({
             )}
             <div className='flex justify-center overflow-y-auto h-[570px] w-full max-w-[520px] mx-auto'>
             {isLoading ? (
-                <Spinner />
+                <Spinner compact />
             ) : error ? (
                 <div role="alert" className="p-6 text-center">
                     <p>{t('common.errorProducts')}</p>

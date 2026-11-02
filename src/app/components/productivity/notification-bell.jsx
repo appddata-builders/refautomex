@@ -5,9 +5,7 @@ import Link from 'next/link';
 import { CloseButton, Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
 import { BellIcon } from '@heroicons/react/24/outline';
 import { useTranslation } from '@/app/lib/text/text-provider';
-import {
-  FaltaPermiso, alCambiarPendiente, obtenerIdToken, respaldarAhora, respaldoPendiente,
-} from '@/app/lib/respaldo-diario';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 
 // Sin ventanas emergentes ni sonido: solo el numero en la campana. Se revisa
 // al cargar, cada 5 minutos con la pestana visible y al abrirla.
@@ -44,21 +42,17 @@ function AlAbrir({ alAbrir }) {
 export default function NotificationBell({ lang }) {
   const { t } = useTranslation();
   const [avisos, setAvisos] = useState([]);
-  const [perfil, setPerfil] = useState(null);
   const [cargado, setCargado] = useState(false);
   const [fallo, setFallo] = useState(false);
   // Firmas que se marcaron como vistas en esta sesion: apagan el numero al
   // momento, sin esperar a la siguiente consulta.
   const [vistos, setVistos] = useState(() => new Set());
-  const [respaldo, setRespaldo] = useState(null);
-  const [respaldando, setRespaldando] = useState(false);
   const pidiendo = useRef(null);
 
   const cargar = useCallback(() => {
     pidiendo.current ??= llamarAvisos()
       .then((datos) => {
         setAvisos(datos.avisos || []);
-        setPerfil(datos.perfil || null);
         setFallo(false);
         return datos.avisos || [];
       })
@@ -76,8 +70,6 @@ export default function NotificationBell({ lang }) {
 
   useEffect(() => {
     cargar();
-    setRespaldo(respaldoPendiente());
-    const quitar = alCambiarPendiente(setRespaldo);
     const alGuardarCalendario = async () => {
       // Si habia una lectura anterior al guardado, esperar y pedir datos nuevos.
       if (pidiendo.current) await pidiendo.current;
@@ -90,7 +82,6 @@ export default function NotificationBell({ lang }) {
     return () => {
       clearInterval(id);
       window.removeEventListener('refautomex:calendario-actualizado', alGuardarCalendario);
-      quitar();
     };
   }, [cargar]);
 
@@ -110,20 +101,7 @@ export default function NotificationBell({ lang }) {
     }
   }, [cargar]);
 
-  const resolverRespaldo = async () => {
-    setRespaldando(true);
-    try {
-      await respaldarAhora({ pedirPermiso: true });
-    } catch (error) {
-      setRespaldo(error instanceof FaltaPermiso ? 'permiso' : 'error');
-    } finally {
-      setRespaldando(false);
-    }
-  };
-
-  const conRespaldo = perfil === 'admin' && Boolean(respaldo);
-  const sinVer = avisos.filter((a) => a.nuevo && !vistos.has(`${a.clave}:${a.firma}`)).length
-    + (conRespaldo ? 1 : 0);
+  const sinVer = avisos.filter((a) => a.nuevo && !vistos.has(`${a.clave}:${a.firma}`)).length;
 
   const textos = (aviso) => {
     const datos = { ...aviso.datos, nombres: textoNombres(aviso.datos || {}) };
@@ -159,40 +137,6 @@ export default function NotificationBell({ lang }) {
         </div>
 
         <ul className="max-h-[70vh] divide-y divide-[rgb(var(--color-border))] overflow-y-auto">
-          {conRespaldo && (
-            <li className={filaClase}>
-              <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${PUNTO.alta}`} aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold">{t('panel.notices.backup.title')}</p>
-                <p className="text-xs opacity-75">
-                  {t({ carpeta: 'panel.backups.pendingFolder', permiso: 'panel.backups.pendingPermission' }[respaldo] ?? 'panel.backups.pendingError')}
-                </p>
-                <div className="mt-2">
-                  {respaldo === 'carpeta' ? (
-                    <CloseButton
-                      as={Link}
-                      href={`/productivity?load=backups&lang=${lang}`}
-                      className="inline-flex rounded-full bg-[rgb(var(--color-refautomex))] px-3 py-1 text-xs font-semibold text-black"
-                    >
-                      {t('panel.backups.goToBackups')}
-                    </CloseButton>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={resolverRespaldo}
-                      disabled={respaldando}
-                      className="inline-flex rounded-full bg-[rgb(var(--color-refautomex))] px-3 py-1 text-xs font-semibold text-black disabled:opacity-60"
-                    >
-                      {respaldando
-                        ? t('panel.backups.working')
-                        : respaldo === 'permiso' ? t('panel.backups.authorize') : t('panel.backups.retry')}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </li>
-          )}
-
           {avisos.map((aviso) => {
             const { titulo, detalle } = textos(aviso);
             const contenido = (
@@ -229,7 +173,7 @@ export default function NotificationBell({ lang }) {
           })}
         </ul>
 
-        {!conRespaldo && avisos.length === 0 && (
+        {avisos.length === 0 && (
           <p className="px-4 py-6 text-sm opacity-70">
             {!cargado ? t('panel.notices.loading') : fallo ? t('panel.notices.loadError') : t('panel.notices.empty')}
           </p>

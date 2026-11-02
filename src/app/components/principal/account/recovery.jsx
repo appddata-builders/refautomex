@@ -5,6 +5,7 @@ import RefautomexLogo from "@/app/components/refautomex-logo";
 import { AiFillEye } from 'react-icons/ai';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { correoDeAcceso, esCorreoDeAcceso } from '@/app/lib/usuario-acceso';
 
 export default function Recovery() {
     const router = useRouter();
@@ -12,6 +13,10 @@ export default function Recovery() {
     const lang = searchParams.get('lang') || 'es';
     const { i18n, t } = useTranslation();
     const [email, setEmail] = useState('');
+    // El correo al que Cognito manda el codigo. Si se escribio un usuario que
+    // no existe queda vacio y el paso 2 responde como un codigo equivocado.
+    const [correo, setCorreo] = useState(null);
+    const [infoMessage, setInfoMessage] = useState(null);
     const [verificationCode, setVerificationCode] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [verifyNewPassword, setVerifyNewPassword] = useState('');
@@ -27,19 +32,46 @@ export default function Recovery() {
         isSame: false,
     });
 
+    // Correo o usuario, como en el login. Con un usuario se responde lo mismo
+    // exista o no, y sin repetir el correo: seria decir de quien es.
     const handleSendCode = async () => {
+        setAlertMessage(null);
+        setInfoMessage(null);
+        const conUsuario = !esCorreoDeAcceso(email);
+        let destino;
+        try {
+            destino = await correoDeAcceso(email);
+        } catch (error) {
+            setAlertMessage(error?.userMessage || t('common.tryLater'));
+            return;
+        }
+        setCorreo(destino);
+
+        const siguePaso2 = () => {
+            if (conUsuario) setInfoMessage(t('account.recoveryUserSent'));
+            setStep(2);
+        };
+        if (!destino) {
+            siguePaso2();
+            return;
+        }
+
         const cognitoUser = new CognitoUser({
-            Username: email,
+            Username: destino,
             Pool: userPool,
         });
 
         cognitoUser.forgotPassword({
             onSuccess: (data) => {
                 console.log('Code sent:', data);
-                setStep(2);
+                siguePaso2();
             },
             onFailure: (err) => {
                 console.error(err);
+                if (conUsuario && err.code === 'UserNotFoundException') {
+                    siguePaso2();
+                    return;
+                }
                 setAlertMessage(err.message || JSON.stringify(err));
             },
         });
@@ -50,9 +82,13 @@ export default function Recovery() {
             setAlertMessage(t('password.match'));
             return;
         }
+        if (!correo) {
+            setAlertMessage(t('account.recoveryCodeInvalid'));
+            return;
+        }
 
         const cognitoUser = new CognitoUser({
-            Username: email,
+            Username: correo,
             Pool: userPool,
         });
 
@@ -60,6 +96,7 @@ export default function Recovery() {
             onSuccess: () => {
                 console.log('Password confirmed');
                 setAlertMessage(null);
+                setInfoMessage(null);
                 setStep(3);
             },
             onFailure: (err) => {
@@ -100,15 +137,19 @@ export default function Recovery() {
                         <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleSendCode(); }}>
                             <div>
                                 <label htmlFor="email" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    {t('account.mail')}
+                                    {t('account.mailOrUser')}
                                 </label>
                                 <div className="mt-2">
                                     <input
                                         id="email"
                                         name="email"
-                                        type="email"
-                                        autoComplete="email"
-                                        placeholder={t('account.mail')}
+                                        type="text"
+                                        inputMode="email"
+                                        autoComplete="username"
+                                        autoCapitalize="none"
+                                        autoCorrect="off"
+                                        spellCheck={false}
+                                        placeholder={t('account.mailOrUser')}
                                         required
                                         onChange={(e) => setEmail(e.target.value)}
                                         className="block w-full rounded-md border-0 py-1.5 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
@@ -124,6 +165,9 @@ export default function Recovery() {
                     )}
                     {step === 2 && (
                         <form className="space-y-6" onSubmit={(e) => { e.preventDefault(); handleResetPassword(); }}>
+                            {infoMessage && (
+                                <p role="status" className="text-center text-sm text-[rgb(var(--color-text))]">{infoMessage}</p>
+                            )}
                             <div>
                                 <label htmlFor="verificationCode" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
                                     {t('account.verifyCode')}

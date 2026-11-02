@@ -22,8 +22,6 @@ import Capture from '@/app/components/productivity/requirements/capture';
 import Providers from '@/app/components/productivity/requirements/providers';
 import Site from '@/app/components/productivity/orders/site';
 import Delivery from '@/app/components/productivity/orders/delivery';
-import Backups from '@/app/components/productivity/backups';
-import BackupScheduler from '@/app/components/productivity/backup-scheduler';
 
 export default function Productivity() {
   const router = useRouter();
@@ -38,7 +36,6 @@ export default function Productivity() {
   // se pinta.
   const permisos = usePermisosMenu();
   const perfil = perfilDeCategoria(userData?.categoria);
-  const isAdmin = perfil === 'admin';
   const allowed = puedeVer(permisos, load, perfil);
 
   // Cada cambio de modulo vuelve a pedir los permisos: si un admin le quito
@@ -78,7 +75,6 @@ export default function Productivity() {
       case 'calendar': return <Calendar />;
       case 'delivery': return <Delivery />;
       case 'invoice': return <Invoice />;
-      case 'backups': return <Backups />;
       default: return <Home />;
     }
   }, [load, allowed]);
@@ -86,12 +82,5 @@ export default function Productivity() {
   if (isAuthenticated === false) return null;
   if (userData && userData.empleado === 0) return null;
 
-  // El respaldo de las 3 pm corre en todo el panel, no solo en Respaldos: a
-  // esa hora el administrador puede estar en cualquier otra pantalla.
-  return (
-    <>
-      {component}
-      {isAdmin && <BackupScheduler />}
-    </>
-  );
+  return component;
 }

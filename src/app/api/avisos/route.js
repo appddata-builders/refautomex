@@ -9,7 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 
-import { exigirEmpleado } from '@/app/lib/respaldos-auth';
+import { exigirEmpleado } from '@/app/lib/sesion-auth';
 import { leerPermisos } from '@/app/lib/permisos-menu-db';
 import { calcularAvisos, leerVistos, marcarVistos } from '@/app/lib/avisos';
 import { perfilDeCategoria } from '@/app/lib/permisos-menu';

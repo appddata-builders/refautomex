@@ -45,3 +45,6 @@ next-env.d.ts
 # como referencia de la migracion a Postgres. Contiene credenciales en claro:
 # nunca debe volver a git.
 .apirefautomex
+
+# base local de desarrollo: respaldos bajados de S3 (scripts/db-local.sh)
+/.db-local/

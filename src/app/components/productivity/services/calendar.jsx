@@ -13,7 +13,7 @@ import { LuSparkles } from 'react-icons/lu';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import { useTranslation } from '@/app/lib/text/text-provider';
-import { obtenerIdToken } from '@/app/lib/respaldo-diario';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { perfilDeCategoria } from '@/app/lib/permisos-menu';
 import { ETIQUETAS_CALENDARIO } from '@/app/lib/calendario';
 

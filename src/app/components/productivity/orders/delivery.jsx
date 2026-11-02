@@ -55,9 +55,7 @@ export default function Delivery() {
         />
         <div className="mt-10">
           {isLoading ? (
-            <div className="py-20">
-              <Spinner />
-            </div>
+            <Spinner compact />
           ) : error ? (
             <div className="rounded-3xl border border-red-200 bg-red-50 text-red-700 p-6 text-center space-y-3">
               <p>{error}</p>

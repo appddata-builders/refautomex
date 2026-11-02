@@ -48,8 +48,6 @@ export const admiteLectura = (modulo, perfil) => Boolean(modulo.lectura) && perf
 //   - Inicio y Configuracion son a donde se cae cuando un modulo no se permite.
 //   - Permisos es solo de admin: ahi se activan cuentas, se cambian
 //     sucursales y roles, y se devuelven estos permisos.
-//   - Respaldos lo valida /api/respaldos contra categoria 'A'; darselo a otro
-//     perfil solo le mostraria errores.
 // Supervisor tiene lo que tenia el empleado antes de que hubiera supervisores;
 // Empleado lo mismo, pero en solo lectura donde se puede.
 export const MODULOS = [
@@ -82,10 +80,6 @@ export const MODULOS = [
   },
   {
     clave: 'personal', admin: 'total', supervisor: 'no', empleado: 'no',
-    fijo: { admin: 'total', supervisor: 'no', empleado: 'no' },
-  },
-  {
-    clave: 'backups', admin: 'total', supervisor: 'no', empleado: 'no',
     fijo: { admin: 'total', supervisor: 'no', empleado: 'no' },
   },
 ];

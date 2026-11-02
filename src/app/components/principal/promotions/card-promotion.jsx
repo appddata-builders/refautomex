@@ -22,6 +22,9 @@ export default function CardPromotion({elements}) {
 
   return (
     <section className='bg-[rgb(var(--color-gray))]'>
+      {/* En la misma columna que el resto del sitio: a todo lo ancho, en una
+          pantalla grande cada promocion media 800px. */}
+      <div className='mx-auto max-w-7xl px-2 sm:px-4 lg:px-6'>
       <Swiper
         slidesPerView={slidesPerView}
         spaceBetween={20}
@@ -46,6 +49,7 @@ export default function CardPromotion({elements}) {
           </SwiperSlide>
         ))}
       </Swiper>
+      </div>
     </section>
   );
 }

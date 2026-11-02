@@ -6,6 +6,7 @@ import { FaUsersViewfinder } from 'react-icons/fa6';
 import { BiSolidUserCircle } from 'react-icons/bi';
 import { BsStars } from 'react-icons/bs';
 import {
+    FiAtSign,
     FiCalendar,
     FiChevronDown,
     FiDatabase,
@@ -24,7 +25,7 @@ import {
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { getStorageValue, setStorageValue } from '@/app/lib/storage-values';
 import { AuthContext } from '@/app/lib/auth-tracker';
-import { obtenerIdToken } from '@/app/lib/respaldo-diario';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { CATEGORIA_DE_PERFIL, PERFILES, perfilDeCategoria } from '@/app/lib/permisos-menu';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
@@ -576,6 +577,7 @@ export default function Personal() {
     const normalizedSearch = searchEmail.trim().toLowerCase();
     const filteredUsers = users.filter((user) =>
         (user.email || '').toLowerCase().includes(normalizedSearch)
+        || (user.username || '').includes(normalizedSearch)
     );
 
     // Los empleados sin sucursal van primero: recien activados, les falta una.
@@ -659,6 +661,7 @@ export default function Personal() {
         ];
 
         const dbDetails = [
+            { label: t('panel.personal.username'), value: user.username, icon: FiAtSign },
             { label: t('panel.personal.gender'), value: user.genero, icon: FiUser },
             { label: t('panel.personal.birth'), value: formatBirthDate(user.f_nacimiento), icon: FiCalendar },
             { label: t('invoice.rfc'), value: user.rfc, icon: FiTag },
