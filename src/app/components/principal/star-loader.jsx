@@ -11,7 +11,7 @@ import { useTranslation } from '@/app/lib/text/text-provider';
  * Las orbitas y el giro de la estrella son CSS (globals.css, "Loader"): corren
  * desde el primer pintado, antes de que llegue el JavaScript, que es justo
  * cuando se ve el loader. framer-motion pone el cielo, la onda del texto y la
- * salida, que se cierra hacia la estrella.
+ * salida, que se desvanece por capas.
  */
 
 // La estrella de Refautomex: el FaStar de react-icons/fa6 (Font Awesome), tal
@@ -61,6 +61,19 @@ const PASO_ESTELA = 1 / 24;
 // Un borde fino con el color del texto: el dorado se lee igual sobre el fondo
 // claro que sobre el oscuro.
 const CONTORNO = 'drop-shadow(0 0 0.5px rgb(var(--color-text) / 0.55))';
+
+// La salida de PageLoader va por capas: primero el fondo, luego las orbitas y
+// el texto, y al final la estrella del centro. Son variantes: solo se activan
+// cuando PageLoader sale; en el Spinner no hacen nada.
+const SALIDA_FONDO = { salida: { opacity: 0, transition: { duration: 0.5, ease: 'easeOut' } } };
+const SALIDA_ORBITAS = { salida: { opacity: 0, transition: { duration: 0.35, delay: 0.15, ease: 'easeOut' } } };
+const salidaEstrella = (quieto) => ({
+  salida: {
+    opacity: 0,
+    ...(quieto ? {} : { scale: 0.92, filter: 'blur(6px)' }),
+    transition: { duration: 0.5, delay: 0.45, ease: [0.4, 0, 0.2, 1] },
+  },
+});
 
 /**
  * La elipse como trayectoria de CSS (offset-path), en las coordenadas de la
@@ -121,7 +134,11 @@ export function StarOrbit({ tam = 'grande' }) {
       <span className="sr-only">{texto}</span>
 
       <div className="relative" style={{ width: caja, height: caja }} aria-hidden="true">
-        <svg className="absolute inset-0 h-full w-full overflow-visible" viewBox={`${-caja / 2} ${-caja / 2} ${caja} ${caja}`}>
+        <motion.svg
+          className="absolute inset-0 h-full w-full overflow-visible"
+          viewBox={`${-caja / 2} ${-caja / 2} ${caja} ${caja}`}
+          variants={SALIDA_ORBITAS}
+        >
           {ORBITAS.map((o, i) => (
             <ellipse
               key={i}
@@ -134,7 +151,7 @@ export function StarOrbit({ tam = 'grande' }) {
               strokeDasharray={i === 1 ? '2 5' : undefined}
             />
           ))}
-        </svg>
+        </motion.svg>
 
         <div
           className="loader-pulso absolute left-1/2 top-1/2 rounded-full blur-2xl"
@@ -159,41 +176,45 @@ export function StarOrbit({ tam = 'grande' }) {
           />
         </div>
 
-        {ORBITAS.map((o, i) => {
-          const camino = trayectoria(o, escala, caja);
-          return ESTELA.map((intensidad, k) => {
-            const lado = o.tam * escala * (1 - k * 0.2);
-            // Retrasos negativos: todas arrancan ya en camino, la cabeza adelante.
-            const retraso = -((ESTELA.length - 1 - k) * PASO_ESTELA * o.dur);
-            return (
-              <span
-                key={`${i}-${k}`}
-                className={`loader-orbita ${o.sentido < 0 ? 'loader-orbita-inversa' : ''} ${k > 0 ? 'loader-estela' : ''} absolute left-0 top-0 block`}
-                style={{
-                  width: lado,
-                  height: lado,
-                  offsetPath: camino,
-                  animationDuration: `${o.dur}s`,
-                  animationDelay: `${retraso.toFixed(3)}s`,
-                }}
-              >
-                <Estrella
-                  className="h-full w-full"
+        {/* Misma caja que la de afuera: las trayectorias no cambian. */}
+        <motion.div className="absolute inset-0" variants={SALIDA_ORBITAS}>
+          {ORBITAS.map((o, i) => {
+            const camino = trayectoria(o, escala, caja);
+            return ESTELA.map((intensidad, k) => {
+              const lado = o.tam * escala * (1 - k * 0.2);
+              // Retrasos negativos: todas arrancan ya en camino, la cabeza adelante.
+              const retraso = -((ESTELA.length - 1 - k) * PASO_ESTELA * o.dur);
+              return (
+                <span
+                  key={`${i}-${k}`}
+                  className={`loader-orbita ${o.sentido < 0 ? 'loader-orbita-inversa' : ''} ${k > 0 ? 'loader-estela' : ''} absolute left-0 top-0 block`}
                   style={{
-                    opacity: intensidad,
-                    color: `rgb(var(${o.color}))`,
-                    filter: k === 0 ? `${CONTORNO} drop-shadow(0 0 6px rgb(var(${o.color})))` : undefined,
+                    width: lado,
+                    height: lado,
+                    offsetPath: camino,
+                    animationDuration: `${o.dur}s`,
+                    animationDelay: `${retraso.toFixed(3)}s`,
                   }}
-                />
-              </span>
-            );
-          });
-        })}
+                >
+                  <Estrella
+                    className="h-full w-full"
+                    style={{
+                      opacity: intensidad,
+                      color: `rgb(var(${o.color}))`,
+                      filter: k === 0 ? `${CONTORNO} drop-shadow(0 0 6px rgb(var(${o.color})))` : undefined,
+                    }}
+                  />
+                </span>
+              );
+            });
+          })}
+        </motion.div>
       </div>
 
-      <p
+      <motion.p
         className={`select-none font-semibold italic tracking-wide text-[rgb(var(--color-text))] ${tam === 'grande' ? 'text-lg sm:text-xl' : 'text-sm'}`}
         aria-hidden="true"
+        variants={SALIDA_ORBITAS}
       >
         {[...texto].map((letra, i) => (
           <motion.span
@@ -206,7 +227,7 @@ export function StarOrbit({ tam = 'grande' }) {
             {letra === ' ' ? ' ' : letra}
           </motion.span>
         ))}
-      </p>
+      </motion.p>
     </div>
   );
 }
@@ -230,26 +251,22 @@ export const FONDO_LOADER = 'radial-gradient(circle at 50% 45%, rgb(var(--color-
 
 /**
  * La entrada al sitio: cubre la pagina mientras carga y, al terminar, se
- * cierra hacia la estrella del centro. Va dentro de <AnimatePresence>.
+ * desvanece por capas: el fondo deja ver la pagina, las orbitas y el texto se
+ * apagan, y la estrella del centro es la ultima en irse. Va dentro de
+ * <AnimatePresence>.
  */
 export function PageLoader() {
   const quieto = useReducedMotion();
   return (
-    <motion.div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-[rgb(var(--color-bg))]"
-      style={{ backgroundImage: FONDO_LOADER }}
-      initial={false}
-      animate={{ clipPath: 'circle(150% at 50% 50%)', opacity: 1 }}
-      exit={quieto ? { opacity: 0 } : { clipPath: 'circle(0% at 50% 50%)' }}
-      transition={{ duration: quieto ? 0.3 : 0.8, ease: [0.76, 0, 0.24, 1] }}
-    >
-      <Cielo />
+    <motion.div className="fixed inset-0 z-[100] flex items-center justify-center" initial={false} exit="salida">
       <motion.div
-        initial={false}
-        animate={{ transform: 'scale(1) rotate(0deg)', opacity: 1 }}
-        exit={quieto ? { opacity: 0 } : { transform: 'scale(0.35) rotate(72deg)', opacity: 0 }}
-        transition={{ duration: 0.7, ease: [0.76, 0, 0.24, 1] }}
+        className="absolute inset-0 bg-[rgb(var(--color-bg))]"
+        style={{ backgroundImage: FONDO_LOADER }}
+        variants={SALIDA_FONDO}
       >
+        <Cielo />
+      </motion.div>
+      <motion.div style={{ filter: 'blur(0px)' }} variants={salidaEstrella(quieto)}>
         <StarOrbit />
       </motion.div>
     </motion.div>
