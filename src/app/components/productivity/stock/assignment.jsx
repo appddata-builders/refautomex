@@ -11,9 +11,12 @@ import {
     FaWarehouse,
     FaXmark,
 } from 'react-icons/fa6';
+import { useRouter } from 'next/navigation';
 import Title from '../title';
 import FindProducts from '@/app/components/productivity/sales/find-products';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { perfilDeCategoria, puedeVer } from '@/app/lib/permisos-menu';
+import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
 import PopPortal from '@/app/lib/pop-portal';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { useTranslation } from '@/app/lib/text/text-provider';
@@ -30,6 +33,7 @@ import {
     undoSteps,
 } from './locations';
 import { MapLegend, ShelfCard, ShelfPicker } from './assignment-map';
+import { ASSIGN_HANDOFF_KEY } from './inventory-model';
 import { LevelsEditor, MatrixDetail, PlaceForm, SHEET_TITLE_ID } from './assignment-sheets';
 
 const TOAST_MS = 6000;
@@ -76,6 +80,9 @@ export default function Assignment() {
     const { t } = useTranslation();
     const { userData } = useContext(AuthContext);
     const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
+    const router = useRouter();
+    const permisos = usePermisosMenu();
+    const canAssignHere = puedeVer(permisos, 'inventories', perfilDeCategoria(userData?.categoria));
 
     const [branches, setBranches] = useState([]);
     const [branchId, setBranchId] = useState(null);
@@ -89,7 +96,8 @@ export default function Assignment() {
     // Anaquel que se esta trabajando: es lo unico que se pinta.
     const [selected, setSelected] = useState(null);
     const [showUnassigned, setShowUnassigned] = useState(true);
-    // Pestana del buscador: 'unassigned' (solo por ubicar) o 'all' (todos).
+    // Pestana del buscador: 'unassigned' (por ubicar), 'branch' (todo lo de la
+    // sucursal) o 'missing' (lo del catalogo que no esta en ella).
     const [phoneTab, setPhoneTab] = useState('unassigned');
     // Matriz que espera su producto despues de "Ubicar un producto aqui".
     const [placeTarget, setPlaceTarget] = useState(null);
@@ -112,7 +120,7 @@ export default function Assignment() {
     useEffect(() => {
         const prefs = readPrefs();
         setShowUnassigned(prefs.showUnassigned ?? true);
-        if (prefs.phoneTab === 'all') setPhoneTab('all');
+        if (['branch', 'missing'].includes(prefs.phoneTab)) setPhoneTab(prefs.phoneTab);
     }, []);
 
     useEffect(() => {
@@ -255,7 +263,24 @@ export default function Assignment() {
         () => new Set(warehouse.unassigned.map((row) => row.num_parte)),
         [warehouse]
     );
-    const onlyUnassigned = useCallback((product) => unassignedParts.has(product.num_parte), [unassignedParts]);
+    // El buscador trae todo el catalogo (todas las sucursales, WEB y lo que no
+    // esta en ninguna) y las pestanas lo parten con el mapa de esta sucursal.
+    const branchParts = useMemo(() => new Set(rows.map((row) => row.num_parte)), [rows]);
+    const finderViews = useMemo(() => [
+        {
+            id: 'unassigned',
+            label: t('panel.assignment.tabUnassigned'),
+            filter: (product) => unassignedParts.has(product.num_parte),
+            emptyMessage: t('panel.assignment.unassignedEmpty'),
+        },
+        { id: 'branch', label: t('panel.assignment.tabBranch'), filter: (product) => branchParts.has(product.num_parte) },
+        {
+            id: 'missing',
+            label: t('panel.assignment.tabMissing'),
+            filter: (product) => !branchParts.has(product.num_parte),
+            emptyMessage: t('panel.assignment.missingEmpty'),
+        },
+    ], [t, unassignedParts, branchParts]);
 
     // El buscador trae su propia copia (getAllProducts) y no se entera de lo que
     // se mueve aqui: sin esto seguia mostrando el indice anterior. Se le pasa la
@@ -287,6 +312,17 @@ export default function Assignment() {
         const next = !showUnassigned;
         setShowUnassigned(next);
         savePrefs({ showUnassigned: next });
+    };
+
+    // Lo que no esta en la sucursal se da de alta en Inventarios (lleva precio y
+    // existencia): se abre con la sucursal elegida y el producto en el lote.
+    const assignInInventories = (product) => {
+        try {
+            sessionStorage.setItem(ASSIGN_HANDOFF_KEY, JSON.stringify({ idsucursal: branchId, partes: [product.num_parte] }));
+        } catch {
+            return;
+        }
+        router.push('/productivity?load=inventories');
     };
 
     const changePhoneTab = (tab) => {
@@ -553,10 +589,6 @@ export default function Assignment() {
         }] : []),
     ];
 
-    const phoneTabs = [
-        { id: 'unassigned', label: t('panel.assignment.tabUnassigned'), count: warehouse.stats.unassigned },
-        { id: 'all', label: t('panel.assignment.tabAll'), count: rows.length },
-    ];
     // El hueco exacto (01A05-1) si "Ubicar aqui" vino de una posicion libre; si no, la matriz.
     const targetLabel = placeTarget
         ? `${placeTarget.code}${placeTarget.index === null ? '' : `-${placeTarget.index}`}`
@@ -639,25 +671,6 @@ export default function Assignment() {
                             />
                         </button>
                         <div className={showUnassigned ? 'block pb-2' : 'hidden'}>
-                            <div role="tablist" className="mx-3 mb-2 grid grid-cols-2 gap-1 rounded-xl bg-[rgb(var(--color-bg))] p-1">
-                                {phoneTabs.map(({ id, label, count }) => (
-                                    <button
-                                        key={id}
-                                        type="button"
-                                        role="tab"
-                                        aria-selected={phoneTab === id}
-                                        onClick={() => changePhoneTab(id)}
-                                        className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg text-sm font-semibold transition ${phoneTab === id
-                                            ? 'bg-amber-500 text-slate-900 shadow'
-                                            : 'text-[rgb(var(--color-gray-base))]'}`}
-                                    >
-                                        {label}
-                                        <span className={`rounded-full px-1.5 text-xs ${phoneTab === id ? 'bg-slate-900/15' : 'bg-[rgb(var(--color-gray))]'}`}>
-                                            {count}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
                             {placeTarget && (
                                 <div className="mx-3 mb-2 flex items-center gap-2 rounded-xl bg-amber-400/25 px-3 py-2 text-sm font-medium">
                                     <span className="flex-1">{t('panel.assignment.pickProduct', { code: targetLabel })}</span>
@@ -675,14 +688,22 @@ export default function Assignment() {
                                 <FindProducts
                                     ref={findProductsRef}
                                     branch={{ id: branchId, label: branchName }}
-                                    includeWebBranch={false}
-                                    includePendingProducts={false}
+                                    showAllBranches
+                                    includePendingProducts
                                     allowedSearchTypes={SEARCH_TYPES}
                                     onProductPick={handlePick}
-                                    productFilter={phoneTab === 'unassigned' ? onlyUnassigned : undefined}
                                     decorateProduct={withCurrentLocation}
-                                    pickActionLabel={pickLabel}
-                                    emptyMessage={phoneTab === 'unassigned' ? t('panel.assignment.unassignedEmpty') : undefined}
+                                    views={finderViews}
+                                    view={phoneTab}
+                                    onViewChange={changePhoneTab}
+                                    productAction={(product) => {
+                                        if (branchParts.has(product.num_parte)) {
+                                            return { label: pickLabel, tone: 'primary', onClick: () => handlePick(product) };
+                                        }
+                                        return canAssignHere
+                                            ? { label: t('panel.assignment.addToBranch'), tone: 'outline', onClick: () => assignInInventories(product), title: t('panel.assignment.addToBranchHint', { branch: branchName }) }
+                                            : { label: t('panel.assignment.notHere'), tone: 'muted', disabled: true };
+                                    }}
                                 />
                             )}
                         </div>

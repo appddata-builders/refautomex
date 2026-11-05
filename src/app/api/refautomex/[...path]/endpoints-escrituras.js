@@ -479,150 +479,9 @@ const patchShelfLevels = async ({ body }) => {
 };
 
 // ---------------------------------------------------------------------------
-// Compras (capturas)
+// Compras (capturas): newCapture, patchCapture y deleteCapture viven en
+// compras.js desde 2026-11, con las polizas y el analisis de Faltantes.
 // ---------------------------------------------------------------------------
-
-// Detalle compartido por newCapture y patchCapture. En MySQL esto vivia en una
-// tabla temporal MEMORY que se llenaba con un WHILE sobre el JSON.
-const guardarDetalleCompra = async (tx, idcompra, detalle, fechaCompra) => {
-  for (const d of detalle) {
-    await tx.escribir(
-      `INSERT INTO registro (idcompra, num_parte, costo_actual, ultimo_costo,
-                             cantidad_solicitada, descuento_uno, descuento_dos,
-                             descuento_tres, importe, neto)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [idcompra, d.ref, d.costo ?? null, d.costo_a ?? null, d.cant ?? null,
-        d.d1 ?? null, d.d2 ?? null, d.d3 ?? null, d.importe ?? null, d.neto ?? null]
-    );
-
-    // LEAST(x,300) es tope de existencia del original. El ROUND necesita
-    // ::numeric porque costo es float y round(double,int) no existe en Postgres.
-    await tx.escribir(
-      `UPDATE detalle
-          SET existencia = LEAST(?::int, 300),
-              costo = ?,
-              aiva = ROUND((?::numeric) * (?::numeric), 2),
-              precio = ROUND((?::numeric) * (?::numeric) * 1.16, 2),
-              fecha_compra = ?
-        WHERE num_parte = ?`,
-      [d.exis ?? 0, d.costo ?? null, d.costo ?? 0, d.ut ?? 0, d.costo ?? 0, d.ut ?? 0,
-        fechaCompra, d.ref]
-    );
-  }
-};
-
-// insertNewCapture
-const newCapture = async ({ body }) => {
-  const { idProveedor, numFactura, fechaCompra, netoTotal, descuentoTotal, subtotal,
-    total, detalle } = body || {};
-
-  if (!idProveedor || !numFactura || !fechaCompra || !Array.isArray(detalle) || !detalle.length) {
-    return { estado: 400, cuerpo: { success: false, message: 'Parámetros incompletos para capturar la compra.' } };
-  }
-
-  try {
-    const data = await enTransaccion(async (tx) => {
-      const dup = await tx.consultar(
-        'SELECT 1 FROM compra WHERE idproveedor = ? AND num_factura = ? LIMIT 1',
-        [idProveedor, numFactura]
-      );
-      if (dup.length > 0) throw new Error('FACTURA_DUPLICADA');
-
-      // FOR UPDATE se conserva: bloquea al proveedor para que dos capturas
-      // simultaneas no calculen la fecha de pago con plazos distintos.
-      const prov = await tx.consultar(
-        'SELECT COALESCE(plazo_dias, 0) AS plazo FROM proveedor WHERE idproveedor = ? FOR UPDATE',
-        [idProveedor]
-      );
-      const plazo = prov[0]?.plazo ?? 0;
-
-      const cab = await tx.consultar(
-        `INSERT INTO compra (num_factura, fecha_compra, fecha_pago, neto_total,
-                             descuento_total, subtotal, total, status, idproveedor)
-         VALUES (?, ?, ?::date + (? || ' days')::interval, ?, ?, ?, ?, 'P', ?)
-         RETURNING idcompra`,
-        [numFactura, fechaCompra, fechaCompra, plazo, netoTotal ?? 0,
-          descuentoTotal ?? 0, subtotal ?? 0, total ?? 0, idProveedor]
-      );
-
-      await guardarDetalleCompra(tx, cab[0].idcompra, detalle, fechaCompra);
-      return { idcompra: cab[0].idcompra };
-    });
-
-    return { cuerpo: { success: true, data } };
-  } catch (error) {
-    return { estado: 500, cuerpo: { success: false, message: error.message } };
-  }
-};
-
-// UpdateCapture.
-//
-// OJO: en MySQL este procedimiento esta ROTO. Su rama de actualizacion llama a
-// `insertCaptureDetail`, que no existe en la base (verificado: 0 rutinas con
-// ese nombre), asi que editar una captura falla hoy en produccion.
-// Aqui se implementa lo que evidentemente pretendia hacer: actualizar la
-// cabecera, borrar el detalle y volver a insertarlo con la misma logica que
-// usa newCapture.
-const patchCapture = async ({ body }) => {
-  const { idCompra, idProveedor, numFactura, fechaCompra, netoTotal, descuentoTotal,
-    subtotal, total, detalle } = body || {};
-
-  if (!idCompra) return newCapture({ body });
-
-  try {
-    const data = await enTransaccion(async (tx) => {
-      await tx.escribir(
-        `UPDATE compra
-            SET idproveedor = ?, num_factura = ?, fecha_compra = ?, neto_total = ?,
-                descuento_total = ?, subtotal = ?, total = ?
-          WHERE idcompra = ?`,
-        [idProveedor, numFactura, fechaCompra, netoTotal ?? 0, descuentoTotal ?? 0,
-          subtotal ?? 0, total ?? 0, idCompra]
-      );
-
-      await tx.escribir('DELETE FROM registro WHERE idcompra = ?', [idCompra]);
-      await guardarDetalleCompra(tx, idCompra, detalle ?? [], fechaCompra);
-      return { idcompra: idCompra };
-    });
-
-    return { cuerpo: { success: true, data } };
-  } catch (error) {
-    return { estado: 500, cuerpo: { success: false, message: error.message } };
-  }
-};
-
-// DeleteCaptureAndStock: el cursor recorria los renglones para devolver stock.
-// Un UPDATE ... FROM hace lo mismo en una sentencia.
-const deleteCapture = async ({ body, query }) => {
-  const id = Number.parseInt(body?.id ?? query.get('id'), 10);
-  if (!id) return { estado: 400, cuerpo: { success: false, message: 'Parámetro id inválido.' } };
-
-  try {
-    const data = await enTransaccion(async (tx) => {
-      const existe = await tx.consultar('SELECT 1 FROM compra WHERE idcompra = ? LIMIT 1', [id]);
-      if (existe.length === 0) throw new Error('La compra indicada no existe.');
-
-      await tx.escribir(
-        `UPDATE detalle d
-            SET existencia = GREATEST(d.existencia - COALESCE(r.cantidad_solicitada, 0), 0),
-                costo = COALESCE(r.ultimo_costo, d.costo),
-                aiva  = COALESCE(r.costo_actual, d.aiva)
-           FROM registro r
-          WHERE r.num_parte = d.num_parte
-            AND r.idcompra = ?`,
-        [id]
-      );
-
-      await tx.escribir('DELETE FROM registro WHERE idcompra = ?', [id]);
-      const r = await tx.escribir('DELETE FROM compra WHERE idcompra = ?', [id]);
-      return okPacket(r);
-    });
-
-    return { cuerpo: { success: true, data } };
-  } catch (error) {
-    return { estado: 500, cuerpo: { success: false, message: error.message } };
-  }
-};
 
 // ---------------------------------------------------------------------------
 // Facturas
@@ -870,18 +729,112 @@ const getWebDelivery = async () => {
   return { cuerpo: [cabeceras, detalle] };
 };
 
+// ---------------------------------------------------------------------------
+// Sucursales
+// ---------------------------------------------------------------------------
+
+// No venian del Express: Inventarios > Sucursales da de alta y borra
+// sucursales. Solo se borra una que nunca se uso: sin renglones de inventario
+// (aunque el producto ya este dado de baja), sin ventas y sin empleados. WEB
+// es la del sitio y no se borra nunca.
+const esWeb = (fila) => Number(fila.idsucursal) === 1 || String(fila.sucursal || '').trim().toUpperCase() === 'WEB';
+
+// Lo que ata a una sucursal. Lo comparten la lista (el candado de cada
+// tarjeta) y deleteSucursal, que lo vuelve a revisar dentro de la transaccion.
+const USO_DE_SUCURSAL = `
+  (SELECT count(*)::int FROM detalle d WHERE d.idsucursal = s.idsucursal) AS productos,
+  (SELECT count(*)::int FROM venta v WHERE v.idsucursal = s.idsucursal) AS ventas,
+  (SELECT count(*)::int FROM usuario u WHERE u.idsucursal = s.idsucursal AND u.empleado = 1) AS empleados`;
+
+const getSucursalUsage = async () => ({
+  cuerpo: await consultar(`SELECT s.*, ${USO_DE_SUCURSAL} FROM sucursal s ORDER BY s.idsucursal`),
+});
+
+// Mayusculas y un solo espacio, como las que ya existen (TLALNEPANTLA).
+const nombreDeSucursal = (texto) => String(texto ?? '').trim().replace(/\s+/g, ' ').toUpperCase();
+
+const newSucursal = async ({ body }) => {
+  const nombre = nombreDeSucursal(body?.sucursal);
+  if (nombre.length < 2 || nombre.length > 45) return faltan('El nombre debe tener entre 2 y 45 caracteres.');
+
+  return enTransaccion(async (tx) => {
+    // Dos altas con el mismo nombre al mismo tiempo pasarian las dos la revision.
+    await tx.consultar("SELECT pg_advisory_xact_lock(hashtext('sucursales'))");
+
+    const repetida = await tx.consultar(
+      'SELECT idsucursal FROM sucursal WHERE upper(trim(sucursal)) = ?',
+      [nombre]
+    );
+    if (repetida.length || nombre === 'WEB') {
+      return { estado: 409, cuerpo: { error: 'Conflict', details: `Ya existe una sucursal llamada ${nombre}.` } };
+    }
+
+    // Igual que adelantarSecuencia (localizaciones.js): una base restaurada
+    // puede traer la secuencia por debajo de los ids que ya existen.
+    await tx.consultar(
+      `SELECT setval(s.secuencia, t.tope)
+         FROM (SELECT pg_get_serial_sequence('sucursal', 'idsucursal')::regclass AS secuencia) s,
+              (SELECT max(idsucursal) AS tope FROM sucursal) t
+        WHERE t.tope > COALESCE(pg_sequence_last_value(s.secuencia), 0)`
+    );
+
+    const [nueva] = await tx.consultar(
+      "INSERT INTO sucursal (sucursal, telefono_uno, telefono_dos, whats_uno, whats_dos, direccion) VALUES (?, '', '', '', '', '') RETURNING idsucursal, sucursal",
+      [nombre]
+    );
+    return { cuerpo: { ok: true, ...nueva } };
+  });
+};
+
+// Los niveles de anaquel y el calendario de la sucursal se van con ella (ON
+// DELETE CASCADE en schema.pg.js). Los usuarios que no son empleados y la
+// tenian se quedan sin sucursal.
+const deleteSucursal = async ({ body }) => {
+  if (!body?.idsucursal) return faltan('Missing idsucursal.');
+
+  return enTransaccion(async (tx) => {
+    // FOR UPDATE: un detalle o una venta que llegue mientras tanto espera a
+    // que esto termine, y la llave foranea lo rechaza si la sucursal ya no esta.
+    const [fila] = await tx.consultar(
+      `SELECT s.idsucursal, s.sucursal, ${USO_DE_SUCURSAL} FROM sucursal s WHERE s.idsucursal = ? FOR UPDATE`,
+      [body.idsucursal]
+    );
+    if (!fila) return { estado: 404, cuerpo: { error: 'Not Found', details: 'Esa sucursal ya no existe.' } };
+
+    if (esWeb(fila)) {
+      return { estado: 409, cuerpo: { error: 'Conflict', details: 'WEB es la sucursal del sitio y no se puede eliminar.' } };
+    }
+    const usos = [
+      fila.productos && `${fila.productos} productos`,
+      fila.ventas && `${fila.ventas} ventas`,
+      fila.empleados && `${fila.empleados} empleados`,
+    ].filter(Boolean);
+    if (usos.length) {
+      return {
+        estado: 409,
+        cuerpo: { error: 'Conflict', details: `${fila.sucursal} tiene ${usos.join(', ')}: no se puede eliminar.` },
+      };
+    }
+
+    await tx.escribir('UPDATE usuario SET idsucursal = NULL WHERE idsucursal = ?', [fila.idsucursal]);
+    const r = await tx.escribir('DELETE FROM sucursal WHERE idsucursal = ?', [fila.idsucursal]);
+    return { cuerpo: okPacket(r) };
+  });
+};
+
 export const ESCRITURAS = {
   GET: {
     getHistory,
     getHistorySearch,
     getSiteRequests,
     getWebDelivery,
+    getSucursalUsage,
   },
   POST: {
     newSale,
-    newCapture,
     newProductDetail,
     addInvoice,
+    newSucursal,
   },
   PATCH: {
     patchHistoryStatus,
@@ -889,10 +842,9 @@ export const ESCRITURAS = {
     patchMigrate,
     patchAssignLocation,
     patchShelfLevels,
-    patchCapture,
   },
   DELETE: {
-    deleteCapture,
+    deleteSucursal,
   },
   PUT: {},
 };

@@ -112,6 +112,9 @@ export const cliente = pgTable('cliente', {
   domicilio: varchar({ length: 255 }),
 });
 
+// `idsucursal` no vino de `drizzle-kit pull`: la sucursal que recibe la compra
+// (y a la que se le suma la existencia). COLUMNAS_COMPRAS en
+// api/refautomex/[...path]/compras.js la agrega con el mismo DDL.
 export const compra = pgTable('compra', {
   idcompra: integer().primaryKey().generatedByDefaultAsIdentity(),
   num_factura: varchar({ length: 100 }),
@@ -124,6 +127,7 @@ export const compra = pgTable('compra', {
   status: text(),
   idproveedor: integer().references(() => proveedor.idproveedor),
   idpoliza: integer().references(() => poliza.idpoliza, { onDelete: 'set null' }),
+  idsucursal: integer().references(() => sucursal.idsucursal),
 }, (t) => [
   index('compra_idproveedor_idx').on(t.idproveedor),
 ]);
@@ -200,6 +204,72 @@ export const grupo = pgTable('grupo', {
   grupo: varchar({ length: 45 }).notNull(),
 });
 
+// No vinieron de `drizzle-kit pull`: compras, pagos y ventas del sistema
+// anterior (isaacodr_refautomex, 2020-05 a 2024-11), que el dump de 2024 de
+// esta base no trae. Las usa Faltantes para saber que se vende y a quien se le
+// compra. scripts/db-historial.mjs las crea con el mismo DDL y las llena desde
+// el dump; nadie mas les escribe. Los ids son los del sistema anterior.
+//
+// Los dos sistemas convivieron de 2024-02 a 2024-11 y las ventas de `venta` de
+// esas fechas tambien estan aqui, completas. El analisis toma el historial
+// hasta su ultima fecha y las tablas vivas despues, para no contarlas dos veces.
+export const historial_poliza = pgTable('historial_poliza', {
+  idpoliza: integer().primaryKey().notNull(),
+  fecha_poliza: date().notNull(),
+  importe: real().notNull(),
+  tipo: varchar({ length: 20 }).notNull(),
+  idbanco: integer().references(() => banco.idbanco),
+});
+
+export const historial_compra = pgTable('historial_compra', {
+  idcompra: integer().primaryKey().notNull(),
+  num_factura: varchar({ length: 100 }).notNull(),
+  fecha_compra: date().notNull(),
+  fecha_pago: date(),
+  total: real().notNull(),
+  subtotal: real().notNull(),
+  descuento_total: real().notNull(),
+  neto_total: real().notNull(),
+  idproveedor: integer().notNull().references(() => proveedor.idproveedor),
+  idpoliza: integer().references(() => historial_poliza.idpoliza),
+}, (t) => [
+  index('historial_compra_idproveedor_idx').on(t.idproveedor),
+]);
+
+// costo_nuevo es el costo unitario ya con descuento; `descuento` es en pesos
+// (el sistema anterior guardaba montos, no fracciones como `registro`).
+// num_parte no es llave: hay refacciones de entonces que ya no estan en el catalogo.
+export const historial_registro = pgTable('historial_registro', {
+  idregistro: integer().primaryKey().notNull(),
+  idcompra: integer().notNull().references(() => historial_compra.idcompra),
+  num_parte: varchar({ length: 100 }).notNull(),
+  existencia: integer().notNull(),
+  cantidad: integer().notNull(),
+  costo_anterior: real().notNull(),
+  costo_nuevo: real().notNull(),
+  descuento: real().notNull(),
+  importe: real().notNull(),
+  neto: real().notNull(),
+}, (t) => [
+  index('historial_registro_idcompra_idx').on(t.idcompra),
+  index('historial_registro_num_parte_idx').on(t.num_parte),
+]);
+
+// Un renglon por producto vendido, solo de ventas activas. El sistema anterior
+// era de una sola tienda: idsucursal es la sucursal a la que se atribuye.
+export const historial_venta = pgTable('historial_venta', {
+  idregistro: integer().primaryKey().notNull(),
+  folio: varchar({ length: 100 }).notNull(),
+  fecha: date().notNull(),
+  num_parte: varchar({ length: 100 }).notNull(),
+  cantidad: integer().notNull(),
+  precio: real().notNull(),
+  idsucursal: integer(),
+}, (t) => [
+  index('historial_venta_fecha_idx').on(t.fecha),
+  index('historial_venta_num_parte_idx').on(t.num_parte),
+]);
+
 export const imagenes = pgTable('imagenes', {
   idImagen: integer().primaryKey().generatedByDefaultAsIdentity(),
   ruta: varchar({ length: 100 }).notNull(),
@@ -258,12 +328,17 @@ export const permiso_menu = pgTable('permiso_menu', {
   supervisor: integer().default(0).notNull(),
 });
 
+// El pago de una o varias compras de un proveedor. `tipo` es la forma de pago
+// (TRANSFERENCIA, EFECTIVO, CHEQUE, TARJETA). `referencia` no vino de
+// `drizzle-kit pull`: el folio de la transferencia o el numero de cheque;
+// COLUMNAS_COMPRAS en api/refautomex/[...path]/compras.js la agrega.
 export const poliza = pgTable('poliza', {
   idpoliza: integer().primaryKey().generatedByDefaultAsIdentity(),
   fecha_poliza: date(),
   importe: real(),
   tipo: text(),
   idbanco: integer().references(() => banco.idbanco),
+  referencia: varchar({ length: 60 }),
 });
 
 export const producto = pgTable('producto', {

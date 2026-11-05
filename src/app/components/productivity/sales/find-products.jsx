@@ -1,13 +1,12 @@
 'use client';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import { useContext, useEffect, useState, useImperativeHandle, forwardRef } from 'react';
+import { forwardRef, useContext, useDeferredValue, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { AuthContext } from '@/app/lib/auth-tracker';
-import Spinner from '@/app/components/principal/spinner';
-import { FaDeleteLeft, FaStar } from "react-icons/fa6";
-import { LuListPlus } from "react-icons/lu";
-import { TiInfo } from "react-icons/ti";
-import { IoClose } from "react-icons/io5";
+import { FaCheck, FaCircleExclamation, FaLock, FaMagnifyingGlass, FaPlus, FaXmark } from 'react-icons/fa6';
+import { LuListPlus } from 'react-icons/lu';
 import { useTranslation } from '@/app/lib/text/text-provider';
+
+const PAGE = 30;
 
 const parseProductRoutes = (raw) => {
     if (Array.isArray(raw)) return raw.filter(Boolean);
@@ -22,180 +21,112 @@ const parseProductRoutes = (raw) => {
     return [];
 };
 
-const resolveProductImage = (ruta, multimediaSrc = '') => {
+export const resolveProductImage = (ruta, multimediaSrc = process.env.NEXT_PUBLIC_S3 || '') => {
     if (!ruta) return `${multimediaSrc}productos/no-img.png`;
     return ruta.startsWith('http') ? ruta : `${multimediaSrc}${ruta}`;
 };
 
 const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-const highlightText = (text, searchTerm) => {
-    if (!searchTerm || !searchTerm.trim()) return text;
+// Marca cada palabra buscada dentro del texto. Tambien la usa Captura.
+export const highlightText = (text, searchTerm) => {
+    const value = String(text ?? '');
+    if (!searchTerm || !searchTerm.trim()) return value;
     const words = searchTerm.trim().split(/\s+/).filter(Boolean);
-    if (words.length === 0) return text;
-    const normalizedWords = words.map(word => word.toLowerCase());
+    if (words.length === 0) return value;
+    const normalizedWords = words.map((word) => word.toLowerCase());
     const regex = new RegExp(`(${words.map(escapeRegExp).join('|')})`, 'gi');
-    const segments = text.split(regex);
-
-    return segments.map((segment, index) => {
+    return value.split(regex).map((segment, index) => {
         if (!segment) return null;
-        const isMatch = normalizedWords.includes(segment.toLowerCase());
-        if (isMatch) {
-            return (
-                <span
-                    key={`${segment}-${index}`}
-                    className="bg-[rgb(var(--color-refautomex))]/30 text-[rgb(var(--color-text))] px-0.5 rounded-sm"
-                >
-                    {segment}
-                </span>
-            );
-        }
-        return <span key={`${segment}-${index}-plain`}>{segment}</span>;
+        return normalizedWords.includes(segment.toLowerCase())
+            ? <mark key={`${segment}-${index}`} className="rounded-sm bg-[rgb(var(--color-refautomex))]/35 px-0.5 text-[rgb(var(--color-text))]">{segment}</mark>
+            : <span key={`${segment}-${index}-plain`}>{segment}</span>;
     });
 };
 
-const prioritizeMatches = (data, accessor, prioritizedWord, type) => {
-    if (!prioritizedWord) {
-        return [...data];
-    }
-
-    const normalizedWord = prioritizedWord.toLowerCase();
-
-    return [...data].sort((a, b) => {
-        const textA = accessor(a).toLowerCase();
-        const textB = accessor(b).toLowerCase();
-
-        const startsA = textA.startsWith(normalizedWord) ? 0 : 1;
-        const startsB = textB.startsWith(normalizedWord) ? 0 : 1;
-
-        if (startsA !== startsB) {
-            return startsA - startsB;
-        }
-
-        if (type === 'num_parte') {
-            const numA = parseInt(a.num_parte, 10);
-            const numB = parseInt(b.num_parte, 10);
-            if (!Number.isNaN(numA) && !Number.isNaN(numB)) {
-                return numA - numB;
-            }
-        }
-
-        return accessor(a).localeCompare(accessor(b), undefined, { numeric: true, sensitivity: 'base' });
-    });
+// Lo que mira cada modo de busqueda. "Todo" es el que se usa por omision:
+// cada palabra tiene que estar en el numero de parte, la descripcion o la
+// ubicacion, asi que "balata 03A" encuentra las balatas del anaquel 03A.
+const FIELDS = {
+    Todo: ['num_parte', 'descripcion', 'localizacion'],
+    Descripcion: ['descripcion'],
+    Parte: ['num_parte'],
+    Localizacion: ['localizacion'],
+    Existentes: ['descripcion', 'num_parte'],
 };
 
-function filterProductsByCategory(products, searchTerm, searchType) {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-    const searchWords = normalizedSearch ? normalizedSearch.split(/\s+/).filter(Boolean) : [];
-    const prioritizedWord = searchWords[0] || '';
-
-    let result = {
-        dataProducts: [],
-        type: ''
-    };
-
-    switch (searchType) {
-        case 'Descripcion':
-            result.dataProducts = products.filter(product =>
-                searchWords.length === 0 ||
-                searchWords.every(word => product.descripcion.toLowerCase().includes(word))
-            );
-            result.type = 'descripcion';
-            break;
-        case 'Parte':
-            result.dataProducts = products.filter(product =>
-                searchWords.length === 0 ||
-                searchWords.every(word => product.num_parte.toLowerCase().includes(word))
-            );
-            result.type = 'num_parte';
-            break;
-        case 'Localizacion':
-            result.dataProducts = products.filter(product =>
-                searchWords.length === 0 ||
-                searchWords.every(word => product.localizacion.toLowerCase().includes(word))
-            );
-            result.type = 'localizacion';
-            break;
-        case 'Existentes':
-            result.dataProducts = products.filter(product =>
-                product.__origin === 'pending' &&
-                (searchWords.length === 0 ||
-                    searchWords.every(word => product.descripcion.toLowerCase().includes(word)))
-            );
-            result.type = 'descripcion';
-            break;
-        default:
-            result.dataProducts = products.filter(product =>
-                searchWords.length === 0 ||
-                searchWords.every(word => product.descripcion.toLowerCase().includes(word))
-            );
-            result.type = 'descripcion';
-            break;
-    }
-
-    const accessorByType = {
-        descripcion: (product) => product.descripcion || '',
-        num_parte: (product) => product.num_parte || '',
-        localizacion: (product) => product.localizacion || ''
-    };
-
-    const accessor = accessorByType[result.type] || ((product) => product.descripcion || '');
-    result.dataProducts = prioritizeMatches(result.dataProducts, accessor, prioritizedWord, result.type);
-
-    result.dataProducts = result.dataProducts.map(product => {
-        const rutas = parseProductRoutes(product.rutas);
-        const primaryImage = rutas.length > 0 ? rutas[0] : '';
-        return {
-            ...product,
-            rutas,
-            ruta: primaryImage,
-            imageSrc: resolveProductImage(primaryImage, process.env.NEXT_PUBLIC_S3 || '')
-        };
-    });
-
-    return result;
-}
-
-const createTooltip = (icon, label, id, visibleTooltip, setVisibleTooltip) => {
-    const show = () => setVisibleTooltip(id);
-    const hide = () => setVisibleTooltip(null);
-    const tooltip = visibleTooltip === id ? (
-        <div
-            className="absolute right-full -bottom-8 -left-4 opacity-90 bg-[rgb(var(--color-card))] shadow text-[rgb(var(--color-text))] text-xs rounded px-2 py-1 z-10"
-            style={{ width: 'max-content', maxWidth: '16rem' }}
-        >
-            {label}
-        </div>
-    ) : null;
-
-    return { show, hide, tooltip };
-};
-
-const PRODUCT_STATUS_VARIANTS = {
-    active: {
-        className: 'bg-[rgb(var(--color-gray))]/50 text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))]/50',
-    },
-    web: {
-        className: 'bg-[rgb(var(--color-gray))]/50 text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))]/50',
-    },
-    pending: {
-        className: 'bg-[rgb(var(--color-gray))]/50 text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))]/50',
-    },
-};
-
-// Los modos de busqueda son valores de logica; la etiqueta visible sale de la
-// base con esta tabla.
 const SEARCH_TYPE_KEYS = {
-    Descripcion: 'panel.findProducts.byDescription',
-    Parte: 'panel.findProducts.byPart',
-    Localizacion: 'panel.findProducts.byLocation',
-    Existentes: 'panel.findProducts.byStock',
+    Todo: 'panel.findProducts.modeAll',
+    Descripcion: 'panel.findProducts.modeDescription',
+    Parte: 'panel.findProducts.modePart',
+    Localizacion: 'panel.findProducts.modeLocation',
+    Existentes: 'panel.findProducts.modePending',
 };
 
+const BASE_SEARCH_TYPES = ['Descripcion', 'Parte', 'Localizacion', 'Existentes'];
+
+const filterProducts = (products, searchTerm, searchType) => {
+    const words = searchTerm.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const fields = FIELDS[searchType] || FIELDS.Todo;
+    const source = searchType === 'Existentes' ? products.filter((p) => p.__origin === 'pending') : products;
+    if (!words.length) return source;
+    const matches = source.filter((product) => words.every((word) =>
+        fields.some((field) => String(product[field] ?? '').toLowerCase().includes(word))));
+    // Primero lo que empieza con la primera palabra (en parte, luego en el campo
+    // del modo), y despues en orden natural: 0111 antes que 01110.
+    const first = words[0];
+    const rank = (product) => {
+        if (String(product.num_parte ?? '').toLowerCase().startsWith(first)) return 0;
+        return fields.some((field) => String(product[field] ?? '').toLowerCase().startsWith(first)) ? 1 : 2;
+    };
+    const key = searchType === 'Descripcion' ? 'descripcion' : searchType === 'Localizacion' ? 'localizacion' : 'num_parte';
+    return [...matches].sort((a, b) => rank(a) - rank(b)
+        || String(a[key] ?? '').localeCompare(String(b[key] ?? ''), undefined, { numeric: true, sensitivity: 'base' }));
+};
+
+// Los valores de relleno del catalogo ("Not asigned", "Sin categoria") no dicen
+// nada del producto: no se muestran como etiqueta.
+const isPlaceholder = (value) => /^\s*(not\s*as+ign|sin\s+categor)/i.test(String(value ?? ''));
+
+const formatPrice = (value) => (Number(value) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
+
+const ACTION_TONES = {
+    primary: 'bg-amber-500 text-slate-900 shadow hover:bg-amber-400',
+    added: 'bg-emerald-500/20 text-[rgb(var(--color-text))] hover:bg-emerald-500/30',
+    outline: 'border border-[rgb(var(--color-border))] text-[rgb(var(--color-text))] hover:border-amber-400 hover:bg-amber-400/15',
+    danger: 'border border-[rgb(var(--color-error))]/40 text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/10',
+    muted: 'text-[rgb(var(--color-gray-base))]',
+};
+
+/**
+ * El buscador de productos del panel: Tickets, Gestion de Almacen, Asignacion
+ * de productos, Captura e Inventarios lo usan. Arriba van las pestanas del
+ * modulo (`views`), el buscador y los modos de busqueda; abajo, la lista con la
+ * foto de cada producto, su parte, ubicacion, descripcion, sucursales, precio y
+ * existencia.
+ *
+ * Datos: getAllProducts de la sucursal (`branch`, o la del usuario) o de todas
+ * (`showAllBranches`), mas WEB (`includeWebBranch`) y los que existen sin
+ * sucursal (`includePendingProducts`). Un producto que esta en varias se junta
+ * en un renglon con una insignia por sucursal, y muestra los datos de la
+ * sucursal elegida.
+ *
+ * Acciones, de menos a mas especifica:
+ *   - onAddProduct / onRemoveProduct / addedItems: agregar y quitar (Tickets,
+ *     Almacen, Captura). Con `folio` la lista es de solo lectura.
+ *   - onProductPick (+ selectedProducts, pickActionLabel): elegir uno (Asignacion).
+ *   - productAction(product): el modulo decide boton, texto y que hace
+ *     (Inventarios). Devuelve { label, tone, disabled, title, icon, iconOnly,
+ *     onClick }. Agregar y quitar van solo con icono (+ y palomita); el texto
+ *     queda en el title y en el aria-label.
+ *
+ * `views` son las pestanas del modulo: [{ id, label, filter, emptyMessage }].
+ * Se pueden controlar con `view` y `onViewChange`.
+ */
 const FindProducts = forwardRef(({
     onAddProduct,
     onRemoveProduct,
-    addedItems,
+    addedItems = [],
     isWarehouse,
     isCapture,
     isMissing,
@@ -209,32 +140,30 @@ const FindProducts = forwardRef(({
     allowedSearchTypes,
     hideSearchInput = false,
     branch,
-    // Para modulos que solo muestran parte del catalogo (Asignacion: lo que
-    // esta por ubicar). Se aplica antes de buscar, asi que tambien cuenta en
-    // los resultados.
+    // Para modulos que solo muestran parte del catalogo. Se aplica antes de
+    // buscar, asi que tambien cuenta en los resultados y en las pestanas.
     productFilter,
-    // En modo selector (onProductPick), boton visible en cada tarjeta con la
-    // accion del modulo; sin el, la tarjeta completa sigue siendo el boton.
     pickActionLabel,
     emptyMessage,
     // Para modulos que saben mas que la copia de getAllProducts (Asignacion:
     // la ubicacion actual despues de mover). Recibe y devuelve un producto.
     decorateProduct,
+    views,
+    view,
+    onViewChange,
+    productAction,
+    listClassName = 'max-h-[34rem]',
 }, ref) => {
+    const { t } = useTranslation();
     const [searchTerm, setSearchTerm] = useState('');
+    const deferredTerm = useDeferredValue(searchTerm);
     const [products, setProducts] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
-    const { t } = useTranslation();
-    const multimediaSrc = process.env.NEXT_PUBLIC_S3;
-    const [images, setImages] = useState([]);
     const [error, setError] = useState(null);
-    const [showCards, setShowCards] = useState(true);
-    const [searchType, setSearchType] = useState('descripcion');
-    const [visibleTooltip, setVisibleTooltip] = useState(null);
-    const [filteredProducts, setFilteredProducts] = useState([]);
-    const [currentPage, setCurrentPage] = useState(1);
+    const [limit, setLimit] = useState(PAGE);
     const [stockAlerts, setStockAlerts] = useState({});
-    const deleteTooltip = createTooltip(FaDeleteLeft, t('panel.common.delete'), 'delete', visibleTooltip, setVisibleTooltip);
+    const [ownView, setOwnView] = useState(views?.[0]?.id ?? null);
+    const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
     const isPickerMode = typeof onProductPick === 'function';
 
     const { userData } = useContext(AuthContext);
@@ -242,19 +171,20 @@ const FindProducts = forwardRef(({
     const userBranchId = resolvedBranchId ? String(resolvedBranchId) : null;
     const userBranchLabel = branch?.label ?? userData?.sucursal ?? '';
 
-    const handleSearchChange = (event) => {
-        setSearchTerm(event.target.value);
-    };
+    const searchTypes = useMemo(() => {
+        const allowed = Array.isArray(allowedSearchTypes) && allowedSearchTypes.length
+            ? BASE_SEARCH_TYPES.filter((type) => allowedSearchTypes.includes(type))
+            : BASE_SEARCH_TYPES.filter((type) => type !== 'Existentes' || includePendingProducts);
+        return ['Todo', ...allowed];
+    }, [allowedSearchTypes, includePendingProducts]);
+    const [searchType, setSearchType] = useState('Todo');
 
-    const baseSearchTypes = ['Descripcion', 'Parte', 'Localizacion', 'Existentes'];
-    const searchTypes = Array.isArray(allowedSearchTypes) && allowedSearchTypes.length
-        ? baseSearchTypes.filter(type => allowedSearchTypes.includes(type))
-        : baseSearchTypes;
-
-    const handleTypeClick = () => {
-        const currentTypeIndex = searchTypes.indexOf(searchType);
-        const nextTypeIndex = (currentTypeIndex + 1) % searchTypes.length;
-        setSearchType(searchTypes[nextTypeIndex]);
+    const activeViewId = view ?? ownView;
+    const activeView = views?.find((item) => item.id === activeViewId) ?? views?.[0] ?? null;
+    const changeView = (id) => {
+        setLimit(PAGE);
+        if (onViewChange) onViewChange(id);
+        else setOwnView(id);
     };
 
     const createProductRecord = (product, origin = 'active') => {
@@ -272,68 +202,38 @@ const FindProducts = forwardRef(({
     };
 
     const buildBadgeLabel = (product) => {
-        if (product.__origin === 'web') {
-            return t('panel.findProducts.badgeWeb');
-        }
-        if (product.__origin === 'pending') {
-            return product.sucursal || t('panel.findProducts.badgeUnassigned');
-        }
+        if (product.__origin === 'web') return t('panel.findProducts.badgeWeb');
+        if (product.__origin === 'pending') return t('panel.findProducts.badgeUnassigned');
         return product.sucursal || t('panel.common.branch');
     };
 
     const mergeProducts = (records = []) => {
         const map = new Map();
-
         records.forEach((record) => {
-            if (!record?.num_parte) {
-                return;
-            }
+            if (!record?.num_parte) return;
             const key = record.num_parte;
-            const badgeLabel = buildBadgeLabel(record);
-            const badgeType = record.__origin || 'active';
-            const badge = {
-                label: badgeLabel,
-                type: badgeType,
-                idsucursal: record.idsucursal,
-            };
-
+            const badge = { label: buildBadgeLabel(record), type: record.__origin || 'active', idsucursal: record.idsucursal };
             if (!map.has(key)) {
-                const base = {
-                    ...record,
-                    branchBadges: [badge],
-                    variants: [record],
-                };
-                map.set(key, base);
+                map.set(key, { ...record, branchBadges: [badge], variants: [record] });
                 return;
             }
-
             const existing = map.get(key);
             existing.variants.push(record);
-            const hasBadge = existing.branchBadges.some((item) => item.label === badge.label && item.type === badge.type);
-            if (!hasBadge) {
+            if (!existing.branchBadges.some((item) => item.label === badge.label && item.type === badge.type)) {
                 existing.branchBadges.push(badge);
             }
-
-            const preferUserBranch =
-                userBranchId &&
-                String(record.idsucursal) === userBranchId &&
-                String(existing.idsucursal) !== userBranchId &&
-                record.__origin === 'active';
-
+            // Los datos que se ven son los de la sucursal elegida; si no esta
+            // ahi, los de una activa antes que los de WEB o los sin sucursal.
+            const preferUserBranch = userBranchId
+                && String(record.idsucursal) === userBranchId
+                && String(existing.idsucursal) !== userBranchId
+                && record.__origin === 'active';
             const preferActive = existing.__origin !== 'active' && record.__origin === 'active';
             const preferWeb = existing.__origin === 'pending' && record.__origin === 'web';
-
             if (preferUserBranch || preferActive || preferWeb) {
-                map.set(key, {
-                    ...record,
-                    branchBadges: existing.branchBadges,
-                    variants: existing.variants,
-                });
-            } else {
-                map.set(key, existing);
+                map.set(key, { ...record, branchBadges: existing.branchBadges, variants: existing.variants });
             }
         });
-
         return Array.from(map.values());
     };
 
@@ -341,23 +241,13 @@ const FindProducts = forwardRef(({
         const response = await fetch(buildApiUrl('/getAllProducts'), {
             method: 'POST',
             cache: 'no-store',
-            headers: {
-                'Content-Type': 'application/json',
-                Accept: 'application/json, text/plain, */*',
-            },
-            body: JSON.stringify({
-                idsucursal: branchId,
-            }),
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/plain, */*' },
+            body: JSON.stringify({ idsucursal: branchId }),
         });
-
-        if (!response.ok) {
-            throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-
+        if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
         const payload = await response.json();
         if (!Array.isArray(payload?.[0])) throw new Error('Invalid products response');
-        const rawProducts = payload[0];
-        return rawProducts.map((product) => createProductRecord(product, branchId === 1 ? 'web' : 'active'));
+        return payload[0].map((product) => createProductRecord(product, branchId === 1 ? 'web' : 'active'));
     };
 
     const fetchPendingProductsList = async () => {
@@ -365,13 +255,9 @@ const FindProducts = forwardRef(({
             cache: 'no-store',
             headers: { Accept: 'application/json, text/plain, */*' },
         });
-
-        if (!response.ok) {
-            throw new Error(`Error ${response.status}: ${response.statusText}`);
-        }
-
+        if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
         const data = await response.json();
-        const formattedExisting = (data?.[0] || []).map(product => createProductRecord({
+        return (data?.[0] || []).map((product) => createProductRecord({
             ...product,
             idsucursal: product.idsucursal ?? null,
             sucursal: product.sucursal || t('panel.common.pending'),
@@ -380,7 +266,6 @@ const FindProducts = forwardRef(({
             costo: product.costo ?? 0,
             localizacion: product.localizacion || '—',
         }, 'pending'));
-        return formattedExisting;
     };
 
     const fetchProducts = async () => {
@@ -388,452 +273,371 @@ const FindProducts = forwardRef(({
         setError(null);
         try {
             const branchFilter = showAllBranches ? null : (userBranchId ? Number(userBranchId) : null);
-            const baseProductsPromise = fetchBranchProducts(branchFilter);
-
-            const webProductsPromise = (includeWebBranch && branchFilter !== null && Number(branchFilter) !== 1)
-                ? fetchBranchProducts(1).catch((webError) => {
-                    console.warn('No se pudieron cargar productos web:', webError);
-                    return [];
-                })
-                : Promise.resolve([]);
-
-            const pendingProductsPromise = includePendingProducts
-                ? fetchPendingProductsList().catch((pendingError) => {
-                    console.warn('No se pudieron cargar productos pendientes:', pendingError);
-                    return [];
-                })
-                : Promise.resolve([]);
-
             const [baseProducts, webProducts, pendingProducts] = await Promise.all([
-                baseProductsPromise,
-                webProductsPromise,
-                pendingProductsPromise,
+                fetchBranchProducts(branchFilter),
+                includeWebBranch && branchFilter !== null && Number(branchFilter) !== 1
+                    ? fetchBranchProducts(1).catch((webError) => {
+                        console.warn('No se pudieron cargar productos web:', webError);
+                        return [];
+                    })
+                    : [],
+                includePendingProducts
+                    ? fetchPendingProductsList().catch((pendingError) => {
+                        console.warn('No se pudieron cargar productos pendientes:', pendingError);
+                        return [];
+                    })
+                    : [],
             ]);
-
-            const combined = mergeProducts([
-                ...baseProducts,
-                ...webProducts,
-                ...pendingProducts,
-            ]);
-            setProducts(combined);
-        } catch (error) {
-            console.error('Error fetching products:', error);
-            setError(error);
+            setProducts(mergeProducts([...baseProducts, ...webProducts, ...pendingProducts]));
+        } catch (fetchError) {
+            console.error('Error fetching products:', fetchError);
+            setError(fetchError);
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Exponer `fetchProducts` para que pueda ser llamado desde el componente padre
-    useImperativeHandle(ref, () => ({
-        refreshProducts: fetchProducts,
-    }));
+    useImperativeHandle(ref, () => ({ refreshProducts: fetchProducts }));
 
     useEffect(() => {
         fetchProducts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [userBranchId, showAllBranches, includePendingProducts, includeWebBranch]);
 
     useEffect(() => {
+        setLimit(PAGE);
+    }, [deferredTerm, searchType, isMissing]);
+
+    // Lo que el modulo deja ver (filtro, decoracion y pestana) antes de buscar.
+    const base = useMemo(() => {
         let source = productFilter ? products.filter(productFilter) : products;
         if (decorateProduct) source = source.map(decorateProduct);
-        const result = filterProductsByCategory(source, searchTerm, searchType);
-        setFilteredProducts(result.dataProducts);
-    }, [searchTerm, products, searchType, productFilter, decorateProduct]);
+        if (isMissing) source = source.filter((product) => product.existencia === 0);
+        return source;
+    }, [products, productFilter, decorateProduct, isMissing]);
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm, searchType, products, isMissing]);
-
-    const PAGE_SIZE = 25;
-    const MAX_PRODUCTS = 100;
-    const visibleProducts = filteredProducts
-        .filter(product => !isMissing || product.existencia === 0)
-        .slice(0, MAX_PRODUCTS);
-    const totalPages = Math.max(1, Math.ceil(visibleProducts.length / PAGE_SIZE));
-    const safePage = Math.min(currentPage, totalPages);
-    const paginatedProducts = visibleProducts.slice(
-        (safePage - 1) * PAGE_SIZE,
-        safePage * PAGE_SIZE
+    const viewCounts = useMemo(
+        () => Object.fromEntries((views || []).map((item) => [item.id, item.filter ? base.filter(item.filter).length : base.length])),
+        [views, base]
     );
 
-    const handleAddClick = (product) => {
-        if (folio) return;
+    const filtered = useMemo(() => {
+        const inView = activeView?.filter ? base.filter(activeView.filter) : base;
+        return filterProducts(inView, deferredTerm, searchType);
+    }, [base, activeView, deferredTerm, searchType]);
 
+    const visible = filtered.slice(0, limit);
+
+    const isProductAdded = (product) => (isPickerMode
+        ? selectedProducts.includes(product.num_parte)
+        : addedItems.some((item) => item.refaccion === product.num_parte));
+
+    const toItem = (product) => ({
+        idsucursal: userBranchId ? Number(userBranchId) : product.idsucursal,
+        sucursal: userBranchLabel || product.sucursal,
+        refaccion: product.num_parte,
+        descripcion: product.descripcion,
+        precio: product.precio,
+        cantidad: 1,
+        costo: product.costo,
+        localizacion: product.localizacion,
+        existencia: product.existencia,
+        monto: product.precio,
+        aIva: (product.precio / 1.16).toFixed(2),
+        isPedido: false,
+        utilidad: product.utilidad,
+        ultimo: product.ultimo,
+        marca: product.marca,
+        idmarca: product.idmarca,
+        mod_ini: product.mod_ini,
+        mod_fin: product.mod_fin,
+        grupo: product.grupo,
+        idgrupo: product.idgrupo,
+        categoria: product.categoria,
+        idcategoria: product.idcategoria,
+        rutas: product.rutas,
+    });
+
+    const handleAdd = (product) => {
+        if (folio) return;
         if (isPickerMode) {
             onProductPick(product);
             return;
         }
-
         if (!isWarehouse && !isCapture && product.existencia === 0) {
             setStockAlerts((prev) => ({ ...prev, [product.num_parte]: true }));
         }
-
-        onAddProduct({
-            idsucursal: userBranchId ? Number(userBranchId) : product.idsucursal,
-            sucursal: userBranchLabel || product.sucursal,
-            refaccion: product.num_parte,
-            descripcion: product.descripcion,
-            precio: product.precio,
-            cantidad: 1,
-            costo: product.costo,
-            localizacion: product.localizacion,
-            existencia: product.existencia,
-            monto: product.precio,
-            aIva: (product.precio / 1.16).toFixed(2),
-            isPedido: false,
-            utilidad: product.utilidad,
-            ultimo: product.ultimo,
-            marca: product.marca,
-            idmarca: product.idmarca,
-            mod_ini: product.mod_ini,
-            mod_fin: product.mod_fin,
-            grupo: product.grupo,
-            idgrupo: product.idgrupo,
-            categoria: product.categoria,
-            idcategoria: product.idcategoria,
-            rutas: product.rutas,
-        });
+        onAddProduct?.(toItem(product));
     };
 
-
-    const handleRemoveClick = (product) => {
+    const handleRemove = (product) => {
         if (folio) return;
-        onRemoveProduct(product.num_parte);
+        onRemoveProduct?.(product.num_parte);
     };
 
-    const dismissStockAlert = (numParte, event) => {
-        event?.stopPropagation();
-        setStockAlerts((prev) => {
-            const next = { ...prev };
-            delete next[numParte];
-            return next;
-        });
+    const handleAddAll = () => {
+        if (isPickerMode || folio) return;
+        filtered.filter((product) => !isProductAdded(product)).forEach((product) => onAddProduct?.(toItem(product)));
     };
 
-    const handleAddAllClick = () => {
-        if (isPickerMode) return;
-        const newProducts = filteredProducts.filter(product => !isProductAdded(product));
-        newProducts.forEach(product => {
-            onAddProduct({
-                idsucursal: userBranchId ? Number(userBranchId) : product.idsucursal,
-                sucursal: userBranchLabel || product.sucursal,
-                refaccion: product.num_parte,
-                descripcion: product.descripcion,
-                precio: product.precio,
-                cantidad: 1,
-                costo: product.costo,
-                localizacion: product.localizacion,
-                existencia: product.existencia,
-                monto: product.precio,
-                aIva: (product.precio / 1.16).toFixed(2),
-                isPedido: false,
-                utilidad: product.utilidad,
-                ultimo: product.ultimo,
-                marca: product.marca,
-                idmarca: product.idmarca,
-                mod_ini: product.mod_ini,
-                mod_fin: product.mod_fin,
-                grupo: product.grupo,
-                idgrupo: product.idgrupo,
-                categoria: product.categoria,
-                idcategoria: product.idcategoria,
-                rutas: product.rutas,
-            });
-        });
-    };
-
-    const isProductAdded = (product) => {
+    // El boton de cada renglon: lo que diga el modulo, o el de agregar/quitar.
+    const actionFor = (product) => {
+        if (productAction) return productAction(product);
+        if (folio) return null;
+        const added = isProductAdded(product);
         if (isPickerMode) {
-            return selectedProducts.includes(product.num_parte);
+            const label = typeof pickActionLabel === 'function' ? pickActionLabel(product) : pickActionLabel;
+            return { label: label || t('panel.findProducts.pick'), tone: added ? 'added' : 'primary', icon: added ? FaCheck : FaPlus, onClick: () => onProductPick(product) };
         }
-        return addedItems.some(item => item.refaccion === product.num_parte);
+        return added
+            ? { label: t('panel.findProducts.added'), tone: 'added', icon: FaCheck, iconOnly: true, onClick: () => handleRemove(product), title: t('panel.findProducts.removeHint') }
+            : { label: t('panel.findProducts.add'), tone: 'primary', icon: FaPlus, iconOnly: true, onClick: () => handleAdd(product) };
     };
+
+    const branchMissing = (product) => Boolean(branch && showAllBranches
+        && !product.variants?.some((variant) => String(variant.idsucursal) === String(branch.id)));
+
+    const listEmpty = activeView?.emptyMessage || emptyMessage
+        || t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') });
 
     return (
-        <div className="relative w-full max-w-[480px] lg:max-w-[520px] mx-auto overflow-x-hidden">
-            {branch && <p className="px-3 pt-3 text-sm text-center">{t('panel.common.branch')}: {branch.label}</p>}
-            {hideSearchInput ? (
-                <div className="flex justify-center items-center py-3">
-                    <div className="font-bold uppercase tracking-wide bg-[rgb(var(--color-card))] py-1 px-2 rounded-md shadow shadow-[rgb(var(--color-galaxy))] inline-flex items-center gap-2 text-xs">
-                        <span className="opacity-70">{t('panel.findProducts.results')}</span>
-                        <span className='text-[rgb(var(--color-refautomex))]'>{filteredProducts.length}</span>
-                    </div>
-                </div>
-            ) : (
-                <>
-                    <div className='flex justify-center px-5 py-2 gap-x-4'>
-                        <div className="flex justify-between items-center px-3 text-xs text-[rgb(var(--color-text))]">
-                            <div className="font-bold uppercase tracking-wide bg-[rgb(var(--color-card))] py-1 px-2 rounded-md shadow shadow-[rgb(var(--color-galaxy))] inline-flex items-center gap-2">
-                                <span className="opacity-50">{t('panel.findProducts.results')}</span>
-                                <span className='text-[rgb(var(--color-text))]'>{filteredProducts.length}</span>
-                            </div>
-                        </div>
-                        {!hideSearchModeToggle && (
-                            <div className='flex justify-between items-center'>
-                                <button
-                                    type="button"
-                                    onClick={handleTypeClick}
-                                    className="inline-flex items-center gap-2 px-4 py-1 rounded-md w-[240px] bg-[rgb(var(--color-card))] cursor-pointer text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] text-xs font-semibold tracking-wide uppercase transition hover:scale-105 hover:shadow-md"
-                                >
-                                    <span className="opacity-50">{t('panel.findProducts.by')}</span>
-                                    <span className='text-[rgb(var(--color-text))]'>{t(SEARCH_TYPE_KEYS[searchType] ?? 'panel.findProducts.byDescription')}</span>
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                    <div className='flex justify-center items-start m-0.5 mt-4 w-full'>
-                        <input
-                            type="text"
-                            name="client-search"
-                            placeholder={t('panel.findProducts.searchPlaceholder')}
-                            value={searchTerm}
-                            onChange={handleSearchChange}
-                            className="uppercase w-[300px] block border-0 rounded-full py-1.5 p-3 -mt-1 text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] placeholder:text-[rgb(var(--color-text))] bg-[rgb(var(--color-bg))] sm:text-sm sm:leading-6"
-                        />
-                        <div
-                            onMouseEnter={deleteTooltip.show}
-                            onMouseLeave={deleteTooltip.hide}
-                            onClick={() => setSearchTerm('')}
-                            className='mx-2 -mt-1 mb-1 text-sm font-bold leading-6 p-2 shadow rounded-full cursor-pointer relative bg-[rgb(var(--color-card))]'>
-                            <FaDeleteLeft size={20}
-                                className='text-md xl:text-lg leading-6 text-[rgb(var(--color-error))]'
-                            />
-                            {deleteTooltip.tooltip}
-                        </div>
-                    </div>
-                    <div className='flex flex-row items-center justify-center mt-1 mb-2'>
-                        {searchTerm && (
-                            <div className="italic text-[rgb(var(--color-text))] font-bold ml-5 text-sm mt-1">
-                                {t('panel.findProducts.searching')} {searchTerm.toUpperCase()}
-                            </div>
-                        )}
-                        {isWarehouse && searchTerm.trim() && !isPickerMode && (
+        <div className={`relative flex w-full flex-col ${folio ? 'opacity-80' : ''}`}>
+            <div className="space-y-2 p-3">
+                {views?.length > 0 && (
+                    <div role="tablist" className="flex flex-wrap gap-1 rounded-xl bg-[rgb(var(--color-bg))] p-1">
+                        {views.map((item) => (
                             <button
-                                onClick={handleAddAllClick}
-                                className="ml-2 h-5 w-5 p-1 cursor-pointer rounded-full bg-amber-700 text-white flex items-center justify-center shadow-lg mt-0.5"
-                                title={t('panel.findProducts.addAll')}
+                                key={item.id}
+                                type="button"
+                                role="tab"
+                                aria-selected={activeView?.id === item.id}
+                                onClick={() => changeView(item.id)}
+                                title={item.label}
+                                className={`flex min-h-9 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-semibold transition ${activeView?.id === item.id
+                                    ? 'bg-amber-500 text-slate-900 shadow'
+                                    : 'text-[rgb(var(--color-gray-base))] hover:text-[rgb(var(--color-text))]'}`}
                             >
-                                <LuListPlus className="size-4" />
+                                <span>{item.label}</span>
+                                <span className={`shrink-0 rounded-full px-1.5 text-xs tabular-nums ${activeView?.id === item.id ? 'bg-slate-900/15' : 'bg-[rgb(var(--color-gray))]'}`}>
+                                    {(viewCounts[item.id] ?? 0).toLocaleString('es-MX')}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+                )}
+
+                {!hideSearchInput && (
+                    <label className="relative block">
+                        <span className="sr-only">{t('panel.findProducts.searchAll')}</span>
+                        <FaMagnifyingGlass className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[rgb(var(--color-gray-base))]" aria-hidden="true" />
+                        <input
+                            type="search"
+                            name="client-search"
+                            value={searchTerm}
+                            onChange={(event) => setSearchTerm(event.target.value)}
+                            placeholder={t(searchType === 'Todo' ? 'panel.findProducts.searchAll' : SEARCH_TYPE_KEYS[searchType])}
+                            autoComplete="off"
+                            className="h-11 w-full rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] pl-10 pr-10 text-base uppercase text-[rgb(var(--color-text))] placeholder:normal-case placeholder:text-[rgb(var(--color-gray-base))] focus:outline-none focus:ring-2 focus:ring-amber-400"
+                        />
+                        {searchTerm && (
+                            <button
+                                type="button"
+                                onClick={() => setSearchTerm('')}
+                                aria-label={t('panel.findProducts.clear')}
+                                className="absolute right-1.5 top-1/2 grid size-8 -translate-y-1/2 place-items-center rounded-full text-[rgb(var(--color-gray-base))] hover:bg-[rgb(var(--color-text))]/10"
+                            >
+                                <FaXmark className="size-3.5" />
                             </button>
                         )}
-                    </div>
-                </>
-            )}
-            <div className='flex justify-center overflow-y-auto h-[570px] w-full max-w-[520px] mx-auto'>
-            {isLoading ? (
-                <Spinner compact />
-            ) : error ? (
-                <div role="alert" className="p-6 text-center">
-                    <p>{t('common.errorProducts')}</p>
-                    <button type="button" onClick={fetchProducts} className="mt-3 underline">{t('common.retry')}</button>
+                    </label>
+                )}
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                    {!hideSearchInput && !hideSearchModeToggle && (
+                        <div role="radiogroup" aria-label={t('panel.findProducts.searchBy')} className="flex flex-wrap gap-1">
+                            {searchTypes.map((type) => (
+                                <button
+                                    key={type}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={searchType === type}
+                                    onClick={() => setSearchType(type)}
+                                    className={`h-8 rounded-full px-3 text-xs font-semibold transition ${searchType === type
+                                        ? 'bg-[rgb(var(--color-text))] text-[rgb(var(--color-bg))]'
+                                        : 'bg-[rgb(var(--color-bg))] text-[rgb(var(--color-gray-base))] hover:text-[rgb(var(--color-text))]'}`}
+                                >
+                                    {t(SEARCH_TYPE_KEYS[type])}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    <span className="ml-auto flex items-center gap-2 text-xs text-[rgb(var(--color-gray-base))]">
+                        {branch && !showAllBranches && <span className="truncate">{branch.label}</span>}
+                        <span className="rounded-full bg-[rgb(var(--color-bg))] px-2 py-1 font-semibold tabular-nums">
+                            {t('panel.findProducts.resultsCount', { count: filtered.length.toLocaleString('es-MX') })}
+                        </span>
+                        {isWarehouse && !isPickerMode && !folio && searchTerm.trim() && filtered.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={handleAddAll}
+                                title={t('panel.findProducts.addAll')}
+                                className="inline-flex h-8 items-center gap-1 rounded-full bg-amber-500 px-2.5 font-semibold text-slate-900 shadow hover:bg-amber-400"
+                            >
+                                <LuListPlus className="size-4" aria-hidden="true" />
+                                {t('panel.findProducts.addAllShort')}
+                            </button>
+                        )}
+                    </span>
                 </div>
-            ) : paginatedProducts.length === 0 ? (
-                <p role="status" className="p-6 text-center">{emptyMessage || t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') })}</p>
-            ) : (
-                showCards && (
-                    <div className="relative min-h-[30rem] w-full grow [container-type:inline-size] max-lg:mx-auto max-lg:max-w-sm">
-                        <div className="absolute left-1/2 top-6 z-10 flex items-center space-x-1 bg-[rgb(var(--color-slate))] px-2 py-1 rounded-full transform -translate-x-1/2 shadow shadow-[rgb(var(--color-galaxy))]">
-                            <FaStar className="w-3 h-3 text-amber-400 animate-bounce"/>
-                            <p className="text-xs font-medium text-gray-300">{t('panel.findProducts.parts')}</p>
-                        </div>
-                        <div className="absolute inset-x-2 sm:inset-x-1 xl:inset-x-10 bottom-0 top-2.5 rounded-t-[12cqw] overflow-x-hidden overflow-y-auto border-x-[1cqw] border-t-[1cqw] shadow shadow-[rgb(var(--color-galaxy))] border-[rgb(var(--color-slate))] bg-[rgb(var(--color-gray))] pt-5 ">
-                            <div className="p-1 mt-5">
-                                <div className="pt-1 px-2 grid w-full grid-cols-2 gap-2 ">
-                                    {paginatedProducts.map((product) => {
-                                        const imageUrl = resolveProductImage(product.ruta, multimediaSrc);
-                                        const isAdded = isProductAdded(product);
-                                        const categoryLabel = product.categoria || product.category || (product.idcategoria ? `Categoria ${product.idcategoria}` : '');
-                                        const branchBadges = product.branchBadges || [{ label: buildBadgeLabel(product), type: product.__origin || 'active' }];
-                                        const metaChips = [];
-                                        if (categoryLabel) {
-                                            metaChips.push({
-                                                key: 'cat',
-                                                text: `${categoryLabel}`,
-                                                className: 'text-[8px] font-semibold text-[rgb(var(--color-text))]/70 px-2 py-0.5 rounded-full bg-[rgb(var(--color-galaxy))]/50 shadow shadow-[rgb(var(--color-galaxy))]'
-                                            });
-                                        }
-                                        if (product.grupo) {
-                                            metaChips.push({
-                                                key: 'grp',
-                                                text: `${String(product.grupo || '').toUpperCase()}`,
-                                                className: 'text-[8px] font-semibold text-[rgb(var(--color-text))]/70 px-2 py-0.5 rounded-full bg-[rgb(var(--color-galaxy))]/50 shadow shadow-[rgb(var(--color-galaxy))]'
-                                            });
-                                        }
-                                        if (branchBadges.length) {
-                                            metaChips.push({
-                                                key: 'suc-label',
-                                                text: ':',
-                                                className: 'text-[8px] text-[rgb(var(--color-text))]/60'
-                                            });
-                                            branchBadges.forEach((badge, idx) => {
-                                                const variant = PRODUCT_STATUS_VARIANTS[badge.type] || PRODUCT_STATUS_VARIANTS.active;
-                                                metaChips.push({
-                                                    key: `suc-${idx}-${badge.label}`,
-                                                    text: badge.label,
-                                                    className: `text-[8px] font-semibold px-2 py-0.5 rounded-full ${variant.className}`
-                                                });
-                                            });
-                                        }
-                                        return (
-                                            <div
-                                                key={product.num_parte}
-                                                onClick={() =>
-                                                    isAdded ? handleRemoveClick(product) : handleAddClick(product)
-                                                }
-                                                className={`relative flex h-full flex-col gap-2 rounded-xl cursor-pointer shadow shadow-[rgb(var(--color-galaxy))] p-2 transition-all duration-200 ${
-                                                    isAdded
-                                                    ? 'bg-[rgb(var(--color-gray))] ring-2 ring-[rgb(var(--color-gray-base))]'
-                                                    : 'bg-[rgb(var(--color-bg))]'
-                                                }`}
-                                                >
-                                                <div className="relative w-full aspect-square flex-shrink-0 overflow-hidden rounded-lg bg-white shadow shadow-[rgb(var(--color-galaxy))]">
-                                                    <img
-                                                    src={imageUrl}
-                                                    alt={product.num_parte}
-                                                    className="w-full h-full object-cover object-center"
-                                                    />
-                                                </div>
-                                                <div className="flex flex-1 flex-col gap-2">
-                                                    <div className="flex flex-1 flex-col overflow-hidden">
-                                                        {metaChips.length > 0 && (
-                                                            <div className="auto-marquee mb-1">
-                                                                <div className="auto-marquee__track">
-                                                                    {metaChips.map((chip) => (
-                                                                        <span key={`${product.num_parte}-${chip.key}-a`} className={chip.className}>
-                                                                            {chip.text}
-                                                                        </span>
-                                                                    ))}
-                                                                    {metaChips.map((chip) => (
-                                                                        <span
-                                                                            key={`${product.num_parte}-${chip.key}-b`}
-                                                                            className={chip.className}
-                                                                            aria-hidden="true"
-                                                                        >
-                                                                            {chip.text}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                        <div
-                                                            className="text-[14px] leading-[1.25rem] text-[rgb(var(--color-text))] min-h-[4rem] max-h-[4rem] overflow-hidden font-bold"
-                                                            style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}
-                                                        >
-                                                            {highlightText(product.descripcion, searchTerm)}
-                                                        </div>
-                                                        <div className="mt-auto flex flex-col gap-1">
-                                                            <div className="flex flex-row justify-between items-end">
-                                                                <p className="text-sm font-bold text-[rgb(var(--color-success))]">
-                                                                    ${' '}
-                                                                    {(Number(product.precio)).toFixed(2)} MXN
-                                                                </p>
-                                                                <span
-                                                                    className={`${
-                                                                    product.existencia === 0 ? 'bg-[rgb(var(--color-error-base))]' : 'bg-[rgb(var(--color-galaxy))]'
-                                                                    } text-[rgb(var(--color-text))] text-xs rounded-full h-7 w-7 flex items-center justify-center shadow shadow-[rgb(var(--color-galaxy))]`}
-                                                                >
-                                                                    {product.existencia}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex flex-col text-left mt-2 gap-1">
-                                                            <p className="text-[14px] font-bold text-[rgb(var(--color-refautomex))]/70 px-2 truncate">
-                                                                {highlightText(product.num_parte, searchTerm)}
-                                                            </p>
-                                                            {product.localizacion && product.localizacion !== '0' && (
-                                                            <p className="text-[12px] font-bold text-[rgb(var(--color-text))]/50 px-2 truncate">
-                                                                {highlightText(product.localizacion, searchTerm)}
-                                                            </p>
-                                                            )}
-                                                        </div>
-                                                        {isPickerMode && pickActionLabel && (
-                                                            <button
-                                                                type="button"
-                                                                onClick={(event) => {
-                                                                    event.stopPropagation();
-                                                                    onProductPick(product);
-                                                                }}
-                                                                className="mt-1 w-full rounded-lg bg-amber-500 py-1.5 text-xs font-semibold text-slate-900 shadow transition hover:bg-amber-400"
-                                                            >
-                                                                {pickActionLabel}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                    {stockAlerts[product.num_parte] && product.existencia === 0 && (
-                                                    <div className="absolute left-2 right-2 bottom-2 rounded-full bg-amber-400/90 text-[rgb(var(--color-card))] text-[10px] font-semibold flex items-center justify-center gap-1 py-1 shadow-lg shadow-amber-500/40">
-                                                        <TiInfo className="text-base" />
-                                                        <span>{t('panel.findProducts.noStock')}</span>
-                                                        <button
-                                                        type="button"
-                                                        onClick={(e) => dismissStockAlert(product.num_parte, e)}
-                                                        className="ml-2 text-[rgb(var(--color-card))] hover:text-white"
-                                                        aria-label={t('panel.findProducts.closeAlert')}
-                                                        >
-                                                        <IoClose className="text-base" />
-                                                        </button>
-                                                    </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                {totalPages > 1 && (
-                                    <div className="sticky bottom-0 z-10 flex items-center justify-between px-3 py-2 bg-[rgb(var(--color-gray))] border-t border-[rgb(var(--color-slate))]">
-                                        <button
-                                            type="button"
-                                            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                                            disabled={safePage === 1}
-                                            className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] disabled:opacity-40"
-                                        >
-                                            Anterior
-                                        </button>
-                                        <span className="text-xs font-semibold text-[rgb(var(--color-text))]">
-                                            Pagina {safePage} de {totalPages}
-                                        </span>
-                                        <button
-                                            type="button"
-                                            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                                            disabled={safePage === totalPages}
-                                            className="px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] disabled:opacity-40"
-                                        >
-                                            Siguiente
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )
-            )}
             </div>
-            <style jsx>{`
-                .auto-marquee {
-                    position: relative;
-                    overflow: hidden;
-                }
 
-                .auto-marquee__track {
-                    display: inline-flex;
-                    gap: 0.25rem;
-                    align-items: center;
-                    width: max-content;
-                    animation: auto-marquee-scroll 20s linear infinite;
-                }
-
-                .auto-marquee:hover .auto-marquee__track {
-                    animation-play-state: paused;
-                }
-
-                @keyframes auto-marquee-scroll {
-                    0% {
-                        transform: translateX(0);
-                    }
-                    100% {
-                        transform: translateX(-50%);
-                    }
-                }
-            `}</style>
+            <div className={`overflow-y-auto border-t border-[rgb(var(--color-border))] ${listClassName}`}>
+                {isLoading ? (
+                    <ul aria-hidden="true" className="divide-y divide-[rgb(var(--color-border))]">
+                        {[0, 1, 2, 3, 4].map((key) => (
+                            <li key={key} className="flex items-center gap-3 px-3 py-3">
+                                <span className="size-16 shrink-0 animate-pulse rounded-xl bg-[rgb(var(--color-gray))] sm:size-20" />
+                                <span className="h-10 flex-1 animate-pulse rounded-lg bg-[rgb(var(--color-gray))]" />
+                            </li>
+                        ))}
+                    </ul>
+                ) : error ? (
+                    <div role="alert" className="flex flex-col items-center gap-2 p-6 text-center text-sm">
+                        <FaCircleExclamation className="size-5 text-[rgb(var(--color-error))]" aria-hidden="true" />
+                        <p>{t('common.errorProducts')}</p>
+                        <button type="button" onClick={fetchProducts} className="font-semibold underline">{t('common.retry')}</button>
+                    </div>
+                ) : visible.length === 0 ? (
+                    <p role="status" className="p-6 text-center text-sm text-[rgb(var(--color-gray-base))]">
+                        {deferredTerm.trim() ? t('panel.assignment.noMatches', { term: deferredTerm.trim().toUpperCase() }) : listEmpty}
+                    </p>
+                ) : (
+                    <ul className="divide-y divide-[rgb(var(--color-border))]">
+                        {visible.map((product) => {
+                            const action = actionFor(product);
+                            const missing = branchMissing(product);
+                            const outOfStock = !missing && Number(product.existencia) === 0;
+                            // La ubicacion de otra sucursal no sirve en esta: no se muestra.
+                            const location = !missing && product.localizacion && product.localizacion !== '0' && product.localizacion !== '—'
+                                ? product.localizacion
+                                : null;
+                            const ActionIcon = action?.icon;
+                            // Tocar el renglon (foto, texto o precio) hace lo mismo que su boton,
+                            // salvo cuando el boton borra algo: eso solo con el boton.
+                            const rowClick = action && !action.disabled && action.tone !== 'danger' ? action.onClick : null;
+                            return (
+                                <li key={product.num_parte} className={isProductAdded(product) ? 'bg-amber-400/10' : ''}>
+                                    <div className="flex items-center gap-2 px-3 py-3">
+                                        <button
+                                            type="button"
+                                            onClick={rowClick || undefined}
+                                            disabled={!rowClick}
+                                            className="flex min-w-0 flex-1 items-center gap-3 text-left disabled:cursor-default"
+                                        >
+                                            <img
+                                                src={product.imageSrc || resolveProductImage(product.ruta, multimediaSrc)}
+                                                alt=""
+                                                loading="lazy"
+                                                onError={(event) => {
+                                                    const fallback = resolveProductImage('', multimediaSrc);
+                                                    if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback;
+                                                }}
+                                                className="size-16 shrink-0 rounded-xl bg-white object-cover shadow-sm sm:size-20"
+                                            />
+                                            <span className="block min-w-0 flex-1">
+                                                <span className="flex flex-wrap items-baseline gap-x-2">
+                                                    <span className="truncate text-base font-bold tabular-nums">{highlightText(product.num_parte, deferredTerm)}</span>
+                                                    {location && (
+                                                        <span className="rounded-md bg-[rgb(var(--color-bg))] px-1.5 text-sm font-semibold tabular-nums text-[rgb(var(--color-gray-base))]">
+                                                            {highlightText(location, deferredTerm)}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span className="mt-0.5 line-clamp-2 text-[15px] leading-snug text-[rgb(var(--color-text))]/80">
+                                                    {highlightText(product.descripcion, deferredTerm)}
+                                                </span>
+                                                <span className="mt-1 flex flex-wrap gap-1">
+                                                    {(product.branchBadges || []).map((badge) => (
+                                                        <span
+                                                            key={`${badge.type}-${badge.label}`}
+                                                            className={`rounded-full px-2 text-xs font-medium ${badge.type === 'pending'
+                                                                ? 'bg-amber-400/25'
+                                                                : badge.type === 'web' || String(badge.label).toUpperCase() === 'WEB'
+                                                                    ? 'bg-sky-500/15'
+                                                                    : 'bg-emerald-500/15'}`}
+                                                        >
+                                                            {badge.label}
+                                                        </span>
+                                                    ))}
+                                                    {[product.grupo, product.categoria].filter((chip) => chip && !isPlaceholder(chip)).map((chip) => (
+                                                        <span key={chip} className="rounded-full bg-[rgb(var(--color-gray))] px-2 text-xs text-[rgb(var(--color-gray-base))]">{chip}</span>
+                                                    ))}
+                                                    {missing && (
+                                                        <span className="rounded-full bg-[rgb(var(--color-error))]/10 px-2 text-xs font-medium">
+                                                            {t('panel.findProducts.notInBranch', { branch: branch.label })}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                            </span>
+                                            <span className="flex shrink-0 flex-col items-end gap-1">
+                                                <span className="text-base font-bold tabular-nums">{formatPrice(product.precio)}</span>
+                                                <span
+                                                    className={`rounded-full px-2 py-0.5 text-sm font-semibold tabular-nums ${outOfStock ? 'bg-[rgb(var(--color-error))]/15' : 'bg-[rgb(var(--color-bg))]'}`}
+                                                    title={t('panel.findProducts.stockTitle')}
+                                                >
+                                                    {missing ? '—' : t('panel.findProducts.stock', { count: product.existencia ?? 0 })}
+                                                </span>
+                                            </span>
+                                        </button>
+                                        {action && (
+                                            <button
+                                                type="button"
+                                                onClick={action.onClick}
+                                                disabled={action.disabled}
+                                                title={action.title || action.label}
+                                                aria-label={`${action.label} ${product.num_parte}`}
+                                                className={`inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition disabled:cursor-not-allowed ${action.iconOnly ? 'w-10' : 'px-3'} ${ACTION_TONES[action.tone || 'primary']}`}
+                                            >
+                                                {ActionIcon ? <ActionIcon className={action.iconOnly ? 'size-4' : 'size-3'} aria-hidden="true" /> : action.disabled ? <FaLock className="size-3" aria-hidden="true" /> : null}
+                                                {!action.iconOnly && <span className="hidden sm:inline">{action.label}</span>}
+                                            </button>
+                                        )}
+                                    </div>
+                                    {stockAlerts[product.num_parte] && Number(product.existencia) === 0 && (
+                                        <div role="alert" className="mx-3 mb-2 flex items-center gap-2 rounded-lg bg-amber-400/25 px-3 py-1.5 text-xs font-semibold">
+                                            <FaCircleExclamation className="size-3.5 shrink-0" aria-hidden="true" />
+                                            <span className="flex-1">{t('panel.findProducts.noStock')}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setStockAlerts((prev) => {
+                                                    const next = { ...prev };
+                                                    delete next[product.num_parte];
+                                                    return next;
+                                                })}
+                                                aria-label={t('panel.findProducts.closeAlert')}
+                                                className="grid size-6 place-items-center rounded-full hover:bg-[rgb(var(--color-text))]/10"
+                                            >
+                                                <FaXmark className="size-3" />
+                                            </button>
+                                        </div>
+                                    )}
+                                </li>
+                            );
+                        })}
+                    </ul>
+                )}
+                {!isLoading && filtered.length > limit && (
+                    <div className="p-3">
+                        <button
+                            type="button"
+                            onClick={() => setLimit((n) => n + PAGE)}
+                            className="h-10 w-full rounded-xl text-sm font-semibold text-[rgb(var(--color-gray-base))] hover:bg-[rgb(var(--color-text))]/10"
+                        >
+                            {t('panel.inventories.showMore', { shown: limit.toLocaleString('es-MX'), total: filtered.length.toLocaleString('es-MX') })}
+                        </button>
+                    </div>
+                )}
+            </div>
         </div>
     );
 });

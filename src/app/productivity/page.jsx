@@ -17,9 +17,9 @@ import Invoice from '@/app/components/productivity/services/invoice';
 import Warehouse from '@/app/components/productivity/stock/warehouse';
 import Assignment from '@/app/components/productivity/stock/assignment';
 import Inventories from '@/app/components/productivity/stock/inventories';
-import Missing from '@/app/components/productivity/stock/missing';
 import Capture from '@/app/components/productivity/requirements/capture';
 import Providers from '@/app/components/productivity/requirements/providers';
+import Missing from '@/app/components/productivity/requirements/missing';
 import Site from '@/app/components/productivity/orders/site';
 import Delivery from '@/app/components/productivity/orders/delivery';
 

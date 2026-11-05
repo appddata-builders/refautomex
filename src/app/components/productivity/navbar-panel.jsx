@@ -112,13 +112,13 @@ export default function NavbarPanel() {
             { name: t('panel.nav.inventories'), href: '/productivity?load=inventories', modulo: 'inventories' },
             { name: t('panel.nav.warehouse'), href: '/productivity?load=warehouse', modulo: 'warehouse' },
             { name: t('panel.nav.assignment'), href: '/productivity?load=assignment', modulo: 'assignment' },
-            { name: t('panel.nav.missing'), href: '/productivity?load=missing', modulo: 'missing' },
         ],
         },
         {
         name: t('panel.nav.purchases'),
         icon: HiClipboardDocumentList,
         subNav: [
+            { name: t('panel.nav.missing'), href: '/productivity?load=missing', modulo: 'missing' },
             { name: t('panel.nav.capture'), href: '/productivity?load=capture', modulo: 'capture' },
             { name: t('panel.nav.providers'), href: '/productivity?load=providers', modulo: 'providers' },
         ],

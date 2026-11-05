@@ -101,6 +101,14 @@ html, body {
     -webkit-appearance: none;
     margin: 0;
   }
+  /* Chrome y Safari ponen un tache propio en los campos de busqueda que solo
+     aparece al pasar el cursor. Los buscadores del panel traen su boton de
+     borrar visible cuando hay texto. */
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }
 
 @layer components {

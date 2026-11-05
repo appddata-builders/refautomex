@@ -12,8 +12,9 @@
  * usaban procedimientos almacenados estan en los otros dos modulos, separados
  * por naturaleza y no por capricho:
  *
- *   endpoints-procedimientos.js  15  lecturas que venian de un CALL
- *   endpoints-escrituras.js      13  transacciones, cursores y JSON
+ *   endpoints-procedimientos.js      lecturas que venian de un CALL
+ *   endpoints-escrituras.js          transacciones, cursores y JSON
+ *   compras.js                       capturas, polizas, bancos y Faltantes
  *
  * La migracion esta completa: ningun endpoint sale ya a internet.
  *
@@ -30,6 +31,7 @@ import { CATEGORIA_DE_PERFIL } from '@/app/lib/permisos-menu';
 
 import { PROCEDIMIENTOS } from './endpoints-procedimientos';
 import { ESCRITURAS } from './endpoints-escrituras';
+import { COMPRAS } from './compras';
 
 const faltan = (detalle) => ({
   estado: 400,
@@ -350,6 +352,7 @@ export const ENDPOINTS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].reduce(
       ...(DIRECTOS[metodo] ?? {}),
       ...(PROCEDIMIENTOS[metodo] ?? {}),
       ...(ESCRITURAS[metodo] ?? {}),
+      ...(COMPRAS[metodo] ?? {}),
     },
   }),
   {}

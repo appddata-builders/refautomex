@@ -154,8 +154,9 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         };
     }, []);
 
+    const routesKey = JSON.stringify(parseRoutes(prodOverview?.rutas));
     useEffect(() => {
-        const updatedRoutes = parseRoutes(prodOverview?.rutas);
+        const updatedRoutes = parseRoutes(routesKey);
         setImageRoutes(updatedRoutes);
         setPendingImages(prev => {
             prev.forEach(revokePreviewUrl);
@@ -165,7 +166,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             ? buildImageSrc(multimediaSrc, updatedRoutes[0])
             : `${multimediaSrc}productos/no-img.png`;
         setSelectedImage(initialImage);
-    }, [prodOverview, multimediaSrc]);
+    }, [routesKey, multimediaSrc]);
 
     useEffect(() => {
         if (!prodOverview) return;
@@ -179,7 +180,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         if (candidateId) {
             setProdOverview(prev => {
                 if (!prev) return prev;
-                if (prev.idgrupo === candidateId) return prev;
+                if (String(prev.idgrupo ?? '') === String(candidateId)) return prev;
                 return { ...prev, idgrupo: candidateId };
             });
             setGroupOptions((prev) => {
@@ -200,7 +201,10 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 (option) => option.label.toLowerCase() === candidateLabel.toLowerCase()
             );
             if (matched) {
-                setProdOverview(prev => prev ? { ...prev, idgrupo: matched.value } : prev);
+                setProdOverview(prev => {
+                    if (!prev || String(prev.idgrupo ?? '') === String(matched.value)) return prev;
+                    return { ...prev, idgrupo: matched.value };
+                });
             }
         }
     }, [prodOverview, groupOptions, setProdOverview]);
@@ -216,7 +220,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         if (candidateId) {
             setProdOverview(prev => {
                 if (!prev) return prev;
-                if (prev.idcategoria === candidateId) return prev;
+                if (String(prev.idcategoria ?? '') === String(candidateId)) return prev;
                 return { ...prev, idcategoria: candidateId };
             });
             setCategoryOptions((prev) => {
@@ -343,7 +347,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         setProdOverview(prev => {
             if (!prev) return prev;
             const isWebBranch = isWebBranchValue(detail.idsucursal);
-            return {
+            const next = {
                 ...prev,
                 idsucursal: detail.idsucursal ? Number(detail.idsucursal) : prev.idsucursal,
                 sucursal: detail.sucursal || prev.sucursal,
@@ -353,6 +357,9 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 precio: detail.precio ?? prev.precio,
                 utilidad: detail.utilidad ?? prev.utilidad,
             };
+            const fields = ['idsucursal', 'sucursal', 'localizacion', 'existencia', 'costo', 'precio', 'utilidad'];
+            if (fields.every(field => Object.is(prev[field], next[field]))) return prev;
+            return next;
         });
     }, [selectedBranchId, branchDetails, setProdOverview]);
 

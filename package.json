@@ -13,6 +13,7 @@
     "db:tunnel": "bash scripts/db-tunnel.sh",
     "db:pg:check": "node scripts/db-pg-check.mjs",
     "db:pg:llaves": "node scripts/db-pg-llaves.mjs",
+    "db:historial": "node scripts/db-historial.mjs",
     "db:web:catalogo": "node scripts/db-web-catalogo.mjs",
     "seed:hydrate": "node scripts/seed-hydrate.mjs",
     "db:pg:push": "drizzle-kit push --config drizzle.config.pg.mjs",

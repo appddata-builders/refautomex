@@ -203,8 +203,12 @@ const TableCapture = forwardRef(({
         appendDiscountRow(productRef, Number(discountValue), { autoConfirm });
     };
 
+    // El costo base sale del estado o, si todavia no se lleno (los descuentos de
+    // una captura a editar llegan en el mismo render que sus renglones), del
+    // renglon mismo. Sin esto el costo quedaba en 0 al editar.
     const recalculateDiscounts = (productRef, rows) => {
-        const base = Number(baseCosts[productRef] ?? 0);
+        const item = items.find((entry) => entry.refaccion === productRef);
+        const base = Number(baseCosts[productRef] ?? item?.costoBase ?? item?.costo ?? 0);
         let price = base;
         rows.filter((row) => row.confirmed).forEach((row) => {
             const discountedAmount = Number((price * row.value).toFixed(2));
@@ -341,19 +345,16 @@ const TableCapture = forwardRef(({
                 errors.push(`Confirma o elimina los descuentos pendientes en ${ref}.`);
                 return;
             }
-            const actualStock = Number(item.existencia ?? 0);
-            const totalStock = actualStock + qty;
+            // Lo que espera /newCapture (compras.js): la cantidad comprada, el
+            // costo ya con descuentos y el de lista. La existencia final y los
+            // importes los calcula el servidor.
             const confirmed = (discountRows[ref] || []).filter((row) => row.confirmed);
             detail.push({
-                ref,
+                num_parte: ref,
+                cantidad: qty,
                 costo: Number(currentCost.toFixed(2)),
-                costo_a: Number(baseCost.toFixed(2)),
-                actual: actualStock,
-                exis: qty,
-                cant: totalStock,
-                neto: Number((baseCost * qty).toFixed(2)),
-                importe: Number((currentCost * qty).toFixed(2)),
-                ut: Number(item.utilidad ?? 0),
+                costo_lista: Number(baseCost.toFixed(2)),
+                utilidad: Number(item.utilidad) || undefined,
                 d1: Number(confirmed[0]?.value ?? 0),
                 d2: Number(confirmed[1]?.value ?? 0),
                 d3: Number(confirmed[2]?.value ?? 0)
@@ -453,14 +454,14 @@ const TableCapture = forwardRef(({
     };
 
     return (
-        <div className="h-[690px] bg-[rgb(var(--color-card))] rounded-2xl my-5 flex shadow relative justify-center">
-            <div className="flex flex-col overflow-x-auto pt-5 lg:mx-1">
+        <div className="min-h-[420px] bg-[rgb(var(--color-card))] rounded-2xl flex shadow relative">
+            <div className="flex w-full flex-col overflow-x-auto pt-5 lg:mx-1">
                 {error && (
                     <div className="mx-6 mb-3 rounded-md border border-red-400 bg-red-100/40 text-red-600 text-xs px-3 py-2">
                         {error}
                     </div>
                 )}
-                <table className="w-[845px] text-sm text-left text-[rgb(var(--color-text))] shadow-sm">
+                <table className="w-full min-w-[845px] text-sm text-left text-[rgb(var(--color-text))] shadow-sm">
                     <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))]">
                         <tr>
                             <th className="p-3">{t('panel.table.part')}</th>
@@ -495,7 +496,7 @@ const TableCapture = forwardRef(({
                                         </td>
                                         <td className="py-4 flex justify-center">
                                             <Select
-                                                value={{ value: item.existencia, label: item.existencia.toString() }}
+                                                value={{ value: item.existencia ?? 0, label: String(item.existencia ?? 0) }}
                                                 isDisabled={true}
                                                 styles={customStyles}
                                                 className="pointer-events-none"

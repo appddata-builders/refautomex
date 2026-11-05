@@ -42,17 +42,24 @@ const faltan = (detalle) => ({
 // El FILTER no es cosmetico: con el LEFT JOIN a `imagenes`, un producto sin
 // fotos hacia que json_agg devolviera [null] en vez de []. El frontend tomaba
 // ese null como la ruta principal y pedia a S3 `.../undefined`.
+//
+// Lo que decide si un producto esta en el sitio es tener renglon en WEB (se
+// activa desde Inventarios) y estar activo. El original pedia ademas
+// idgrupo > 0, y de 125 productos en WEB el sitio mostraba 8. Sin grupo (el 0,
+// "Not asigned") sale con grupo vacio y el sitio lo pone en "Otros".
 const getProducts = async () => ({
   cuerpo: await llamar(
-    `SELECT p.num_parte, p.descripcion, d.precio, g.grupo, g.idgrupo, d.existencia,
+    `SELECT p.num_parte, p.descripcion, d.precio,
+            CASE WHEN p.idgrupo > 0 THEN g.grupo END AS grupo,
+            CASE WHEN p.idgrupo > 0 THEN g.idgrupo END AS idgrupo, d.existencia,
             COALESCE(json_agg(i.ruta) FILTER (WHERE i.ruta IS NOT NULL), '[]'::json) AS rutas
        FROM producto p
-       INNER JOIN grupo g USING (idgrupo)
+       LEFT JOIN grupo g USING (idgrupo)
        INNER JOIN detalle d USING (num_parte)
        INNER JOIN sucursal s USING (idsucursal)
        LEFT JOIN imagenes i USING (num_parte)
-      WHERE p.status = 'A' AND p.idgrupo > 0 AND sucursal = 'WEB'
-      GROUP BY p.num_parte, p.descripcion, d.precio, g.grupo, g.idgrupo, d.existencia`
+      WHERE p.status = 'A' AND sucursal = 'WEB'
+      GROUP BY p.num_parte, p.descripcion, d.precio, g.grupo, g.idgrupo, p.idgrupo, d.existencia`
   ),
 });
 
@@ -61,14 +68,7 @@ const getAllUsers = async () => ({
   cuerpo: await llamar('SELECT * FROM usuario LEFT JOIN sucursal USING (idsucursal)'),
 });
 
-// invoicesCaptured()
-const getInvoicesCaptured = async () => ({
-  cuerpo: await llamar(
-    `SELECT * FROM compra c
-       INNER JOIN proveedor p USING (idproveedor)
-      WHERE c.status = 'P'`
-  ),
-});
+// invoicesCaptured() y GetCaptureWithDetails: en compras.js.
 
 // GetInvoices()
 // Los datos fiscales salen de la factura (lo que escribio el cliente). Las
@@ -102,6 +102,10 @@ const getAllProducts = async ({ body }) => {
   // El GROUP BY lleva idcategoria, categoria y empresa, que el original NO
   // listaba. MySQL lo permite; Postgres exige toda columna no agregada. Sin
   // esto la consulta ni siquiera se ejecuta.
+  //
+  // La marca de auto puede faltar (scripts/db-catalogo.mjs la deja vacia
+  // cuando la descripcion no dice de que auto es): LEFT JOIN, o el producto
+  // desapareceria del buscador.
   return {
     cuerpo: await llamar(
       `SELECT p.num_parte, p.descripcion, d.precio, d.costo, g.grupo, g.idgrupo,
@@ -117,7 +121,7 @@ const getAllProducts = async ({ body }) => {
          LEFT JOIN imagenes i USING (num_parte)
          INNER JOIN grupo g USING (idgrupo)
          INNER JOIN proveedor pr USING (idproveedor)
-         INNER JOIN marca ma USING (idmarca)
+         LEFT JOIN marca ma USING (idmarca)
         WHERE p.status = 'A'
           AND (?::int IS NULL OR s.idsucursal = ?::int)
         GROUP BY p.num_parte, p.descripcion, d.precio, d.costo, g.grupo, g.idgrupo,
@@ -161,48 +165,23 @@ const SQL_DETALLE_VENTA = `
 // Varios result sets  ->  una consulta por conjunto, ensambladas en orden
 // ---------------------------------------------------------------------------
 
-// GetCaptureWithDetails(idCompra): cabecera + detalle
-const getCaptureWithDetails = async ({ query }) => {
-  const id = Number.parseInt(query.get('id'), 10);
-  if (!id) return { estado: 400, cuerpo: { success: false, message: 'Parámetro id inválido.' } };
-
-  const cabecera = await consultar(
-    `SELECT c.*, p.empresa, p.descuento, p.plazo_dias
-       FROM compra c
-       INNER JOIN proveedor p USING (idproveedor)
-      WHERE c.idcompra = ?`,
-    [id]
-  );
-
-  if (cabecera.length === 0) {
-    return { estado: 404, cuerpo: { success: false, message: 'Captura no encontrada.' } };
-  }
-
-  const detalle = await consultar(
-    `SELECT r.*, prod.descripcion, det.existencia
-       FROM registro r
-       INNER JOIN producto prod USING (num_parte)
-       LEFT JOIN detalle det USING (num_parte)
-      WHERE r.idcompra = ?`,
-    [id]
-  );
-
-  // El Express armaba {success, header, detail} a partir de result[0][0] y
-  // result[1]; aqui se arma igual pero sin el anidado intermedio.
-  return { cuerpo: { success: true, header: cabecera[0], detail: detalle } };
-};
 
 // GetWarehouseProducts(): sin detalle (status E) + con detalle (status A)
+//
+// `idcategoria` no venia en el original. Inventarios la necesita al poner un
+// producto en WEB sin grupo: patchProduct reescribe la fila completa de
+// `producto`, y sin ella la categoria se iba a la 1.
 const getWarehouseProducts = async () => {
   const sinDetalle = await consultar(
-    `SELECT p.num_parte, p.descripcion, p.mod_ini, p.mod_fin, p.idgrupo, p.idmarca, p.status
+    `SELECT p.num_parte, p.descripcion, p.mod_ini, p.mod_fin, p.idgrupo, p.idcategoria,
+            p.idmarca, p.status
        FROM producto p
       WHERE p.status = 'E'`
   );
 
   const conDetalle = await consultar(
     `SELECT p.num_parte, p.descripcion, p.mod_ini, p.mod_fin, p.idgrupo, g.grupo,
-            c.categoria, p.idmarca, p.status, d.idsucursal, s.sucursal,
+            p.idcategoria, c.categoria, p.idmarca, p.status, d.idsucursal, s.sucursal,
             l.localizacion, d.existencia, d.costo, d.precio, d.aiva, d.utilidad
        FROM producto p
        INNER JOIN grupo g USING (idgrupo)
@@ -396,11 +375,9 @@ export const PROCEDIMIENTOS = {
   GET: {
     getProducts,
     getAllUsers,
-    getInvoicesCaptured,
     getInvoices,
     getUserHistory,
     getSaleDetails,
-    getCaptureWithDetails,
     getWarehouseProducts,
     getFolioHistory,
   },

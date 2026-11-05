@@ -61,7 +61,8 @@ export const MODULOS = [
   // Mueve inventario real al momento. Se le puede dar al almacenista desde
   // Permisos de perfil; quien no es admin solo ve y asigna en su sucursal.
   { clave: 'assignment', seccion: 'stock', admin: 'total', supervisor: 'no', empleado: 'no' },
-  { clave: 'missing', seccion: 'stock', admin: 'total', supervisor: 'total', empleado: 'total' },
+  // Faltantes estaba en Almacen; es el primer paso de una compra: que pedir y a quien.
+  { clave: 'missing', seccion: 'purchases', admin: 'total', supervisor: 'total', empleado: 'total' },
   { clave: 'capture', seccion: 'purchases', admin: 'total', supervisor: 'no', empleado: 'no' },
   { clave: 'providers', seccion: 'purchases', admin: 'total', supervisor: 'no', empleado: 'no' },
   // Quien no es admin ve el calendario de su sucursal sin editarlo (lo exige
