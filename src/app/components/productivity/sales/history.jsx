@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import ComponentToPrint, { prefetchBranchData } from './component-print';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 const UTILITY_RATE = 0.3;
 const currencyFormatter = new Intl.NumberFormat('es-MX', {
@@ -199,6 +200,7 @@ const isWebBranch = (value) => {
 };
 
 export default function History() {
+    const { t } = useTranslation();
     const [visibleTooltip, setVisibleTooltip] = useState(null);
     const [currentDate, setCurrentDate] = useState(new Date());
     const [imageErrors, setImageErrors] = useState({});
@@ -236,11 +238,11 @@ export default function History() {
         onAfterPrint: () => setTicketData(null),
     });
 
-    const findTooltip = createTooltip(FaSearch, 'Buscar ticket', 'find', visibleTooltip, setVisibleTooltip);
-    const withdrawTooltip = createTooltip(BiMoneyWithdraw, 'Solicitar retiro', 'withdraw', visibleTooltip, setVisibleTooltip);
+    const findTooltip = createTooltip(FaSearch, t('panel.history.findTicket'), 'find', visibleTooltip, setVisibleTooltip);
+    const withdrawTooltip = createTooltip(BiMoneyWithdraw, t('panel.history.withdraw'), 'withdraw', visibleTooltip, setVisibleTooltip);
 
     const formatDate = (dateInput, timeZone) => {
-        if (!dateInput) return "Fecha no disponible";
+        if (!dateInput) return t('panel.history.noDate');
 
         let date;
         if (typeof dateInput === "string") {
@@ -255,7 +257,7 @@ export default function History() {
 
         if (isNaN(date.getTime())) {
             console.error("Fecha inválida recibida:", dateInput);
-            return "Fecha inválida";
+            return t('panel.history.invalidDate');
         }
 
         return new Intl.DateTimeFormat("es-MX", {
@@ -669,7 +671,7 @@ export default function History() {
     );
 
     const anchorDate = useMemo(() => parseSaleDate(currentDate) || new Date(), [currentDate]);
-    const chartViewLabel = chartView === 'month' ? 'mes' : chartView === 'year' ? 'año' : 'día';
+    const chartViewLabel = chartView === 'month' ? t('panel.history.unitMonth') : chartView === 'year' ? t('panel.history.unitYear') : t('panel.history.unitDay');
     const formattedMonthLabel = useMemo(
         () => new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric' }).format(anchorDate),
         [anchorDate]
@@ -950,8 +952,8 @@ export default function History() {
     const yearlyChartMinWidth = Math.max(yearChartData.length * 72, 520);
 
     const selectedBranchLabel = selectedBranch
-        ? (branchMap[selectedBranch] || 'la sucursal seleccionada')
-        : 'todas las sucursales';
+        ? (branchMap[selectedBranch] || t('panel.site.selectedBranch'))
+        : t('panel.site.allBranches');
 
     const buildTicketDataFromSale = (sale) => {
         if (!sale) return null;
@@ -1026,7 +1028,7 @@ export default function History() {
         e.preventDefault();
 
         if (!selectedStatus) {
-            alert('Por favor, selecciona un estado.');
+            alert(t('panel.common.pickStatus'));
             return;
         }
 
@@ -1058,7 +1060,7 @@ export default function History() {
             }
         } catch (error) {
             console.error('Error actualizando el estado:', error);
-            alert('Hubo un error al actualizar el estado. Intenta de nuevo.');
+            alert(t('panel.common.statusUpdateError'));
         }
 
         setIsStatusModalOpen(false);
@@ -1108,9 +1110,9 @@ export default function History() {
     return (
         <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
             <Title
-                title='Histórico de ventas'
+                title={t('panel.history.title')}
                 icon={MdSell}
-                back='Volver al panel'
+                back={t('panel.common.back')}
                 path='/productivity'
             />
             <div>
@@ -1124,7 +1126,7 @@ export default function History() {
                                     ? 'bg-amber-500 text-white border-amber-500'
                                     : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] border-[rgb(var(--color-border))]'}`}
                             >
-                                Histórico
+                                {t('panel.history.tabTable')}
                             </button>
                             <button
                                 type="button"
@@ -1133,21 +1135,21 @@ export default function History() {
                                     ? 'bg-amber-500 text-white border-amber-500'
                                     : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] border-[rgb(var(--color-border))]'}`}
                             >
-                                Gráficas
+                                {t('panel.history.tabCharts')}
                             </button>
                         </div>
                         <div>
-                            <label className="m-1 text-sm text-[rgb(var(--color-text))]/80">Sucursal</label>
+                            <label className="m-1 text-sm text-[rgb(var(--color-text))]/80">{t('panel.common.branch')}</label>
                             <select
                                 value={selectedBranch}
                                 onChange={(e) => setSelectedBranch(e.target.value)}
                                 disabled={branchOptions.length === 0}
                                 className="bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] border border-[rgb(var(--color-border))] rounded-xl m-1 px-3 py-2 text-sm shadow outline-none cursor-pointer"
                             >
-                                <option value="">Todas</option>
+                                <option value="">{t('panel.history.allBranches')}</option>
                                 {branchOptions.map((branch) => (
                                     <option key={branch.value} value={branch.value}>
-                                        {branch.value === userBranchId ? `ACTUAL · ${branch.label}` : branch.label}
+                                        {branch.value === userBranchId ? t('panel.history.currentBranch', { branch: branch.label }) : branch.label}
                                     </option>
                                 ))}
                             </select>
@@ -1187,7 +1189,7 @@ export default function History() {
                                 <div className='w-full h-full overflow-scroll'>
                                 {!filteredSales || filteredSales.length === 0 ? (
                                     <div className="flex justify-center items-center h-full text-[rgb(var(--color-text))]">
-                                        No se encontraron registros para la fecha listada en {selectedBranchLabel}.
+                                        {t('panel.history.noRecords', { branch: selectedBranchLabel })}
                                     </div>
                                 ) : (
                                     <>
@@ -1203,10 +1205,10 @@ export default function History() {
                                                         : 'hover:bg-[rgb(var(--color-card-white))]'
                                                 }`}
                                             >
-                                                Anterior
+                                                {t('common.prev')}
                                             </button>
                                             <span>
-                                                Página {currentPage} de {totalPages}
+                                                {t('panel.common.pageOf', { page: currentPage, total: totalPages })}
                                             </span>
                                             <button
                                                 type="button"
@@ -1218,18 +1220,18 @@ export default function History() {
                                                         : 'hover:bg-[rgb(var(--color-card-white))]'
                                                 }`}
                                             >
-                                                Siguiente
+                                                {t('common.next')}
                                             </button>
                                         </div>
                                     )}
                                     <table className="w-full lg:w-[1300px] text-sm text-left text-[rgb(var(--color-text))] mx-auto">
                                             <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))] text-center">
                                                 <tr>
-                                                    <th scope="col" className="p-1.5">STATUS</th>
-                                                    <th scope="col" className="py-2 px-8">FOLIO</th>
-                                                    <th scope="col" className="py-2 px-8">TOTAL</th>
-                                                    <th scope="col" className="py-2 px-8">EMPLEADO</th>
-                                                    <th scope="col" className="py-2 px-8">ACCION</th>
+                                                    <th scope="col" className="p-1.5">{t('panel.table.status')}</th>
+                                                    <th scope="col" className="py-2 px-8">{t('panel.table.folio')}</th>
+                                                    <th scope="col" className="py-2 px-8">{t('panel.table.total')}</th>
+                                                    <th scope="col" className="py-2 px-8">{t('panel.table.employee')}</th>
+                                                    <th scope="col" className="py-2 px-8">{t('panel.table.action')}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1263,10 +1265,10 @@ export default function History() {
                                                                         : 'bg-blue-200'}
                                                                         text-sm text-[rgb(var(--color-text-base))] px-1 shadow rounded-md mt-2`}
                                                                     >
-                                                                        {item.status === 'A' ? 'Activa'
-                                                                        : item.status === 'C' ? 'Cancelada'
-                                                                        : item.status === 'D' ? 'Devuelta'
-                                                                        : 'Error en venta'}
+                                                                        {item.status === 'A' ? t('panel.history.statusActive')
+                                                                        : item.status === 'C' ? t('panel.history.statusCanceled')
+                                                                        : item.status === 'D' ? t('panel.history.statusReturned')
+                                                                        : t('panel.common.saleError')}
                                                                     </span>
                                                                 </td>
                                                                 <td className="py-4 px-3 cursor-pointer font-medium bg-[rgb(var(--color-galaxy))] text-center"
@@ -1321,7 +1323,7 @@ export default function History() {
                                                                         type="button"
                                                                         className='relative p-3 m-1 rounded-full shadow hover:shadow-xl bg-amber-500 color-cultured cursor-pointer inline-block'
                                                                         onClick={() => handleTicketPrint(item)}
-                                                                        aria-label='Ticket'
+                                                                        aria-label={t('panel.tickets.ticket')}
                                                                     >
                                                                         <IoTicket />
                                                                     </button>
@@ -1334,10 +1336,10 @@ export default function History() {
                                                                             <table className="w-full text-sm text-left text-[rgb(var(--color-text))] mt-2 shadow">
                                                                                 <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))]">
                                                                                     <tr>
-                                                                                        <th scope="col" className="py-2 px-4">NÚMERO DE PARTE</th>
-                                                                                        <th scope="col" className="py-2 px-4">DESCRIPCIÓN</th>
-                                                                                        <th scope="col" className="py-2 px-4">CANTIDAD</th>
-                                                                                        <th scope="col" className="py-2 px-4">PRECIO UNITARIO</th>
+                                                                                        <th scope="col" className="py-2 px-4">{t('panel.table.partNumber')}</th>
+                                                                                        <th scope="col" className="py-2 px-4">{t('panel.table.description')}</th>
+                                                                                        <th scope="col" className="py-2 px-4">{t('panel.table.quantity')}</th>
+                                                                                        <th scope="col" className="py-2 px-4">{t('panel.table.unitPrice')}</th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody>
@@ -1350,7 +1352,7 @@ export default function History() {
                                                                                         </tr>
                                                                                     ))}
                                                                                     <tr className='bg-[rgb(var(--color-galaxy))]'>
-                                                                                        <td className="py-2 px-4 text-[rgb(var(--color-text))]"> NOTA: {item.nota}</td>
+                                                                                        <td className="py-2 px-4 text-[rgb(var(--color-text))]"> {t('panel.history.note')} {item.nota}</td>
                                                                                     </tr>
                                                                                 </tbody>
                                                                             </table>
@@ -1362,12 +1364,12 @@ export default function History() {
                                                     );
                                                 })}
                                                 <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                                                    <td className="py-4 px-6 font-bold" colSpan="3">TOTAL:</td>
+                                                    <td className="py-4 px-6 font-bold" colSpan="3">{t('panel.table.total2')}</td>
                                                 <td className="py-4 px-6 font-bold text-lg text-[rgb(var(--color-text))]" colSpan="2">$ {tableTotal.toFixed(2)}</td>
                                                 </tr>
                                                 {showDateControls && (
                                                     <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                                                        <td className="py-3 px-6 font-semibold text-[rgb(var(--color-text))]" colSpan="3">UTILIDAD ESTIMADA:</td>
+                                                        <td className="py-3 px-6 font-semibold text-[rgb(var(--color-text))]" colSpan="3">{t('panel.history.estimatedProfit')}</td>
                                                         <td className="py-3 px-6 font-semibold text-[rgb(var(--color-text))]" colSpan="2">
                                                             {currencyFormatter.format(totalUtility)}
                                                         </td>
@@ -1375,7 +1377,7 @@ export default function History() {
                                                 )}
                                                 {showDateControls && (
                                                     <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                                                        <td className="py-3 px-6 font-semibold text-[rgb(var(--color-text))]" colSpan="3">PAGO A PROVEEDORES:</td>
+                                                        <td className="py-3 px-6 font-semibold text-[rgb(var(--color-text))]" colSpan="3">{t('panel.history.providerPayment')}</td>
                                                         <td className="py-3 px-6 font-semibold text-[rgb(var(--color-text))]" colSpan="2">
                                                             {currencyFormatter.format(totalProviders)}
                                                         </td>
@@ -1397,16 +1399,16 @@ export default function History() {
                                         <h3 className="text-lg font-semibold uppercase tracking-wide">
                                             {chartView === 'year'
                                                 ? showMultiBranchLines
-                                                    ? 'Ventas anuales por sucursal'
-                                                    : `Ventas anuales de ${selectedBranchLabel}`
+                                                    ? t('panel.history.yearlyByBranch')
+                                                    : t('panel.history.yearlyOf', { branch: selectedBranchLabel })
                                                 : showMultiBranchLines
-                                                    ? 'Ventas por sucursal'
-                                                    : `Ventas de ${selectedBranchLabel}`}
+                                                    ? t('panel.history.salesByBranch')
+                                                    : t('panel.history.salesOf', { branch: selectedBranchLabel })}
                                         </h3>
                                         <p className="text-xs text-[rgb(var(--color-text))]/70">
                                             {chartView === 'year'
-                                                ? `Comparativo ${anchorDate.getFullYear()}.`
-                                                : `Vista por ${chartViewLabel}.`} Total en vista: {currencyFormatter.format(chartTotal)}
+                                                ? t('panel.history.comparative', { year: anchorDate.getFullYear() })
+                                                : t('panel.history.viewBy', { unit: chartViewLabel })} {t('panel.history.viewTotal')} {currencyFormatter.format(chartTotal)}
                                         </p>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
@@ -1418,7 +1420,7 @@ export default function History() {
                                                 : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] border-[rgb(var(--color-border))]'}`
                                             }
                                         >
-                                            Día
+                                            {t('panel.history.day')}
                                         </button>
                                         <button
                                             type="button"
@@ -1428,7 +1430,7 @@ export default function History() {
                                                 : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] border-[rgb(var(--color-border))]'}`
                                             }
                                         >
-                                            Mes
+                                            {t('panel.history.month')}
                                         </button>
                                         <button
                                             type="button"
@@ -1438,7 +1440,7 @@ export default function History() {
                                                 : 'bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] border-[rgb(var(--color-border))]'}`
                                             }
                                         >
-                                            Año
+                                            {t('panel.history.year')}
                                         </button>
                                     </div>
                                 </div>
@@ -1449,7 +1451,7 @@ export default function History() {
                                             onClick={() => shiftChartMonth(-1)}
                                             className="px-2.5 py-1 rounded-full border border-[rgb(var(--color-border))] text-xs uppercase tracking-wide shadow hover:bg-[rgb(var(--color-card-white))] cursor-pointer"
                                         >
-                                            &larr; Mes
+                                            &larr; {t('panel.history.month')}
                                         </button>
                                         <button
                                             type="button"
@@ -1460,7 +1462,7 @@ export default function History() {
                                             }}
                                             className="px-2.5 py-1 rounded-full border border-[rgb(var(--color-border))] text-xs uppercase tracking-wide shadow hover:bg-[rgb(var(--color-card-white))] cursor-pointer"
                                         >
-                                            Actual
+                                            {t('panel.history.current')}
                                         </button>
                                         <span className="text-xs font-semibold uppercase tracking-wide">
                                             {formattedMonthLabel}
@@ -1475,7 +1477,7 @@ export default function History() {
                                                     : 'border-[rgb(var(--color-border))] opacity-40 cursor-not-allowed'
                                             }`}
                                         >
-                                            Mes &rarr;
+                                            {t('panel.history.month')} &rarr;
                                         </button>
                                     </div>
                                 )}
@@ -1486,7 +1488,7 @@ export default function History() {
                                             onClick={() => shiftChartYear(-1)}
                                             className="px-2.5 py-1 rounded-full border border-[rgb(var(--color-border))] text-xs uppercase tracking-wide shadow hover:bg-[rgb(var(--color-card-white))] cursor-pointer"
                                         >
-                                            &larr; Año
+                                            &larr; {t('panel.history.year')}
                                         </button>
                                         <span className="text-xs font-semibold uppercase tracking-wide">
                                             {anchorDate.getFullYear()}
@@ -1501,7 +1503,7 @@ export default function History() {
                                                     : 'border-[rgb(var(--color-border))] opacity-40 cursor-not-allowed'
                                             }`}
                                         >
-                                            Año &rarr;
+                                            {t('panel.history.year')} &rarr;
                                         </button>
                                     </div>
                                 )}
@@ -1509,7 +1511,7 @@ export default function History() {
                             {chartView === 'year' ? (
                                 yearChartData.length === 0 ? (
                                     <div className="mt-6 text-sm text-[rgb(var(--color-text))]/70">
-                                        No hay ventas suficientes para comparar en este año.
+                                        {t('panel.history.notEnoughYear')}
                                     </div>
                                 ) : (
                                     <div className="mt-6 overflow-x-auto">
@@ -1548,7 +1550,7 @@ export default function History() {
                                                     ) : (
                                                         <Bar
                                                             dataKey="total"
-                                                            name="Ventas"
+                                                            name={t('panel.history.seriesSales')}
                                                             fill="rgb(245 158 11)"
                                                         />
                                                     )}
@@ -1599,7 +1601,7 @@ export default function History() {
                                                     ) : (
                                                         <Bar
                                                             dataKey="total"
-                                                            name="Ventas"
+                                                            name={t('panel.history.seriesSales')}
                                                             fill="rgb(245 158 11)"
                                                         />
                                                     )}
@@ -1610,7 +1612,7 @@ export default function History() {
                                 )
                             )}
                             <p className="mt-4 text-[0.7rem] text-[rgb(var(--color-text))]/60">
-                                Utilidad estimada 30% del total (NEW y lista+). SEMI sin utilidad.
+                                {t('panel.history.profitNote')}
                             </p>
                         </div>
                         )}
@@ -1621,23 +1623,23 @@ export default function History() {
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.6)]">
                     <div className="bg-[rgb(var(--color-card))] p-6 rounded-lg shadow-lg w-80">
-                        <h2 className="text-xl font-semibold mb-4 text-[rgb(var(--color-text))]">Buscar en histórico</h2>
+                        <h2 className="text-xl font-semibold mb-4 text-[rgb(var(--color-text))]">{t('panel.history.searchTitle')}</h2>
                         <div className="mb-4">
-                            <label htmlFor="searchMode" className="block text-[rgb(var(--color-text))] mb-2">Buscar por:</label>
+                            <label htmlFor="searchMode" className="block text-[rgb(var(--color-text))] mb-2">{t('panel.history.searchBy')}</label>
                             <select
                                 id="searchMode"
                                 value={pendingSearchMode}
                                 onChange={handleSearchModeChange}
                                 className="w-full px-3 py-2 border border-[rgb(var(--color-border))] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
                             >
-                                <option value="date">Fecha</option>
-                                <option value="folio">Folio</option>
-                                <option value="employee">Empleado</option>
+                                <option value="date">{t('panel.common.date')}</option>
+                                <option value="folio">{t('panel.history.folio')}</option>
+                                <option value="employee">{t('panel.history.employee')}</option>
                             </select>
                         </div>
                         {pendingSearchMode === 'date' ? (
                             <div className="mb-4">
-                                <label htmlFor="startDate" className="block text-[rgb(var(--color-text))] mb-2">Fecha:</label>
+                                <label htmlFor="startDate" className="block text-[rgb(var(--color-text))] mb-2">{t('panel.history.dateLabel')}</label>
                                 <input
                                     type="date"
                                     id="startDate"
@@ -1652,7 +1654,7 @@ export default function History() {
                         ) : (
                             <div className="mb-4">
                                 <label htmlFor="searchTerm" className="block text-[rgb(var(--color-text))] mb-2">
-                                    {pendingSearchMode === 'folio' ? 'Folio:' : 'Empleado:'}
+                                    {pendingSearchMode === 'folio' ? t('panel.history.folioLabel') : t('panel.history.employeeLabel')}
                                 </label>
                                 <input
                                     type="text"
@@ -1666,7 +1668,7 @@ export default function History() {
                                         );
                                     }}
                                     className="w-full px-3 py-2 border border-[rgb(var(--color-border))] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
-                                    placeholder={pendingSearchMode === 'folio' ? 'Ingrese el número de folio' : 'Ingrese el nombre del empleado'}
+                                    placeholder={pendingSearchMode === 'folio' ? t('panel.history.folioPlaceholder') : t('panel.history.employeePlaceholder')}
                                 />
                             </div>
                         )}
@@ -1676,14 +1678,14 @@ export default function History() {
                                 onClick={() => setIsModalOpen(false)}
                                 className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded mr-2"
                             >
-                                Cancelar
+                                {t('panel.common.cancel')}
                             </button>
                             <button
                                 type="button"
                                 onClick={handleSearch}
                                 className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded flex items-center"
                             >
-                                <FaSearch className="mr-2" /> Buscar
+                                <FaSearch className="mr-2" /> {t('panel.history.search')}
                             </button>
                         </div>
                     </div>
@@ -1694,13 +1696,13 @@ export default function History() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.6)]">
                     <div className="bg-[rgb(var(--color-card))] p-6 rounded-lg shadow-lg w-80">
                         <h2 className="text-xl font-semibold mb-4 text-[rgb(var(--color-text))]">
-                            ¿Cambiar status de
+                            {t('panel.history.changeStatusTitle')}
                             <br/>
                             {folioToChange}?
                         </h2>
                         <div className="mb-4">
                             <label htmlFor="status" className="block text-[rgb(var(--color-text))] mb-2">
-                                Selecciona el nuevo status:
+                                {t('panel.history.pickNewStatus')}
                             </label>
                             <select
                                 id="status"
@@ -1708,10 +1710,10 @@ export default function History() {
                                 onChange={(e) => setSelectedStatus(e.target.value)}
                                 className="w-full px-3 py-2 border border-[rgb(var(--color-border))] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))]"
                             >
-                                <option value="A">Activa</option>
-                                <option value="C">Cancelada</option>
-                                <option value="D">Devuelta</option>
-                                <option value="E">Error en venta</option>
+                                <option value="A">{t('panel.history.statusActive')}</option>
+                                <option value="C">{t('panel.history.statusCanceled')}</option>
+                                <option value="D">{t('panel.history.statusReturned')}</option>
+                                <option value="E">{t('panel.common.saleError')}</option>
                             </select>
                         </div>
                         <div className='py-4 px-4 relative flex-col justify-center items-center flex'>
@@ -1736,10 +1738,10 @@ export default function History() {
                                 : 'bg-blue-200'}
                                 text-sm text-[rgb(var(--color-text-base))] px-1 shadow rounded-md mt-2`}
                             >
-                                {selectedStatus === 'A' ? 'Activa'
-                                : selectedStatus === 'C' ? 'Cancelada'
-                                : selectedStatus === 'D' ? 'Devuelta'
-                                : 'Error en venta'}
+                                {selectedStatus === 'A' ? t('panel.history.statusActive')
+                                : selectedStatus === 'C' ? t('panel.history.statusCanceled')
+                                : selectedStatus === 'D' ? t('panel.history.statusReturned')
+                                : t('panel.common.saleError')}
                             </span>
                         </div>
                         <div className="flex justify-end">
@@ -1748,14 +1750,14 @@ export default function History() {
                                 onClick={() => setIsStatusModalOpen(false)}
                                 className="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded mr-2"
                             >
-                                Cancelar
+                                {t('panel.common.cancel')}
                             </button>
                             <button
                                 type="button"
                                 onClick={handleChangeStatus}
                                 className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
                             >
-                                Continuar
+                                {t('panel.common.continue')}
                             </button>
                         </div>
                     </div>

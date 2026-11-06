@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useContext, useEffect, useMemo } from 'react';
 import { AuthContext } from '@/app/lib/auth-tracker';
+import { perfilDeCategoria, puedeVer } from '@/app/lib/permisos-menu';
+import { refrescarPermisos, usePermisosMenu } from '@/app/lib/use-permisos-menu';
 
 import Home from '@/app/components/productivity/home';
 import Settings from '@/app/components/productivity/settings';
@@ -13,10 +15,11 @@ import Personal from '@/app/components/productivity/services/personal';
 import Calendar from '@/app/components/productivity/services/calendar';
 import Invoice from '@/app/components/productivity/services/invoice';
 import Warehouse from '@/app/components/productivity/stock/warehouse';
+import Assignment from '@/app/components/productivity/stock/assignment';
 import Inventories from '@/app/components/productivity/stock/inventories';
-import Missing from '@/app/components/productivity/stock/missing';
 import Capture from '@/app/components/productivity/requirements/capture';
 import Providers from '@/app/components/productivity/requirements/providers';
+import Missing from '@/app/components/productivity/requirements/missing';
 import Site from '@/app/components/productivity/orders/site';
 import Delivery from '@/app/components/productivity/orders/delivery';
 
@@ -27,6 +30,19 @@ export default function Productivity() {
 
   const load = searchParams.get('load') || 'home';
   const lang = searchParams.get('lang') || 'es';
+  // Mismo criterio que navbar-panel.jsx: un modulo que el perfil no tiene en
+  // Permisos de perfil se cambia por Home aunque se escriba la URL a mano.
+  // Respaldos lo vuelve a revisar la API con el token; esto solo decide que
+  // se pinta.
+  const permisos = usePermisosMenu();
+  const perfil = perfilDeCategoria(userData?.categoria);
+  const allowed = puedeVer(permisos, load, perfil);
+
+  // Cada cambio de modulo vuelve a pedir los permisos: si un admin le quito
+  // algo a este perfil, se aplica sin recargar.
+  useEffect(() => {
+    refrescarPermisos();
+  }, [load]);
 
   useEffect(() => {
     if (userData && userData.empleado === 0) {
@@ -41,6 +57,7 @@ export default function Productivity() {
   }, [isAuthenticated, lang, router]);
 
   const component = useMemo(() => {
+    if (!allowed) return <Home />;
     switch (load) {
       case 'home': return <Home />;
       case 'user-settings': return <Settings />;
@@ -48,6 +65,7 @@ export default function Productivity() {
       case 'devolution': return <Devolution />;
       case 'history': return <History />;
       case 'warehouse': return <Warehouse />;
+      case 'assignment': return <Assignment />;
       case 'inventories': return <Inventories />;
       case 'missing': return <Missing />;
       case 'capture': return <Capture />;
@@ -59,10 +77,10 @@ export default function Productivity() {
       case 'invoice': return <Invoice />;
       default: return <Home />;
     }
-  }, [load]);
+  }, [load, allowed]);
 
   if (isAuthenticated === false) return null;
   if (userData && userData.empleado === 0) return null;
 
-  return <>{component}</>;
+  return component;
 }

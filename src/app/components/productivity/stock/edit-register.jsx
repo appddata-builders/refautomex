@@ -1,10 +1,35 @@
 'use client';
-import { MdDelete, MdAddPhotoAlternate } from 'react-icons/md';
 import React, { useState, useEffect, useRef } from 'react';
 import Select from 'react-select';
+import {
+    FaArrowLeft,
+    FaBoxesStacked,
+    FaCamera,
+    FaCcStripe,
+    FaCircleCheck,
+    FaCircleExclamation,
+    FaFloppyDisk,
+    FaGlobe,
+    FaLocationDot,
+    FaPlus,
+    FaStar,
+    FaStore,
+    FaTag,
+    FaTrashCan,
+    FaXmark,
+} from 'react-icons/fa6';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import heic2any from 'heic2any';
 import { getStorageValue } from '@/app/lib/storage-values';
+import PopPortal from '@/app/lib/pop-portal';
+import { useTranslation } from '@/app/lib/text/text-provider';
+import { UNASSIGNED } from './locations';
+import { STRIPE_MX, netAfterStripe, priceForNet, stripeFee } from '@/app/lib/stripe-fees';
+import { DEFAULT_UTILITY, IVA_FACTOR, formatMoney, pluralKey } from './inventory-model';
+import { Field, INPUT_CLASS, SELECT_STYLES } from './product-form';
+import Sheet, { SheetHeader } from './sheet';
+
+const CONFIRM_TITLE_ID = 'almacen-confirmar-baja';
 
 const getAbsoluteApiUrl = (path) => {
     const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
@@ -60,6 +85,9 @@ const isWebBranchValue = (value) => {
     return normalized === '1' || normalized === 'WEB';
 };
 
+// Sin texto es "por ubicar" ('0'), como en Gestion de almacen e Inventarios.
+const normalizeLocation = (location) => String(location ?? '').trim().toUpperCase() || UNASSIGNED;
+
 const hasLeadingZeroSuffix = (location = '') => {
     const parts = location.split('-');
     if (parts.length < 2) return false;
@@ -72,9 +100,53 @@ const MODEL_YEAR_OPTIONS = Array.from({ length: 36 }, (_, i) => {
     return { value: year, label: `${year}` };
 });
 
+// Atajos de utilidad; se puede escribir cualquier otra. Cada sucursal guarda
+// la suya (WEB puede ir mas arriba por la comision de Stripe), y las compras
+// recalculan el precio de cada sucursal con su propia utilidad.
+const UTILITY_PRESETS = [25, 30, 35, 40];
+
+const utilityPercent = (utility) => {
+    const value = Number(utility);
+    return Number.isFinite(value) && value > 0 ? String(Number(((value - 1) * 100).toFixed(2))) : '';
+};
+
+const utilityFromPercent = (percent) => Number((1 + percent / 100).toFixed(4));
+
+// La utilidad que da un precio escrito a mano: se guarda con el precio para
+// que la siguiente compra lo vuelva a calcular igual.
+const utilityFrom = (price, cost) => {
+    const value = parseFloat(price) / (parseFloat(cost) * IVA_FACTOR);
+    return Number.isFinite(value) && value > 0 ? Number(value.toFixed(4)) : null;
+};
+
+// Precio publico con IVA, como lo guarda la base: costo x utilidad x IVA
+// (220.47 x 1.30 x 1.16 = 332.47). Antes se calculaba sin IVA y redondeado,
+// y cambiar el costo bajaba el precio 16 %.
+const priceFrom = (cost, utility) => {
+    const value = parseFloat(cost) * Number(utility) * IVA_FACTOR;
+    return Number.isFinite(value) && value > 0 ? value.toFixed(2) : '';
+};
+
+// Encabezado de cada bloque, con su numero: el mismo de Nuevo producto en
+// Inventarios.
+function SectionTitle({ step, title, aside }) {
+    return (
+        <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-[rgb(var(--color-gray-base))]">
+            <span className="grid size-6 shrink-0 place-items-center rounded-full bg-amber-500 text-xs text-slate-900">{step}</span>
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+            {aside}
+        </h3>
+    );
+}
+
 export default function EditRegister({ prodOverview, onCancelEdit, setProdOverview, onRefreshProducts }) {
+    const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
-    const [isSuccessfull, setIsSuccessfull] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [dragActive, setDragActive] = useState(false);
+    // Lo que se va escribiendo en Utilidad (%), para no perder el punto de
+    // "32." mientras se teclea; null muestra la utilidad guardada.
+    const [utilityDraft, setUtilityDraft] = useState(null);
     const [brandOptions, setBrandOptions] = useState([]);
     const [groupOptions, setGroupOptions] = useState([]);
     const [categoryOptions, setCategoryOptions] = useState([]);
@@ -129,12 +201,6 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
     const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
     const activeBranchId = selectedBranchId || (currentProduct?.idsucursal ? String(currentProduct.idsucursal) : null);
     const isWebBranchSelected = isWebBranchValue(activeBranchId);
-    const branchSelectOptions = branchDetails.map(detail => ({
-        value: detail.idsucursal,
-        label: detail.sucursal || 'Sucursal',
-    }));
-    const selectedBranchOption =
-        branchSelectOptions.find(option => option.value === selectedBranchId) || null;
 
     const revokePreviewUrl = (image) => {
         if (image?.previewUrl) {
@@ -152,8 +218,9 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         };
     }, []);
 
+    const routesKey = JSON.stringify(parseRoutes(prodOverview?.rutas));
     useEffect(() => {
-        const updatedRoutes = parseRoutes(prodOverview?.rutas);
+        const updatedRoutes = parseRoutes(routesKey);
         setImageRoutes(updatedRoutes);
         setPendingImages(prev => {
             prev.forEach(revokePreviewUrl);
@@ -163,7 +230,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             ? buildImageSrc(multimediaSrc, updatedRoutes[0])
             : `${multimediaSrc}productos/no-img.png`;
         setSelectedImage(initialImage);
-    }, [prodOverview, multimediaSrc]);
+    }, [routesKey, multimediaSrc]);
 
     useEffect(() => {
         if (!prodOverview) return;
@@ -177,7 +244,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         if (candidateId) {
             setProdOverview(prev => {
                 if (!prev) return prev;
-                if (prev.idgrupo === candidateId) return prev;
+                if (String(prev.idgrupo ?? '') === String(candidateId)) return prev;
                 return { ...prev, idgrupo: candidateId };
             });
             setGroupOptions((prev) => {
@@ -198,7 +265,10 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 (option) => option.label.toLowerCase() === candidateLabel.toLowerCase()
             );
             if (matched) {
-                setProdOverview(prev => prev ? { ...prev, idgrupo: matched.value } : prev);
+                setProdOverview(prev => {
+                    if (!prev || String(prev.idgrupo ?? '') === String(matched.value)) return prev;
+                    return { ...prev, idgrupo: matched.value };
+                });
             }
         }
     }, [prodOverview, groupOptions, setProdOverview]);
@@ -214,7 +284,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         if (candidateId) {
             setProdOverview(prev => {
                 if (!prev) return prev;
-                if (prev.idcategoria === candidateId) return prev;
+                if (String(prev.idcategoria ?? '') === String(candidateId)) return prev;
                 return { ...prev, idcategoria: candidateId };
             });
             setCategoryOptions((prev) => {
@@ -282,13 +352,13 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
 
                 if (!ignore) {
                     setBranchDetails(normalized);
-                    setBranchError(normalized.length === 0 ? 'Este producto no tiene asignaciones activas.' : '');
+                    setBranchError(normalized.length === 0 ? t('panel.editRegister.noAssignments') : '');
                 }
             } catch (error) {
                 console.error('Error fetching branch details:', error);
                 if (!ignore) {
                     setBranchDetails([]);
-                    setBranchError('No se pudieron cargar los detalles por sucursal.');
+                    setBranchError(t('panel.editRegister.detailsError'));
                 }
             } finally {
                 if (!ignore) {
@@ -341,7 +411,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         setProdOverview(prev => {
             if (!prev) return prev;
             const isWebBranch = isWebBranchValue(detail.idsucursal);
-            return {
+            const next = {
                 ...prev,
                 idsucursal: detail.idsucursal ? Number(detail.idsucursal) : prev.idsucursal,
                 sucursal: detail.sucursal || prev.sucursal,
@@ -351,6 +421,9 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 precio: detail.precio ?? prev.precio,
                 utilidad: detail.utilidad ?? prev.utilidad,
             };
+            const fields = ['idsucursal', 'sucursal', 'localizacion', 'existencia', 'costo', 'precio', 'utilidad'];
+            if (fields.every(field => Object.is(prev[field], next[field]))) return prev;
+            return next;
         });
     }, [selectedBranchId, branchDetails, setProdOverview]);
 
@@ -373,16 +446,60 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         }
     }, [imageRoutes, pendingImages, multimediaSrc, selectedImage]);
 
+    // La marca puede quedar vacia: la descripcion no siempre dice de que auto es.
     const handleBrandChange = (selectedOption) => {
-        setProdOverview(prevState => ({ ...prevState, idmarca: selectedOption.value }));
+        setProdOverview(prevState => ({ ...prevState, idmarca: selectedOption ? selectedOption.value : null }));
     };
 
     const handleQuantityChange = (selectedOption) => {
         setProdOverview(prevState => ({ ...prevState, existencia: selectedOption.value }));
     };
 
-    const handleUtilityChange = (selectedOption) => {
-        setProdOverview(prevState => ({ ...prevState, utilidad: selectedOption.value }));
+    // Utilidad y precio se mueven juntos: cambiar uno recalcula el otro con el
+    // costo de la sucursal elegida.
+    // El aviso de precio se va en cuanto se corrige algo de lo que lo calcula.
+    const clearPriceErrors = () => setErrorMessages(prev => ({ ...prev, precio: '', costo: '' }));
+
+    const applyUtility = (utility) => {
+        clearPriceErrors();
+        setProdOverview(prevState => ({
+            ...prevState,
+            utilidad: utility,
+            precio: priceFrom(prevState.costo, utility) || prevState.precio,
+        }));
+    };
+
+    const handleUtilityInput = (event) => {
+        const text = event.target.value.replace(',', '.');
+        setUtilityDraft(text);
+        const percent = parseFloat(text);
+        if (Number.isFinite(percent) && percent > 0) applyUtility(utilityFromPercent(percent));
+    };
+
+    const handleUtilityPreset = (percent) => {
+        setUtilityDraft(null);
+        applyUtility(utilityFromPercent(percent));
+    };
+
+    const handleSuggestedPrice = (price) => {
+        setUtilityDraft(null);
+        clearPriceErrors();
+        setProdOverview(prevState => ({
+            ...prevState,
+            precio: price.toFixed(2),
+            utilidad: utilityFrom(price, prevState.costo) ?? prevState.utilidad,
+        }));
+    };
+
+    const handlePriceChange = (event) => {
+        const price = event.target.value.replace(',', '.');
+        setUtilityDraft(null);
+        clearPriceErrors();
+        setProdOverview(prevState => ({
+            ...prevState,
+            precio: price,
+            utilidad: utilityFrom(price, prevState.costo) ?? prevState.utilidad,
+        }));
     };
 
     const handleGroupChange = (selectedOption) => {
@@ -447,15 +564,18 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
 
     const handleCostChange = (e) => {
         const cost = e.target.value;
-        const price = Math.round(cost * currentProduct.utilidad);
-        setProdOverview(prevState => ({ ...prevState, precio: price }));
-        setProdOverview(prevState => ({ ...prevState, costo : cost }));
+        clearPriceErrors();
+        setProdOverview(prevState => ({
+            ...prevState,
+            costo: cost,
+            precio: priceFrom(cost, prevState.utilidad) || prevState.precio,
+        }));
     };
 
     const normalizeImageFile = async (file) => {
-        if (!file) throw new Error('Archivo inválido.');
+        if (!file) throw new Error(t('panel.editRegister.invalidFile'));
         if (!file.type || !file.type.startsWith('image/')) {
-            throw new Error('Selecciona únicamente archivos de imagen.');
+            throw new Error(t('panel.editRegister.onlyImages'));
         }
         if (file.type === 'image/heic' || file.type === 'image/heif') {
             const convertedBlob = await heic2any({ blob: file, toType: 'image/jpeg' });
@@ -469,8 +589,8 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         setImageRoutes(routes.filter(Boolean));
     };
 
-    const handleImageInputChange = async (event) => {
-        const files = Array.from(event.target.files || []);
+    // Del boton de agregar o de arrastrar fotos sobre la galeria.
+    const addImageFiles = async (files) => {
         if (files.length === 0) return;
 
         setMediaUploading(true);
@@ -504,13 +624,22 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             setImageFeedback({ error: '', success: 'Imagen agregada. Guarda el producto para subirla.' });
         } catch (error) {
             console.error('Error preparando imágenes:', error);
-            setImageFeedback({ error: 'No se pudo preparar la imagen. Intenta nuevamente.', success: '' });
+            setImageFeedback({ error: t('panel.editRegister.imagePrepError'), success: '' });
         } finally {
             setMediaUploading(false);
-            if (event.target) {
-                event.target.value = '';
-            }
         }
+    };
+
+    const handleImageInputChange = (event) => {
+        const files = Array.from(event.target.files || []);
+        event.target.value = '';
+        addImageFiles(files);
+    };
+
+    const handleImageDrop = (event) => {
+        event.preventDefault();
+        setDragActive(false);
+        addImageFiles(Array.from(event.dataTransfer?.files || []));
     };
 
     const clearPendingImages = () => {
@@ -545,11 +674,11 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || 'Error al subir la imagen.');
+                throw new Error(errorData.message || t('panel.editRegister.imageUploadError'));
             }
             const data = await response.json();
             if (!data.key) {
-                throw new Error('Respuesta inválida al subir la imagen.');
+                throw new Error(t('panel.editRegister.imageUploadBadResponse'));
             }
             uploadedKeys.push(data.key);
         }
@@ -577,15 +706,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         }
     };
 
+    // La principal es la primera de rutas (la que muestra el buscador). Solo se
+    // reordena la galeria: cambiar prodOverview.rutas la reiniciaba y tiraba
+    // las fotos nuevas sin subir. Se guarda con el producto.
     const promoteExistingImage = (route) => {
-        setImageRoutes(prev => {
-            const without = prev.filter(r => r !== route);
-            return [route, ...without];
-        });
-        setProdOverview(prev => {
-            const nextRoutes = [route, ...prev.rutas.filter(r => r !== route)];
-            return { ...prev, rutas: nextRoutes };
-        });
+        setImageRoutes(prev => [route, ...prev.filter(r => r !== route)]);
+        setSelectedImage(buildImageSrc(multimediaSrc, route));
     };
 
     const promotePendingImage = (imageId) => {
@@ -600,16 +726,14 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
     const openImageViewer = () => setIsImageViewerOpen(true);
     const closeImageViewer = () => setIsImageViewerOpen(false);
 
-    const handleExistingImageClick = (route) => {
-        if (!route) return;
-        setSelectedImage(buildImageSrc(multimediaSrc, route));
-        openImageViewer();
-    };
-
-    const handlePendingImageClick = (imageId, previewUrl) => {
-        setSelectedImage(previewUrl);
-        openImageViewer();
-    };
+    useEffect(() => {
+        if (!isImageViewerOpen) return undefined;
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') setIsImageViewerOpen(false);
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isImageViewerOpen]);
 
     const handleDeleteBranchDetail = async (detail) => {
         if (!detail?.idsucursal || !currentProduct?.refaccion) {
@@ -639,12 +763,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             if (selectedBranchId === detail.idsucursal) {
                 setSelectedBranchId(null);
             }
-            setSuccessMessage('Detalle eliminado correctamente.');
+            setSuccessMessage(t('panel.editRegister.detailDeleted'));
             onRefreshProducts?.();
             setDetailPendingDelete(null);
         } catch (error) {
             console.error('Error deleting branch detail:', error);
-            setBranchError('No se pudo eliminar el detalle. Intenta nuevamente.');
+            setBranchError(t('panel.editRegister.detailDeleteError'));
         } finally {
             setDeletingBranchId(null);
         }
@@ -692,12 +816,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 throw new Error(`Error ${response.status}: ${response.statusText}`);
             }
 
-            setSuccessMessage('Producto dado de baja correctamente.');
+            setSuccessMessage(t('panel.editRegister.productRemoved'));
             onRefreshProducts?.();
             onCancelEdit?.();
         } catch (error) {
             console.error('Error al dar de baja producto:', error);
-            setErrorMessage('No se pudo dar de baja el producto. Intenta nuevamente.');
+            setErrorMessage(t('panel.editRegister.productRemoveError'));
         } finally {
             setProductDeleting(false);
             setProductPendingDelete(false);
@@ -716,8 +840,9 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             num_parte: /^[A-Z0-9-]+$/,
             localizacion: /^[0-9]{2}[A-Z]{1}[0-9A-Z]{2}[-0-9]{2,3}$/,
             descripcion: /^\s*\S+.*$/,
-            mod_ini: /^[0-9]{1,4}$/,
-            mod_fin: /^[0-9]{1,4}$/,
+            // El modelo es opcional: casi ningun producto lo trae.
+            mod_ini: /^(?:[0-9]{1,4})?$/,
+            mod_fin: /^(?:[0-9]{1,4})?$/,
             existencia: /^[0-9]+$/,
             precio: /^[0-9]+(\.[0-9]+)?$/,
             costo: /^[0-9]+(\.[0-9]+)?$/,
@@ -727,35 +852,44 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         const resolvedGroupId = resolveGroupId();
         if (!resolvedGroupId) {
             isValid = false;
-            newErrorMessages.idgrupo = 'Selecciona un grupo.';
+            newErrorMessages.idgrupo = t('panel.addRegister.pickGroup');
         } else {
             newErrorMessages.idgrupo = '';
         }
         const resolvedCategoryId = resolveCategoryId();
         if (!resolvedCategoryId) {
             isValid = false;
-            newErrorMessages.idcategoria = 'Selecciona una categoria.';
+            newErrorMessages.idcategoria = t('panel.addRegister.pickCategory');
         } else {
             newErrorMessages.idcategoria = '';
         }
-        const normalizedLocalizacion = (prodOverview.localizacion || '').toUpperCase();
+        const normalizedLocalizacion = normalizeLocation(prodOverview.localizacion);
+        // Solo se revisa la ubicacion que cambio. Por ubicar siempre se puede, y
+        // la que ya tenia en la sucursal no es un conflicto nuevo: corregir el
+        // precio no debe pedir arreglar una ubicacion vieja.
+        const originalLocalizacion = normalizeLocation(
+            branchDetails.find(detail => detail.idsucursal === activeBranchId)?.localizacion
+        );
+        const checkLocation = !isWebBranchSelected
+            && normalizedLocalizacion !== UNASSIGNED
+            && normalizedLocalizacion !== originalLocalizacion;
         // Validar campos locales con regex
         for (const [key, value] of Object.entries(prodOverview)) {
             if (key === 'costo') {
                 if (value == null || value === '' || isNaN(value) || Number(value) <= 0) {
                     isValid = false;
-                    newErrorMessages[key] = 'Costo no puede ser 0, nulo o inválido.';
+                    newErrorMessages[key] = t('panel.editRegister.costInvalid');
                 }
                 continue;
             }
-            if (isWebBranchSelected && (key === 'localizacion' || key === 'existencia')) {
+            if ((isWebBranchSelected && key === 'existencia') || (key === 'localizacion' && !checkLocation)) {
                 newErrorMessages[key] = '';
                 continue;
             }
             if (!regexPatterns[key]) {
                 continue;
             }
-            const valueToTest = key === 'localizacion' ? normalizedLocalizacion : value;
+            const valueToTest = key === 'localizacion' ? normalizedLocalizacion : (value ?? '');
             if (!regexPatterns[key].test(valueToTest)) {
                 isValid = false;
                 newErrorMessages[key] = `${key} - inválido.`;
@@ -763,13 +897,20 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 newErrorMessages[key] = '';
             }
         }
-        if (!isWebBranchSelected && normalizedLocalizacion && hasLeadingZeroSuffix(normalizedLocalizacion)) {
+        // Un precio que no cubre el costo con IVA es casi siempre un error de
+        // dedo (35.9 por 359).
+        const minimumPrice = parseFloat(prodOverview.costo) * IVA_FACTOR;
+        if (!newErrorMessages.precio && !newErrorMessages.costo && parseFloat(prodOverview.precio) <= minimumPrice) {
+            isValid = false;
+            newErrorMessages.precio = t('panel.editRegister.priceBelowCost', { amount: formatMoney(minimumPrice) });
+        }
+        if (checkLocation && hasLeadingZeroSuffix(normalizedLocalizacion)) {
             isValid = false;
             newErrorMessages.localizacion =
-                'Índice no puede iniciar con 0, i.e. usa -1 en lugar de -01.';
+                t('panel.warehouse.indexZero');
         }
         // Validar la localización en el servidor
-        if (!isWebBranchSelected) {
+        if (checkLocation) {
             try {
                 const url = getAbsoluteApiUrl('/verifyLocation');
                 url.searchParams.set('localizacion', normalizedLocalizacion);
@@ -795,12 +936,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 }
                 const data = await response.json();
                 if (data.exists) {
-                    newErrorMessages.localizacion = data.message || 'Localización ya ocupada.';
+                    newErrorMessages.localizacion = data.message || t('panel.addRegister.locationTaken');
                     isValid = false;
                 }
             } catch (error) {
                 console.error('Error verificando localización:', error);
-                newErrorMessages.localizacion = 'Error al verificar la localización.';
+                newErrorMessages.localizacion = t('panel.warehouse.locationCheckError');
                 isValid = false;
             }
         }
@@ -816,11 +957,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         const validation = await validateSubmit();
         if (!validation.isValid) {
             setErrorMessages(validation.newErrorMessages);
-            setErrorMessage('Por favor, corrige los campos marcados como inválidos.');
+            setErrorMessage(t('panel.newCapture.fixFields'));
             return;
         }
 
         let uploadedKeys = [];
+        setSaving(true);
         try {
             if (pendingImages.length > 0) {
                 setMediaUploading(true);
@@ -833,7 +975,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
 
             console.log('Merged routes before patch:', mergedRoutes);
             const resolvedBranchId = activeBranchId ? Number(activeBranchId) : currentProduct.idsucursal;
-            const payloadLocalizacion = isWebBranchSelected ? '0' : (prodOverview.localizacion || '').toUpperCase();
+            const payloadLocalizacion = isWebBranchSelected ? UNASSIGNED : normalizeLocation(prodOverview.localizacion);
             const payloadExistencia = isWebBranchSelected ? '0' : prodOverview.existencia;
             const normalizedDescription = (prodOverview.descripcion || '').toUpperCase();
             const resolvedGroupId = resolveGroupId();
@@ -846,10 +988,11 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                 existencia: payloadExistencia,
                 costo: parseFloat(prodOverview.costo).toFixed(2),
                 precio: parseFloat(prodOverview.precio).toFixed(2),
+                aiva: (parseFloat(prodOverview.precio) / IVA_FACTOR).toFixed(2),
                 utilidad: prodOverview.utilidad,
-                mod_ini: prodOverview.mod_ini,
-                mod_fin: prodOverview.mod_fin,
-                idmarca: prodOverview.idmarca,
+                mod_ini: prodOverview.mod_ini || null,
+                mod_fin: prodOverview.mod_fin || null,
+                idmarca: prodOverview.idmarca || null,
                 idgrupo: resolvedGroupId,
                 idcategoria: resolvedCategoryId,
                 idsucursal: resolvedBranchId,
@@ -871,7 +1014,7 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             }
 
             console.log('PatchProduct response:', response.status);
-            setSuccessMessage('Registro actualizado exitosamente.');
+            setSuccessMessage(t('panel.editRegister.updateOk'));
             setErrorMessages({});
             clearPendingImages();
             updateRoutesState(mergedRoutes);
@@ -888,11 +1031,12 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
             if (uploadedKeys.length > 0) {
                 await deleteUploadedKeys(uploadedKeys);
             }
-            setErrorMessage('Hubo un error al guardar los datos. Intenta de nuevo.');
-            setImageFeedback({ error: 'No se pudieron guardar las imágenes. Revisa la conexión e intenta nuevamente.', success: '' });
+            setErrorMessage(t('panel.addRegister.saveRetry'));
+            setImageFeedback({ error: t('panel.editRegister.imagesSaveError'), success: '' });
             console.error('Error submitting the form:', error);
         } finally {
             setMediaUploading(false);
+            setSaving(false);
         }
     };
 
@@ -994,531 +1138,654 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         fetchCategory();
         fetchQuantity();
     }, []);
+    // Galeria: las fotos guardadas y despues las nuevas, que se suben al
+    // guardar. La primera es la principal.
+    const gallery = [
+        ...imageRoutes.map(route => ({ key: `ruta-${route}`, src: buildImageSrc(multimediaSrc, route), route })),
+        ...pendingImages.map(image => ({ key: image.id, src: image.previewUrl, pendingId: image.id })),
+    ];
+    const previewSrc = gallery.some(item => item.src === selectedImage) ? selectedImage : gallery[0]?.src;
+    const activeBranch = branchDetails.find(detail => detail.idsucursal === activeBranchId) || null;
+    const branchName = activeBranch?.sucursal || currentProduct.sucursal || '';
+    const busy = saving || mediaUploading;
+    const referencePrice = (() => {
+        const other = branchDetails.find(detail => detail.idsucursal !== activeBranchId
+            && !isWebBranchValue(detail.idsucursal) && parseFloat(detail.precio) > 0);
+        const current = parseFloat(currentProduct.precio);
+        if (!other || !(current > 0)) return null;
+        const diff = Math.round((current / parseFloat(other.precio) - 1) * 1000) / 10;
+        return {
+            branch: other.sucursal,
+            price: parseFloat(other.precio),
+            amount: formatMoney(other.precio),
+            diff,
+            diffText: `${diff > 0 ? '+' : ''}${diff.toFixed(1)} %`,
+        };
+    })();
+    // En WEB: cuanto se queda Stripe con el precio actual y que precio deja
+    // limpio lo mismo que la sucursal fisica (o, si no esta en ninguna, el
+    // precio con la utilidad base). La tarifa vive en lib/stripe-fees.
+    const webFee = (() => {
+        if (!isWebBranchSelected) return null;
+        const current = parseFloat(currentProduct.precio);
+        const base = referencePrice?.price ?? parseFloat(priceFrom(currentProduct.costo, DEFAULT_UTILITY));
+        const suggested = base > 0 ? priceForNet(base) : null;
+        return {
+            fee: current > 0 ? stripeFee(current) : null,
+            net: current > 0 ? netAfterStripe(current) : null,
+            base,
+            suggested,
+            covered: suggested !== null && current >= suggested - 0.005,
+        };
+    })();
+    const confirmBusy = !!deletingBranchId || productDeleting;
+    const closeConfirm = productPendingDelete ? cancelProductDelete : cancelDeleteDetail;
+    const locationLabel = (location) => {
+        const text = String(location ?? '').trim();
+        return !text || text === UNASSIGNED ? t('panel.assignment.statUnassigned') : text;
+    };
+    const selectProps = {
+        styles: SELECT_STYLES,
+        placeholder: t('panel.addRegister.pickOne'),
+        noOptionsMessage: () => t('panel.inventories.noOptions'),
+    };
+    const dropHandlers = {
+        onDragOver: (event) => {
+            event.preventDefault();
+            setDragActive(true);
+        },
+        onDragLeave: () => setDragActive(false),
+        onDrop: handleImageDrop,
+    };
+
     return (
-        <form onSubmit={handleSubmit}>
-            <div className="md:px-20 py-10">
-                <div className="flex flex-col xl:flex-row">
-                    <div className="flex-1 flex flex-col xl:flex-row items-center my-auto">
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            onChange={handleImageInputChange}
-                        />
-                        <div
-                            className="overflow-hidden rounded-3xl shadow-xl bg-gray-200 h-[250px] w-[250px] sm:h-[350px] sm:w-[350px] xl:w-[400px] xl:h-[400px] cursor-pointer"
-                            onClick={openImageViewer}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter' || event.key === ' ') {
-                                    event.preventDefault();
-                                    openImageViewer();
-                                }
-                            }}
-                        >
-                            <img
-                                src={selectedImage}
-                                alt="Selected product"
-                                className="h-full w-full object-cover object-center"
-                            />
-                        </div>
-                        <div className="flex flex-row xl:flex-col justify-center items-center xl:m-10 m-2">
+        <form onSubmit={handleSubmit} noValidate className="mx-auto mt-5 max-w-7xl space-y-5 px-2 pb-24 sm:px-4 xl:px-8">
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleImageInputChange}
+            />
+
+            <header className="flex items-center gap-3 rounded-2xl bg-[rgb(var(--color-card))] p-3 shadow shadow-[rgb(var(--color-galaxy))] sm:gap-4 sm:p-4">
+                <button
+                    type="button"
+                    onClick={onCancelEdit}
+                    aria-label={t('panel.editRegister.back')}
+                    title={t('panel.editRegister.back')}
+                    className="grid size-11 shrink-0 place-items-center rounded-xl bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))] transition hover:bg-[rgb(var(--color-text))]/10"
+                >
+                    <FaArrowLeft className="size-4" aria-hidden="true" />
+                </button>
+                <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--color-gray-base))]">{t('panel.capture.part')}</p>
+                    <h2 className="truncate text-xl font-bold tabular-nums sm:text-2xl">{currentProduct.refaccion}</h2>
+                    <p className="truncate text-sm text-[rgb(var(--color-gray-base))]">{currentProduct.descripcion}</p>
+                </div>
+                {branchDetails.length > 0 && (
+                    <span className="hidden shrink-0 items-center gap-2 rounded-full bg-[rgb(var(--color-bg))] px-3 py-1.5 text-sm font-semibold sm:inline-flex">
+                        <FaStore className="size-3.5 text-amber-500" aria-hidden="true" />
+                        {t(pluralKey('panel.editRegister.inBranches', branchDetails.length), { count: branchDetails.length })}
+                    </span>
+                )}
+            </header>
+
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+                <section className="space-y-4 rounded-2xl bg-[rgb(var(--color-card))] p-4 shadow shadow-[rgb(var(--color-galaxy))] sm:p-5 lg:sticky lg:top-24">
+                    <SectionTitle
+                        step="1"
+                        title={t('panel.editRegister.photosTitle')}
+                        aside={gallery.length > 0 && (
+                            <span className="rounded-full bg-[rgb(var(--color-bg))] px-2 py-0.5 text-xs tabular-nums normal-case tracking-normal">{gallery.length}</span>
+                        )}
+                    />
+
+                    {previewSrc ? (
+                        <div className="relative" {...dropHandlers}>
                             <button
                                 type="button"
-                                onClick={triggerImageUpload}
-                                disabled={mediaUploading}
-                                className='flex justify-center items-center my-2 opacity-80 hover:opacity-100 w-16 h-16 object-cover cursor-pointer rounded-xl mr-2 bg-[rgb(var(--color-card))] border-[rgb(var(--color-border))] border border-dashed hover:animate-out disabled:cursor-not-allowed disabled:opacity-50'
-                                title='Agregar fotos'
+                                onClick={openImageViewer}
+                                aria-label={t('panel.editRegister.previewAlt')}
+                                className={`block aspect-square w-full overflow-hidden rounded-2xl border bg-white transition focus:outline-none focus-visible:ring-4 focus-visible:ring-amber-400/60 ${dragActive ? 'border-amber-500 ring-4 ring-amber-400/50' : 'border-[rgb(var(--color-border))]'}`}
                             >
-                                <MdAddPhotoAlternate className='h-10 w-10' />
+                                <img src={previewSrc} alt={t('panel.editRegister.selectedProduct')} className="h-full w-full object-contain" />
                             </button>
-                            <div className='flex flex-col'>
-                                {imageRoutes.map((ruta, index) => {
-                                    const imagePath = buildImageSrc(multimediaSrc, ruta);
-                                    return (
-                                        <div key={`existing-${index}`} className='relative inline-block'>
-                                            <img
-                                                src={imagePath}
-                                                alt={`product ${index + 1}`}
-                                                className={`w-16 h-16 object-cover cursor-pointer my-2 rounded-xl mr-2 ${selectedImage === imagePath ? 'border-2 border-[rgb(var(--color-amber))]' : 'border border-[rgb(var(--color-border))]'}`}
-                                                onClick={() => handleExistingImageClick(ruta)}
-                                            />
+                            {previewSrc === gallery[0]?.src && (
+                                <span className="pointer-events-none absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-amber-500 px-2.5 py-1 text-xs font-bold text-slate-900 shadow">
+                                    <FaStar className="size-3" aria-hidden="true" />
+                                    {t('panel.editRegister.mainPhoto')}
+                                </span>
+                            )}
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={triggerImageUpload}
+                            disabled={mediaUploading}
+                            {...dropHandlers}
+                            className={`flex aspect-square w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-6 text-center transition disabled:opacity-60 ${dragActive
+                                ? 'border-amber-500 bg-amber-500/15'
+                                : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] hover:border-amber-400'}`}
+                        >
+                            <span className="grid size-16 place-items-center rounded-2xl bg-amber-500 text-slate-900 shadow">
+                                <FaCamera className="size-7" aria-hidden="true" />
+                            </span>
+                            <span className="text-base font-semibold">{t('panel.editRegister.addPhotos')}</span>
+                            <span className="max-w-xs text-sm text-[rgb(var(--color-gray-base))]">{t('panel.editRegister.photosHint')}</span>
+                        </button>
+                    )}
+
+                    {gallery.length > 0 && (
+                        <ul className="grid grid-cols-4 gap-2 sm:grid-cols-5">
+                            {gallery.map((item, index) => {
+                                const selected = item.src === previewSrc;
+                                return (
+                                    <li key={item.key} className="relative">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedImage(item.src)}
+                                            aria-pressed={selected}
+                                            className={`block aspect-square w-full overflow-hidden rounded-xl border-2 bg-white transition ${selected ? 'border-amber-500 shadow' : 'border-transparent opacity-80 hover:opacity-100'}`}
+                                        >
+                                            <img src={item.src} alt="" className="h-full w-full object-contain" />
+                                        </button>
+                                        {index === 0 && (
+                                            <span className="pointer-events-none absolute bottom-1 left-1 grid size-5 place-items-center rounded-full bg-amber-500 text-slate-900 shadow" title={t('panel.editRegister.mainPhoto')}>
+                                                <FaStar className="size-2.5" aria-hidden="true" />
+                                            </span>
+                                        )}
+                                        {item.pendingId && (
+                                            <span className="pointer-events-none absolute bottom-1 right-1 rounded-full bg-sky-500 px-1.5 text-[10px] font-bold text-white shadow">
+                                                {t('panel.editRegister.newPhoto')}
+                                            </span>
+                                        )}
+                                        {item.route && index > 0 && (
                                             <button
                                                 type="button"
-                                                className='absolute -top-1 -right-1 bg-red-100 text-red-600 rounded-full border border-gray-400 p-1'
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    handleRemoveImage(ruta);
-                                                }}
-                                                aria-label='Eliminar imagen'
+                                                onClick={() => promoteExistingImage(item.route)}
+                                                title={t('panel.editRegister.makeMain')}
+                                                aria-label={t('panel.editRegister.makeMain')}
+                                                className="absolute bottom-1 left-1 grid size-6 place-items-center rounded-full bg-[rgb(var(--color-card))]/90 text-[rgb(var(--color-gray-base))] shadow transition hover:text-amber-500"
                                             >
-                                                <MdDelete className='h-3 w-3' />
+                                                <FaStar className="size-3" aria-hidden="true" />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => (item.pendingId ? handleRemovePendingImage(item.pendingId) : handleRemoveImage(item.route))}
+                                            title={t(item.pendingId ? 'panel.editRegister.removePendingImage' : 'panel.editRegister.removeImage')}
+                                            aria-label={t(item.pendingId ? 'panel.editRegister.removePendingImage' : 'panel.editRegister.removeImage')}
+                                            className="absolute -right-1.5 -top-1.5 grid size-6 place-items-center rounded-full bg-red-600 text-white shadow transition hover:bg-red-500"
+                                        >
+                                            <FaXmark className="size-3" aria-hidden="true" />
+                                        </button>
+                                    </li>
+                                );
+                            })}
+                            <li>
+                                <button
+                                    type="button"
+                                    onClick={triggerImageUpload}
+                                    disabled={mediaUploading}
+                                    title={t('panel.editRegister.addPhotos')}
+                                    aria-label={t('panel.editRegister.addPhotos')}
+                                    {...dropHandlers}
+                                    className={`grid aspect-square w-full place-items-center rounded-xl border-2 border-dashed transition disabled:opacity-60 ${dragActive
+                                        ? 'border-amber-500 bg-amber-500/15'
+                                        : 'border-[rgb(var(--color-border))] text-[rgb(var(--color-gray-base))] hover:border-amber-400 hover:text-amber-500'}`}
+                                >
+                                    <FaPlus className="size-5" aria-hidden="true" />
+                                </button>
+                            </li>
+                        </ul>
+                    )}
+
+                    {(mediaUploading || imageFeedback.error || imageFeedback.success || pendingImages.length > 0) && (
+                        <div className="space-y-1 text-sm">
+                            {mediaUploading && <p className="text-amber-600">{t('panel.editRegister.processingImages')}</p>}
+                            {imageFeedback.error && (
+                                <p className="flex items-center gap-2 text-[rgb(var(--color-error))]">
+                                    <FaCircleExclamation className="size-3.5 shrink-0" aria-hidden="true" />
+                                    {imageFeedback.error}
+                                </p>
+                            )}
+                            {!mediaUploading && pendingImages.length > 0 && (
+                                <p className="text-[rgb(var(--color-gray-base))]">
+                                    {t(pluralKey('panel.editRegister.pendingPhotos', pendingImages.length), { count: pendingImages.length })}
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </section>
+
+                <section className="space-y-8 rounded-2xl bg-[rgb(var(--color-card))] p-4 shadow shadow-[rgb(var(--color-galaxy))] sm:p-6">
+                    <div className="space-y-3">
+                        <SectionTitle step="2" title={t('panel.editRegister.branchToEdit')} />
+                        {branchLoading && <p className="text-sm text-[rgb(var(--color-gray-base))]">{t('panel.editRegister.searchingDetails')}</p>}
+                        {branchError && (
+                            <p className="flex items-center gap-2 rounded-xl bg-[rgb(var(--color-error))]/10 px-3 py-2 text-sm text-[rgb(var(--color-error))]">
+                                <FaCircleExclamation className="size-4 shrink-0" aria-hidden="true" />
+                                {branchError}
+                            </p>
+                        )}
+                        {branchDetails.length > 0 && (
+                            <div role="radiogroup" aria-label={t('panel.editRegister.branchToEdit')} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                {branchDetails.map(detail => {
+                                    const selected = detail.idsucursal === selectedBranchId;
+                                    const web = isWebBranchValue(detail.idsucursal);
+                                    const Icon = web ? FaGlobe : FaStore;
+                                    return (
+                                        <div
+                                            key={detail.idsucursal}
+                                            className={`relative rounded-xl border transition ${selected
+                                                ? 'border-amber-500 bg-amber-500/15 shadow'
+                                                : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] hover:border-amber-400'}`}
+                                        >
+                                            <button
+                                                type="button"
+                                                role="radio"
+                                                aria-checked={selected}
+                                                onClick={() => {
+                                                    setUtilityDraft(null);
+                                                    setSelectedBranchId(detail.idsucursal);
+                                                }}
+                                                className="flex w-full items-start gap-3 p-3 pr-12 text-left"
+                                            >
+                                                <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${selected ? 'bg-amber-500 text-slate-900' : 'bg-[rgb(var(--color-gray))] text-[rgb(var(--color-text))]'}`}>
+                                                    <Icon className="size-4" aria-hidden="true" />
+                                                </span>
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="block truncate font-semibold">{detail.sucursal || t('panel.common.branch')}</span>
+                                                    <span className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums text-[rgb(var(--color-gray-base))]">
+                                                        {!web && (
+                                                            <span className="inline-flex items-center gap-1" title={t('panel.tableDesc.locationTitle')}>
+                                                                <FaLocationDot className="size-3" aria-hidden="true" />
+                                                                {locationLabel(detail.localizacion)}
+                                                            </span>
+                                                        )}
+                                                        {!web && (
+                                                            <span className="inline-flex items-center gap-1" title={t('panel.tableDesc.stockTitle')}>
+                                                                <FaBoxesStacked className="size-3" aria-hidden="true" />
+                                                                {detail.existencia ?? '—'}
+                                                            </span>
+                                                        )}
+                                                        <span className="inline-flex items-center gap-1" title={t('panel.editRegister.minPrice')}>
+                                                            <FaTag className="size-3" aria-hidden="true" />
+                                                            {formatMoney(detail.precio)}
+                                                        </span>
+                                                    </span>
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => confirmDeleteDetail(detail)}
+                                                disabled={deletingBranchId === detail.idsucursal}
+                                                title={t('panel.editRegister.removeDetail')}
+                                                aria-label={`${t('panel.editRegister.removeDetail')}: ${detail.sucursal || ''}`}
+                                                className="absolute right-2 top-2 grid size-9 place-items-center rounded-full text-red-600 transition hover:bg-red-500/10 disabled:opacity-50"
+                                            >
+                                                <FaTrashCan className="size-3.5" aria-hidden="true" />
                                             </button>
                                         </div>
                                     );
                                 })}
-                                {pendingImages.length > 0 && (
-                                    <p className='text-xs text-[rgb(var(--color-text))] mt-2 mb-1'>
-                                        Nuevas imágenes (se subirán al guardar):
-                                    </p>
-                                )}
-                                {pendingImages.map((image) => (
-                                    <div key={image.id} className='relative inline-block'>
-                                        <img
-                                            src={image.previewUrl}
-                                            alt='pending product'
-                                            className={`w-16 h-16 object-cover cursor-pointer my-2 rounded-xl mr-2 ${selectedImage === image.previewUrl ? 'border-2 border-[rgb(var(--color-amber))]' : 'border border-[rgb(var(--color-border))]'}`}
-                                            onClick={() => handlePendingImageClick(image.id, image.previewUrl)}
-                                        />
-                                        <button
-                                            type="button"
-                                            className='absolute -top-1 -right-1 bg-red-100 text-red-600 rounded-full border border-gray-400 p-1'
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                handleRemovePendingImage(image.id);
-                                            }}
-                                            aria-label='Eliminar imagen pendiente'
-                                        >
-                                            <MdDelete className='h-3 w-3' />
-                                        </button>
-                                    </div>
-                                ))}
                             </div>
-                            {(mediaUploading || imageFeedback.error || imageFeedback.success) && (
-                                <div className='w-full text-center text-xs text-[rgb(var(--color-text))] my-2'>
-                                    {mediaUploading && <p className='text-[rgb(var(--color-amber))]'>Procesando imágenes...</p>}
-                                    {imageFeedback.error && <p className='text-[rgb(var(--color-error))]'>{imageFeedback.error}</p>}
-                                    {imageFeedback.success && <p className='text-[rgb(var(--color-success))]'>{imageFeedback.success}</p>}
-                                </div>
-                            )}
-                        </div>
+                        )}
                     </div>
-                    <div className="flex-1 px-2 2xl:px-20 my-auto">
-                        <div className="rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] p-4 shadow-inner shadow-[rgb(var(--color-galaxy))]">
-                            <div className="flex flex-col gap-4">
-                                <div className="flex flex-col xl:flex-row gap-4 ">
-                                    <div className="flex-1 rounded-2xl bg-[rgb(var(--color-bg))] border border-dashed border-[rgb(var(--color-border))] p-4">
-                                        <p className="text-xs uppercase tracking-wide text-[rgb(var(--color-text))]/60">
-                                        Total sucursales activas: {branchDetails.length}
-                                        </p>
-                                        <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                            Sucursal a editar
-                                        </label>
-                                        <Select
-                                            options={branchSelectOptions}
-                                            value={selectedBranchOption}
-                                            onChange={(option) => setSelectedBranchId(option ? option.value : null)}
-                                            isDisabled={branchSelectOptions.length === 0}
-                                            isLoading={branchLoading}
-                                            placeholder={branchLoading ? 'Cargando sucursales...' : 'Selecciona una sucursal'}
-                                            classNamePrefix="react-select"
-                                        />
-                                        {branchError && (
-                                            <p className="text-[rgb(var(--color-error))] text-sm mt-2">
-                                                {branchError}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                                {branchLoading && (
-                                    <p className="text-xs text-[rgb(var(--color-text))]/70">
-                                        Buscando detalles del producto...
-                                    </p>
-                                )}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-52 overflow-y-auto">
-                                    {branchDetails.length === 0 && !branchLoading ? (
-                                        <div className="rounded-2xl border border-dashed border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] p-4 text-sm text-[rgb(var(--color-text))]/70">
-                                            No hay registros activos para otras sucursales.
-                                        </div>
-                                    ) : (
-                                        branchDetails.map(detail => {
-                                            const isActive = detail.idsucursal === selectedBranchId;
-                                            return (
-                                                <div
-                                                    role="button"
-                                                    tabIndex={0}
-                                                    key={`${detail.idsucursal}-${detail.localizacion}`}
-                                                    onClick={() => setSelectedBranchId(detail.idsucursal)}
-                                                    onKeyDown={(event) => {
-                                                        if (event.key === 'Enter' || event.key === ' ') {
-                                                            event.preventDefault();
-                                                            setSelectedBranchId(detail.idsucursal);
-                                                        }
-                                                    }}
-                                                    className={`text-left rounded-2xl border p-3 transition hover:shadow ${
-                                                        isActive
-                                                            ? 'border-[rgb(var(--color-refautomex))] bg-[rgb(var(--color-gray))]/40'
-                                                            : 'border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]'
-                                                    }`}
-                                                >
-                                                    <div className="flex justify-between items-start">
-                                                        <div className="text-sm font-semibold text-[rgb(var(--color-text))]">
-                                                            {detail.sucursal || 'Sucursal'}
-                                                        </div>
-                                                        <button
-                                                            type="button"
-                                                            className="p-1 rounded-full bg-red-100 text-red-600 hover:bg-red-200 cursor-pointer"
-                                                            onClick={(event) => {
-                                                                event.stopPropagation();
-                                                                confirmDeleteDetail(detail);
-                                                            }}
-                                                            disabled={deletingBranchId === detail.idsucursal}
-                                                            title="Eliminar detalle"
-                                                        >
-                                                            <MdDelete className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-2 mt-2 text-xs text-[rgb(var(--color-text))]/80">
-                                                        <p><span className="font-semibold text-[rgb(var(--color-text))]">Loc:</span> {detail.localizacion || '—'}</p>
-                                                        <p><span className="font-semibold text-[rgb(var(--color-text))]">Existencia:</span> {detail.existencia ?? '—'}</p>
-                                                        <p>
-                                                            <span className="font-semibold text-[rgb(var(--color-text))]">Costo:</span>{' '}
-                                                            {detail.costo !== undefined && detail.costo !== null && detail.costo !== ''
-                                                                ? `$${Number(detail.costo).toFixed(2)}`
-                                                                : '—'}
-                                                        </p>
-                                                        <p>
-                                                            <span className="font-semibold text-[rgb(var(--color-text))]">Precio:</span>{' '}
-                                                            {detail.precio !== undefined && detail.precio !== null && detail.precio !== ''
-                                                                ? `$${Number(detail.precio).toFixed(2)}`
-                                                                : '—'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                        <div className="mt-10 grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-6">
-                            <div className="sm:col-span-2">
-                                <label htmlFor="first-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Refacción
-                                </label>
-                                <div className="mt-2 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] animate-up rounded-md p-1 shadow">
-                                    {currentProduct.refaccion}
-                                </div>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Grupo
-                                </label>
-                                <div className="mt-2">
-                                    <Select
-                                        options={groupOptions}
-                                        value={groupOptions.find(option => String(option.value) === String(prodOverview?.idgrupo)) || null}
-                                        onChange={handleGroupChange}
-                                        placeholder="Selecciona"
-                                        classNamePrefix="react-select"
-                                    />
-                                    {errorMessages.idgrupo && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.idgrupo}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
 
-                            <div className="sm:col-span-2">
-                                <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Categoria
-                                </label>
-                                <div className="mt-2">
-                                    <Select
-                                        options={categoryOptions}
-                                        value={categoryOptions.find(option => String(option.value) === String(prodOverview?.idcategoria)) || null}
-                                        onChange={handleCategoryChange}
-                                        placeholder="Selecciona"
-                                        classNamePrefix="react-select"
-                                    />
-                                    {errorMessages.idcategoria && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.idcategoria}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="sm:col-span-2">
-                                <label htmlFor="email" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Marca de auto
-                                </label>
-                                <div className="mt-2">
-                                    <Select
-                                        id="marca"
-                                        name="marca"
-                                        value={brandOptions.find(option => option.value === prodOverview?.idmarca)}
-                                        onChange={handleBrandChange}
-                                        options={brandOptions}
-                                        isDisabled={isSuccessfull}
-                                        classNamePrefix="react-select"
-                                    />
-                                    {errorMessages.idmarca && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.idmarca}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="col-span-full">
-                                <label htmlFor="descripcion" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Descripci&oacute;n
-                                </label>
-                                <div className="mt-2">
-                                    <textarea
-                                    id="descripcion"
-                                    name="descripcion"
-                                    type="text"
-                                    autoComplete="descripcions"
+                    <fieldset className="space-y-4">
+                        <legend className="mb-3 w-full"><SectionTitle step="3" title={t('panel.inventories.sectionIdentity')} /></legend>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+                            <Field label={t('panel.capture.descriptionLabel')} error={errorMessages.descripcion} className="sm:col-span-6">
+                                <textarea
+                                    rows={2}
                                     value={currentProduct.descripcion ?? ''}
-                                    className="block w-full rounded-md border-0 p-1.5 text-[rgb(var(--color-text))] shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 uppercase"
                                     onChange={handleDescriptionChange}
                                     onBlur={handleDescriptionBlur}
-                                    />
-                                    {errorMessages.descripcion && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.descripcion}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
+                                    className={`${INPUT_CLASS} h-auto min-h-11 py-2 uppercase`}
+                                />
+                            </Field>
+                            <Field label={t('products.group')} error={errorMessages.idgrupo} className="sm:col-span-3">
+                                <Select
+                                    {...selectProps}
+                                    options={groupOptions}
+                                    value={groupOptions.find(option => String(option.value) === String(prodOverview?.idgrupo)) || null}
+                                    onChange={handleGroupChange}
+                                    placeholder={t('panel.addRegister.pickGroupPlaceholder')}
+                                />
+                            </Field>
+                            <Field label={t('panel.addRegister.category')} error={errorMessages.idcategoria} className="sm:col-span-3">
+                                <Select
+                                    {...selectProps}
+                                    options={categoryOptions}
+                                    value={categoryOptions.find(option => String(option.value) === String(prodOverview?.idcategoria)) || null}
+                                    onChange={handleCategoryChange}
+                                    placeholder={t('panel.addRegister.pickCategoryPlaceholder')}
+                                />
+                            </Field>
+                        </div>
+                    </fieldset>
+
+                    <fieldset className="space-y-4">
+                        <legend className="mb-3 w-full"><SectionTitle step="4" title={t('panel.inventories.sectionFitment')} /></legend>
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
+                            <Field label={t('panel.addRegister.modelFrom')} error={errorMessages.mod_ini} className="sm:col-span-2">
+                                <Select
+                                    {...selectProps}
+                                    options={MODEL_YEAR_OPTIONS}
+                                    value={currentProduct.mod_ini
+                                        ? { value: currentProduct.mod_ini, label: String(currentProduct.mod_ini) }
+                                        : null}
+                                    isClearable
+                                    onChange={(selectedOption) => {
+                                        setProdOverview(prevState => ({ ...prevState, mod_ini: selectedOption ? selectedOption.value : '' }));
+                                    }}
+                                />
+                            </Field>
+                            <Field label={t('panel.addRegister.modelTo')} error={errorMessages.mod_fin} className="sm:col-span-2">
+                                <Select
+                                    {...selectProps}
+                                    options={MODEL_YEAR_OPTIONS}
+                                    value={currentProduct.mod_fin
+                                        ? { value: currentProduct.mod_fin, label: String(currentProduct.mod_fin) }
+                                        : null}
+                                    isClearable
+                                    onChange={(selectedOption) => {
+                                        setProdOverview(prevState => ({ ...prevState, mod_fin: selectedOption ? selectedOption.value : '' }));
+                                    }}
+                                />
+                            </Field>
+                            <Field label={t('panel.addRegister.carBrand')} error={errorMessages.idmarca} className="sm:col-span-2">
+                                <Select
+                                    {...selectProps}
+                                    options={brandOptions}
+                                    value={brandOptions.find(option => option.value === prodOverview?.idmarca) || null}
+                                    onChange={handleBrandChange}
+                                    isClearable
+                                />
+                            </Field>
+                        </div>
+                    </fieldset>
+
+                    <fieldset className="space-y-4">
+                        <legend className="mb-3 w-full">
+                            <SectionTitle step="5" title={branchName ? t('panel.editRegister.sectionPricing', { branch: branchName }) : t('panel.editRegister.sectionPricingNoBranch')} />
+                        </legend>
+                        {isWebBranchSelected && (
+                            <p className="flex items-center gap-2 rounded-xl bg-sky-500/10 px-3 py-2 text-sm">
+                                <FaGlobe className="size-3.5 shrink-0 text-sky-600" aria-hidden="true" />
+                                <span>
+                                    {t('panel.inventories.webNoStock')} {t('panel.editRegister.webPriceHint')}
+                                </span>
+                            </p>
+                        )}
+                        <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
                             {!isWebBranchSelected && (
-                                <div className="sm:col-span-2">
-                                    <label htmlFor="location" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                        Localizaci&oacute;n
-                                    </label>
-                                    <div className="mt-2">
-                                        <input
-                                            id="location"
-                                            name="location"
-                                            type="text"
-                                            autoComplete="location"
-                                            value={currentProduct.localizacion ?? ''}
-                                            className="block w-full rounded-md border-0 p-1.5 text-[rgb(var(--color-text))] shadow-sm ring-1 ring-inset placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6 uppercase"
-                                            onChange={handleLocationChange}
-                                            onBlur={handleLocationBlur}
-                                        />
-                                        {errorMessages.localizacion && (
-                                            <span className="text-[rgb(var(--color-error))] text-sm">
-                                                {errorMessages.localizacion}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="sm:col-span-2">
-                                <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Modelo inicial
-                                </label>
-                                <div className="mt-2">
-                                    <Select
-                                        id='mod_ini'
-                                        name='mod_ini'
-                                        className='w-full'
-                                        options={MODEL_YEAR_OPTIONS}
-                                        value={currentProduct.mod_ini
-                                            ? { value: currentProduct.mod_ini, label: String(currentProduct.mod_ini) }
-                                            : null}
-                                        onChange={(selectedOption) => {
-                                            setProdOverview(prevState => ({ ...prevState, mod_ini: selectedOption.value }));
-                                        }}
-                                    />
-                                    {errorMessages.mod_ini && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.mod_ini}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <label className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Modelo final
-                                </label>
-                                <div className="mt-2">
-                                    <Select
-                                        id='mod_fin'
-                                        name='mod_fin'
-                                        className='w-full'
-                                        options={MODEL_YEAR_OPTIONS}
-                                        value={currentProduct.mod_fin
-                                            ? { value: currentProduct.mod_fin, label: String(currentProduct.mod_fin) }
-                                            : null}
-                                        onChange={(selectedOption) => {
-                                            setProdOverview(prevState => ({ ...prevState, mod_fin: selectedOption.value }));
-                                        }}
-                                    />
-                                    {errorMessages.mod_fin && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.mod_fin}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                            {!isWebBranchSelected && (
-                                <div className="sm:col-span-2">
-                                    <label htmlFor="last-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                        Existencia
-                                    </label>
-                                    <div className="mt-2">
-                                        <Select
-                                            id="existencia"
-                                            name="existencia"
-                                            value={QuantityOptions.find(option => option.value === prodOverview?.existencia)}
-                                            onChange={handleQuantityChange}
-                                            options={QuantityOptions}
-                                            isDisabled={isSuccessfull}
-                                            classNamePrefix="react-select"
-                                        />
-                                        {errorMessages.existencia && (
-                                            <span className="text-[rgb(var(--color-error))] text-sm">
-                                                {errorMessages.existencia}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-                            <div className="sm:col-span-2">
-                                <label htmlFor="last-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Utilidad
-                                </label>
-                                <div className="mt-2">
-                                    <Select
-                                        options={[
-                                            { value: 1.25, label: '25%' },
-                                            { value: 1.3, label: '30%' },
-                                            { value: 1.35, label: '35%' },
-                                        ]}
-                                        value={currentProduct?.utilidad
-                                            ? { value: currentProduct.utilidad, label: `${((currentProduct.utilidad - 1) * 100).toFixed(0)}%` }
-                                            : null}
-                                        onChange={handleUtilityChange}
-                                    />
-                                </div>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <label htmlFor="costo" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Costo de proveedor
-                                </label>
-                                <div className="mt-2">
+                                <Field label={t('panel.tableDesc.locationTitle')} error={errorMessages.localizacion} hint={t('panel.editRegister.locationHint')} className="sm:col-span-3">
                                     <input
-                                    id="costo"
-                                    name="costo"
-                                    type="text"
-                                    autoComplete="costo"
-                                    value={currentProduct.costo ?? ''}
-                                    onChange={handleCostChange}
-                                    className="block w-full rounded-md border-0 p-1.5 text-[rgb(var(--color-text))] shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
+                                        type="text"
+                                        autoComplete="off"
+                                        value={currentProduct.localizacion ?? ''}
+                                        onChange={handleLocationChange}
+                                        onBlur={handleLocationBlur}
+                                        className={`${INPUT_CLASS} font-semibold uppercase tabular-nums tracking-wide`}
                                     />
-                                    {errorMessages.costo && (
-                                        <span className="text-[rgb(var(--color-error))] text-sm">
-                                            {errorMessages.costo}
+                                </Field>
+                            )}
+                            {!isWebBranchSelected && (
+                                <Field label={t('panel.tableDesc.stockTitle')} error={errorMessages.existencia} className="sm:col-span-3">
+                                    <Select
+                                        {...selectProps}
+                                        options={QuantityOptions}
+                                        value={QuantityOptions.find(option => option.value === prodOverview?.existencia) || null}
+                                        onChange={handleQuantityChange}
+                                    />
+                                </Field>
+                            )}
+                            <Field label={t('panel.editRegister.providerCost')} error={errorMessages.costo} className="sm:col-span-3">
+                                <span className="relative block">
+                                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-gray-base))]">$</span>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        value={currentProduct.costo ?? ''}
+                                        onChange={handleCostChange}
+                                        className={`${INPUT_CLASS} pl-7 tabular-nums`}
+                                    />
+                                </span>
+                            </Field>
+                            <Field label={t('panel.addRegister.utility')} className="sm:col-span-3">
+                                <span className="relative block">
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        value={utilityDraft ?? utilityPercent(currentProduct.utilidad)}
+                                        onChange={handleUtilityInput}
+                                        onBlur={() => setUtilityDraft(null)}
+                                        className={`${INPUT_CLASS} pr-8 tabular-nums`}
+                                    />
+                                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[rgb(var(--color-gray-base))]">%</span>
+                                </span>
+                                <span className="mt-2 flex flex-wrap gap-1.5">
+                                    {UTILITY_PRESETS.map(percent => {
+                                        const active = utilityPercent(currentProduct.utilidad) === String(percent);
+                                        return (
+                                            <button
+                                                key={percent}
+                                                type="button"
+                                                onClick={() => handleUtilityPreset(percent)}
+                                                aria-pressed={active}
+                                                className={`h-8 rounded-full px-3 text-xs font-semibold tabular-nums transition ${active
+                                                    ? 'bg-amber-500 text-slate-900 shadow'
+                                                    : 'bg-[rgb(var(--color-bg))] text-[rgb(var(--color-gray-base))] hover:text-[rgb(var(--color-text))]'}`}
+                                            >
+                                                {percent}%
+                                            </button>
+                                        );
+                                    })}
+                                </span>
+                            </Field>
+                            <div className={`space-y-2 rounded-2xl px-4 py-3 sm:col-span-6 ${errorMessages.precio ? 'bg-[rgb(var(--color-error))]/10' : 'bg-amber-500/15'}`}>
+                                <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <span className="flex min-w-0 items-center gap-3">
+                                        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-amber-500 text-slate-900">
+                                            <FaTag className="size-4" aria-hidden="true" />
                                         </span>
+                                        <span className="min-w-0">
+                                            <label htmlFor="almacen-precio" className="block text-sm font-medium">
+                                                {branchName ? t('panel.editRegister.priceIn', { branch: branchName }) : t('panel.editRegister.minPrice')}
+                                            </label>
+                                            <span className="block text-xs text-[rgb(var(--color-gray-base))]">{t('panel.editRegister.priceFormula')}</span>
+                                        </span>
+                                    </span>
+                                    <span className="ml-auto shrink-0 text-right">
+                                        <span className="relative block">
+                                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xl font-bold text-[rgb(var(--color-gray-base))]">$</span>
+                                            <input
+                                                id="almacen-precio"
+                                                type="text"
+                                                inputMode="decimal"
+                                                autoComplete="off"
+                                                value={currentProduct.precio ?? ''}
+                                                onChange={handlePriceChange}
+                                                onBlur={() => {
+                                                    const value = parseFloat(currentProduct.precio);
+                                                    if (Number.isFinite(value)) setProdOverview(prev => ({ ...prev, precio: value.toFixed(2) }));
+                                                }}
+                                                className="h-12 w-40 rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] pl-7 pr-3 text-right text-2xl font-bold tabular-nums text-[rgb(var(--color-text))] focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                            />
+                                        </span>
+                                        {parseFloat(currentProduct.precio) > 0 && (
+                                            <span className="mt-1 block text-xs tabular-nums text-[rgb(var(--color-gray-base))]">
+                                                {t('panel.editRegister.priceNoTax', { amount: formatMoney(parseFloat(currentProduct.precio) / IVA_FACTOR) })}
+                                            </span>
+                                        )}
+                                    </span>
+                                </div>
+                                {referencePrice && (
+                                    <p className="text-xs tabular-nums text-[rgb(var(--color-gray-base))]">
+                                        {referencePrice.diff === 0
+                                            ? t('panel.editRegister.priceSameAs', { branch: referencePrice.branch, amount: referencePrice.amount })
+                                            : t('panel.editRegister.priceVs', referencePrice)}
+                                    </p>
+                                )}
+                                {errorMessages.precio && (
+                                    <p className="flex items-center gap-2 text-sm text-[rgb(var(--color-error))]">
+                                        <FaCircleExclamation className="size-3.5 shrink-0" aria-hidden="true" />
+                                        {errorMessages.precio}
+                                    </p>
+                                )}
+                            </div>
+                            {webFee && (
+                                <div className="space-y-2 rounded-2xl border border-indigo-500/30 bg-indigo-500/10 px-4 py-3 text-sm sm:col-span-6">
+                                    <p className="flex items-start gap-2">
+                                        <FaCcStripe className="mt-0.5 size-5 shrink-0 text-indigo-500" aria-hidden="true" />
+                                        <span>
+                                            {t('panel.editRegister.stripeRate', {
+                                                percent: `${(STRIPE_MX.percent * 100).toFixed(1)} %`,
+                                                fixed: formatMoney(STRIPE_MX.fixed),
+                                            })}
+                                        </span>
+                                    </p>
+                                    {webFee.net !== null && (
+                                        <p className="tabular-nums">
+                                            {t('panel.editRegister.stripeNet', { net: formatMoney(webFee.net), fee: formatMoney(webFee.fee) })}
+                                        </p>
+                                    )}
+                                    {webFee.suggested !== null && (
+                                        webFee.covered ? (
+                                            <p className="flex items-center gap-2 font-medium text-[rgb(var(--color-success))]">
+                                                <FaCircleCheck className="size-3.5 shrink-0" aria-hidden="true" />
+                                                {referencePrice
+                                                    ? t('panel.editRegister.stripeCovered', { branch: referencePrice.branch, amount: referencePrice.amount })
+                                                    : t('panel.editRegister.stripeCoveredBase', { amount: formatMoney(webFee.base) })}
+                                            </p>
+                                        ) : (
+                                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                                <p className="min-w-0 flex-1 tabular-nums">
+                                                    {referencePrice
+                                                        ? t('panel.editRegister.stripeSuggest', { branch: referencePrice.branch, amount: referencePrice.amount, suggested: formatMoney(webFee.suggested) })
+                                                        : t('panel.editRegister.stripeSuggestBase', { amount: formatMoney(webFee.base), suggested: formatMoney(webFee.suggested) })}
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSuggestedPrice(webFee.suggested)}
+                                                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-indigo-600 px-4 font-semibold text-white shadow transition hover:bg-indigo-500"
+                                                >
+                                                    {t('panel.editRegister.stripeUse', { suggested: formatMoney(webFee.suggested) })}
+                                                </button>
+                                            </div>
+                                        )
                                     )}
                                 </div>
-                            </div>
-                            <div className="sm:col-span-2">
-                                <label htmlFor="last-name" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                    Precio Público Mínimo
-                                </label>
-                                <div className="mt-2 bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] animate-up rounded-md p-1 shadow">
-                                    {currentProduct.precio}
-                                </div>
-                            </div>
+                            )}
                         </div>
-                    </div>
-                </div>
-                <div>
-                    {successMessage && <div className="text-[rgb(var(--color-success))]">{successMessage}</div>}
-                    {errorMessages && (
-                        <div className="text-[rgb(var(--color-error))]">
-                            {errorMessages.num_parte}
-                        </div>
-                    )}
-                </div>
-                <div className="flex flex-col justify-center items-center mt-3 max-w-7xl">
-                    <div className="grid grid-cols-1 md:grid-cols-3 mt-6 items-center justify-end gap-4">
-                        <button
-                        onClick={onCancelEdit}
-                        type="button"
-                        className="bg-gradient-to-bl hover:bg-gradient-to-tr bg-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out text-[rgb(var(--color-text))]">
-                        Regresar
-                        </button>
-                        <button
-                        type="button"
-                        onClick={handleConfirmDeleteProduct}
-                        className="bg-gradient-to-bl from-red-500 via-rose-500 to-red-700 text-white shadow p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 disabled:opacity-60"
-                        disabled={productDeleting}
-                        >
-                        {productDeleting ? 'Dando de baja...' : 'Dar de baja'}
-                        </button>
-                        <button
-                        type="submit"
-                        className={isSuccessfull ? 'bg-gradient-to-bl hover:bg-gradient-to-tr bg-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out cursor-not-allowed' : 'bg-gradient-to-bl hover:bg-gradient-to-tr from-amber-500 via-yellow-400 to-slate-300 shadow text-slate-900 p-3 rounded-full mt-3 transition-all duration-500 ease-in-out hover:scale-105 cursor-pointer'}
-                        disabled={isSuccessfull}
-                        >
-                        Guardar
-                        </button>
-                    </div>
-                </div>
-            </div>
-            {(detailPendingDelete || productPendingDelete) && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="bg-[rgb(var(--color-card))] rounded-2xl shadow-2xl max-w-md w-full p-6 border border-[rgb(var(--color-border))]">
-                        <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">
-                            {productPendingDelete ? 'Dar de baja producto' : 'Confirmar eliminación'}
-                        </h3>
-                        <p className="text-sm text-[rgb(var(--color-text))]/80 mt-2">
-                            {productPendingDelete
-                                ? '¿Deseas dar de baja este producto? Se eliminarán todos sus detalles.'
-                                : '¿Estás seguro que deseas dar de baja el detalle de esta sucursal?'}
+                    </fieldset>
+
+                    {successMessage && (
+                        <p role="status" className="flex items-center gap-2 rounded-xl bg-emerald-500/15 px-3 py-2 text-sm">
+                            <FaCircleCheck className="size-4 shrink-0 text-[rgb(var(--color-success))]" aria-hidden="true" />
+                            {successMessage}
                         </p>
-                        <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                type="button"
-                                className="px-4 py-2 rounded-full bg-gray-200 text-gray-800 hover:bg-gray-300"
-                                onClick={productPendingDelete ? cancelProductDelete : cancelDeleteDetail}
-                                disabled={!!deletingBranchId || productDeleting}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                className="px-4 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 disabled:opacity-70"
-                                onClick={productPendingDelete ? handleProductSoftDelete : handleConfirmDelete}
-                                disabled={!!deletingBranchId || productDeleting}
-                            >
-                                {productPendingDelete
-                                    ? (productDeleting ? 'Dando de baja...' : 'Dar de baja')
-                                    : (deletingBranchId ? 'Eliminando...' : 'Eliminar')}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-            {isImageViewerOpen && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4">
-                    <div className="relative max-w-3xl w-full">
+                    )}
+                    {errorMessage && (
+                        <p role="alert" className="flex items-center gap-2 rounded-xl bg-[rgb(var(--color-error))]/10 px-3 py-2 text-sm text-[rgb(var(--color-error))]">
+                            <FaCircleExclamation className="size-4 shrink-0" aria-hidden="true" />
+                            {errorMessage}
+                        </p>
+                    )}
+
+                    <div className="flex flex-col-reverse gap-3 border-t border-[rgb(var(--color-border))] pt-5 sm:flex-row sm:items-center">
                         <button
                             type="button"
-                            className="absolute -top-4 -right-4 bg-white text-black rounded-full px-3 py-1 shadow-lg text-sm font-semibold"
-                            onClick={closeImageViewer}
-                            aria-label="Cerrar visor de imagen"
+                            onClick={handleConfirmDeleteProduct}
+                            disabled={productDeleting || busy}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl px-4 font-semibold text-red-600 transition hover:bg-red-500/10 disabled:opacity-60"
                         >
-                            Cerrar
+                            <FaTrashCan className="size-3.5" aria-hidden="true" />
+                            {productDeleting ? t('panel.editRegister.removing') : t('panel.editRegister.remove')}
+                        </button>
+                        <span className="hidden flex-1 sm:block" />
+                        <button
+                            type="button"
+                            onClick={onCancelEdit}
+                            disabled={busy}
+                            className="h-11 rounded-xl px-5 font-semibold text-[rgb(var(--color-gray-base))] transition hover:bg-[rgb(var(--color-text))]/10 disabled:opacity-60"
+                        >
+                            {t('panel.common.cancel')}
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={busy}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-amber-500 px-6 font-semibold text-slate-900 shadow transition hover:bg-amber-400 disabled:opacity-60"
+                        >
+                            <FaFloppyDisk className="size-4" aria-hidden="true" />
+                            {saving ? t('panel.providers.saving') : t('panel.personal.save')}
+                        </button>
+                    </div>
+                </section>
+            </div>
+
+            <Sheet isOpen={Boolean(detailPendingDelete || productPendingDelete)} onClose={closeConfirm} locked={confirmBusy} labelledBy={CONFIRM_TITLE_ID}>
+                <SheetHeader
+                    icon={FaTrashCan}
+                    title={productPendingDelete ? t('panel.editRegister.removeProductTitle') : t('panel.editRegister.confirmDelete')}
+                    titleId={CONFIRM_TITLE_ID}
+                    subtitle={productPendingDelete
+                        ? `${currentProduct.refaccion || ''} · ${currentProduct.descripcion || ''}`
+                        : `${currentProduct.refaccion || ''} · ${detailPendingDelete?.sucursal || ''}`}
+                    onClose={closeConfirm}
+                    closeDisabled={confirmBusy}
+                />
+                <p className="text-sm">
+                    {productPendingDelete ? t('panel.editRegister.confirmProductHint') : t('panel.editRegister.confirmDetailHint')}
+                </p>
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={closeConfirm} disabled={confirmBusy} className="h-11 rounded-xl px-4 font-semibold hover:bg-[rgb(var(--color-text))]/10">
+                        {t('panel.common.cancel')}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={productPendingDelete ? handleProductSoftDelete : handleConfirmDelete}
+                        disabled={confirmBusy}
+                        className="h-11 rounded-xl bg-red-600 px-5 font-semibold text-white shadow hover:bg-red-500 disabled:opacity-60"
+                    >
+                        {productPendingDelete
+                            ? (productDeleting ? t('panel.editRegister.removing') : t('panel.editRegister.remove'))
+                            : (deletingBranchId ? t('panel.common.deleting') : t('panel.common.delete'))}
+                    </button>
+                </div>
+            </Sheet>
+
+            {isImageViewerOpen && previewSrc && (
+                <PopPortal>
+                    <div
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label={t('panel.editRegister.previewAlt')}
+                        onClick={closeImageViewer}
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+                    >
+                        <button
+                            type="button"
+                            onClick={closeImageViewer}
+                            aria-label={t('panel.editRegister.closeViewer')}
+                            className="absolute right-4 top-4 grid size-11 place-items-center rounded-full bg-white text-slate-900 shadow-lg"
+                        >
+                            <FaXmark className="size-4" aria-hidden="true" />
                         </button>
                         <img
-                            src={selectedImage}
-                            alt="Vista previa de producto"
-                            className="rounded-3xl shadow-2xl w-full max-h-[80vh] object-contain bg-[rgb(var(--color-card))]"
-                            onClick={closeImageViewer}
+                            src={previewSrc}
+                            alt={t('panel.editRegister.previewAlt')}
+                            className="max-h-[85vh] max-w-full rounded-2xl bg-white object-contain shadow-2xl"
                         />
                     </div>
-                </div>
+                </PopPortal>
             )}
         </form>
-    )
+    );
 }

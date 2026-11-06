@@ -8,14 +8,14 @@ import { CognitoUser, AuthenticationDetails } from 'amazon-cognito-identity-js';
 import { userPool } from "@/app/lib/cognito-manager";
 import { setStorageValue } from "@/app/lib/storage-values";
 import RefautomexLogo from "@/app/components/refautomex-logo";
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { IoMdLogIn } from "react-icons/io";
 import { AiFillEye } from 'react-icons/ai';
 import { IoIosCloseCircle } from "react-icons/io";
 import Link from 'next/link';
 import { signInWithRedirect } from 'aws-amplify/auth';
 import '@/app/lib/amplify-client';
+import { correoDeAcceso, esCorreoDeAcceso } from '@/app/lib/usuario-acceso';
 
 export default function Login() {
     const searchParams = useSearchParams();
@@ -38,21 +38,38 @@ export default function Login() {
             await signInWithRedirect({ provider });
         } catch (err) {
             console.error("Error en signInWithRedirect:", err);
-            setAlertMessage('No pudimos iniciar la sesión social, intenta nuevamente.');
+            setAlertMessage(t('account.errorSocial'));
         }
     };
 
-    const onSubmit = (event) => {
+    const onSubmit = async (event) => {
         event.preventDefault();
         setLoading(true);
 
+        // Se entra con el correo o con el usuario de Configuracion; Cognito
+        // solo conoce el correo.
+        const credencialesInvalidas = t(esCorreoDeAcceso(email) ? 'account.errorCredentials' : 'account.errorCredentialsUser');
+        let correo;
+        try {
+            correo = await correoDeAcceso(email);
+        } catch (error) {
+            setAlertMessage(error?.userMessage || t('common.tryLater'));
+            setLoading(false);
+            return;
+        }
+        if (!correo) {
+            setAlertMessage(credencialesInvalidas);
+            setLoading(false);
+            return;
+        }
+
         const authenticationDetails = new AuthenticationDetails({
-            Username: email,
+            Username: correo,
             Password: password
         });
 
         const cognitoUser = new CognitoUser({
-            Username: email,
+            Username: correo,
             Pool: userPool
         });
 
@@ -63,19 +80,25 @@ export default function Login() {
             },
             onFailure: function (err) {
                 if (err.code === 'UserNotConfirmedException') {
-                    setAlertMessage('Tu cuenta no ha sido confirmada.');
-                    setConfirmationMessage('Por favor confirma tu correo para ingresar a tu cuenta. ¿No recibiste correo?');
+                    setAlertMessage(t('account.errorUnconfirmed'));
+                    setConfirmationMessage(t('account.errorUnconfirmedHint'));
                 } else {
-                    setAlertMessage('Correo electrónico o contraseña inválidos.');
+                    setAlertMessage(credencialesInvalidas);
                 }
                 setLoading(false);
             }
         });
     };
 
-    const resendConfirmationCode = () => {
+    const resendConfirmationCode = async () => {
+        // La cuenta sin confirmar pudo entrar con su usuario: el codigo va a su correo.
+        const correo = await correoDeAcceso(email).catch(() => null);
+        if (!correo) {
+            setAlertMessage(t('common.tryLater'));
+            return;
+        }
         const cognitoUser = new CognitoUser({
-            Username: email,
+            Username: correo,
             Pool: userPool
         });
 
@@ -84,8 +107,8 @@ export default function Login() {
                 setAlertMessage(err.message || JSON.stringify(err));
                 return;
             }
-            setSuccessMessage('Se ha reenviado el correo de confirmación.');
-            setIndicationMessage('Por favor, verifica tu bandeja de entrada y sigue las instrucciones para validar tu cuenta.');
+            setSuccessMessage(t('account.resent'));
+            setIndicationMessage(t('account.checkInbox'));
         });
     };
 
@@ -110,12 +133,12 @@ export default function Login() {
 
     useEffect(() => {
         if (userStatus && userStatus.includes('new')) {
-            setSuccessMessage('Se ha enviado un correo de confirmación a tu correo.');
-            setIndicationMessage('Por favor, verifica tu bandeja de entrada y sigue las instrucciones para validar tu cuenta.');
+            setSuccessMessage(t('account.confirmationSent'));
+            setIndicationMessage(t('account.checkInbox'));
         } else if (userStatus && userStatus.includes('password-reset')) {
-            setSuccessMessage('Se ha restablecido su contraseña con éxito.');
+            setSuccessMessage(t('account.passwordReset'));
         } else if (userStatus && userStatus.includes('error')) {
-            setAlertMessage('Por favor, inténtalo de nuevo más tarde.');
+            setAlertMessage(t('common.tryLater'));
         }
     }, []);
 
@@ -124,7 +147,7 @@ export default function Login() {
             {alertMessage && (
                 <div className="rounded-xl my-1 shadow bg-gradient-to-br from-[rgb(var(--color-galaxy))] to-[rgb(var(--color-bg))] text-center py-4 lg:px-4">
                     <div className="px-4 md:px-2 p-1 bg-transparent items-center text-[rgb(var(--color-text))] leading-none lg:rounded-full flex lg:inline-flex" role="alert">
-                        <span className="flex rounded-full bg-red-600 text-indigo-100 uppercase px-2 py-1 text-xs font-bold mr-3 shadow">Error</span>
+                        <span className="flex rounded-full bg-red-600 text-indigo-100 uppercase px-2 py-1 text-xs font-bold mr-3 shadow">{t('common.error')}</span>
                         <span className="font-semibold mr-2 text-left flex-auto">{alertMessage}</span>
                         <button onClick={closeAlert} className="ml-2">
                             <IoIosCloseCircle className="text-red-500 text-2xl" />
@@ -133,7 +156,7 @@ export default function Login() {
                     {alertConfirmation && (
                         <div>
                             <span className="mx-2.5 italic font-sans text-left text-[rgb(var(--color-text))]">{alertConfirmation}</span>
-                            <button onClick={resendConfirmationCode} className="ml-2 text-blue-500 underline">Reenviar</button>
+                            <button onClick={resendConfirmationCode} className="ml-2 text-blue-500 underline">{t('account.resend')}</button>
                         </div>
                     )}
                 </div>
@@ -141,7 +164,7 @@ export default function Login() {
             {alertSuccess && (
                 <div className="rounded-xl my-1 shadow bg-gradient-to-br from-[rgb(var(--color-galaxy))] to-[rgb(var(--color-bg))] text-center py-4 lg:px-4">
                     <div className="px-4 md:px-2 p-1 bg-transparent items-center text-[rgb(var(--color-text))] leading-none lg:rounded-full flex lg:inline-flex" role="alert">
-                        <span className="flex rounded-full bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))] uppercase px-2 py-1 text-xs font-bold mr-3 shadow">Warning</span>
+                        <span className="flex rounded-full bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))] uppercase px-2 py-1 text-xs font-bold mr-3 shadow">{t('common.warning')}</span>
                         <span className="m-2 text-left font-sans">
                             <b>{alertSuccess}</b>
                         </span>
@@ -163,14 +186,18 @@ export default function Login() {
                     <form className="space-y-6" method="POST" onSubmit={onSubmit}>
                         <div>
                             <label htmlFor="email" className="block text-sm font-medium leading-6 text-[rgb(var(--color-text))]">
-                                {t('account.mail')}
+                                {t('account.mailOrUser')}
                             </label>
                             <div className="mt-2">
                                 <input
                                     id="email"
                                     name="email"
-                                    type="email"
-                                    autoComplete="email"
+                                    type="text"
+                                    inputMode="email"
+                                    autoComplete="username"
+                                    autoCapitalize="none"
+                                    autoCorrect="off"
+                                    spellCheck={false}
                                     required
                                     onChange={event => setEmail(event.target.value)}
                                     className="block w-full rounded-md border-0 p-1.5 text-[rgb(var(--color-text))] shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"

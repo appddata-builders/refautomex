@@ -1,0 +1,32 @@
+# Postgres de desarrollo: las bases de refautomex en localhost, aparte de
+# produccion. `npm run dev` lo levanta (predev) y `npm run db:local:cargar` lo
+# llena con una seccion del ultimo respaldo de S3 (scripts/db-local.sh).
+#
+#   refautomex  la base de la app (DATABASE_URL)
+#   appddata    solo la tabla `hydrate` de refautomex, los textos (APPSTRACT_DATABASE_URL)
+#
+# La misma version mayor que el droplet (infrastructure-terraform-appddata,
+# resources/compose.yaml.tftpl): pg_restore no lee el respaldo de una version
+# mas nueva que la suya.
+name: refautomex-local
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: refautomex
+      POSTGRES_PASSWORD: refautomex
+      POSTGRES_DB: refautomex
+    ports:
+      # Solo esta computadora: no se publica en la red local.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - datos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U refautomex -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  datos:

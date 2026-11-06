@@ -1,21 +1,25 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useContext, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
-import { FaUsersViewfinder, FaBoxesPacking } from 'react-icons/fa6';
+import { FaUsersViewfinder, FaBoxesPacking, FaUserShield } from 'react-icons/fa6';
 import { AiOutlineDashboard, AiOutlineLogout } from 'react-icons/ai';
 import { HiClipboardDocumentList, HiMiniCog6Tooth } from "react-icons/hi2";
 import { IoIosArrowDown, IoIosArrowUp } from 'react-icons/io';
-import { getStorageValue, setStorageValue } from "@/app/lib/storage-values";
-import { userPool } from '@/app/lib/cognito-manager';
+import { getStorageValue } from "@/app/lib/storage-values";
+import { AuthContext } from '@/app/lib/auth-tracker';
 import { GiAutoRepair } from 'react-icons/gi';
 import { MdSell } from "react-icons/md";
 import { BiSolidUserCircle } from 'react-icons/bi';
 import RefautomexLogo from '@/app/components/refautomex-logo';
+import NotificationBell from './notification-bell';
 import ShiftModeButton from '../principal/shiftmode-button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { useTranslation } from '@/app/lib/text/text-provider';
+import { perfilDeCategoria, puedeVer } from '@/app/lib/permisos-menu';
+import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
 
 const MenuItems = ({ items, closeMenu, lang }) => {
     const [openedSection, setOpenedSection] = useState(null);
@@ -70,6 +74,7 @@ const MenuItems = ({ items, closeMenu, lang }) => {
 };
 
 export default function NavbarPanel() {
+    const { t } = useTranslation();
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [imgError, setImgError] = useState(false);
     const [profileImageUrl, setProfileImageUrl] = useState('');
@@ -81,66 +86,68 @@ export default function NavbarPanel() {
     const id = userData?.idusuario;
 
     const router = useRouter();
+    const { cerrarSesion } = useContext(AuthContext);
     const searchParams = useSearchParams();
     const lang = searchParams.get('lang') || 'es';
 
-    const isAdmin = String(userData?.categoria || '').toUpperCase() === 'A';
+    // Que ve cada perfil se configura en Permisos > Permisos de perfil;
+    // `modulo` es la clave de permisos-menu.js.
+    const permisos = usePermisosMenu();
+    const perfil = perfilDeCategoria(userData?.categoria);
 
     const navItems = [
         {
-        name: 'Ventas',
+        name: t('panel.nav.sales'),
         icon: MdSell,
         subNav: [
-            { name: 'Tickets a clientes', href: '/productivity?load=tickets' },
-            { name: 'Devoluciones', href: '/productivity?load=devolution', adminOnly: true },
-            { name: 'Historial de ventas', href: '/productivity?load=history', adminOnly: true },
+            { name: t('panel.nav.tickets'), href: '/productivity?load=tickets', modulo: 'tickets' },
+            { name: t('panel.nav.devolution'), href: '/productivity?load=devolution', modulo: 'devolution' },
+            { name: t('panel.nav.history'), href: '/productivity?load=history', modulo: 'history' },
         ],
         },
         {
-        name: 'Almacén',
+        name: t('panel.nav.stock'),
         icon: FaBoxesPacking,
         subNav: [
-            { name: 'Inventarios', href: '/productivity?load=inventories', adminOnly: true },
-            { name: 'Gestión de Almacén', href: '/productivity?load=warehouse' },
-            { name: 'Faltantes', href: '/productivity?load=missing' },
+            { name: t('panel.nav.inventories'), href: '/productivity?load=inventories', modulo: 'inventories' },
+            { name: t('panel.nav.warehouse'), href: '/productivity?load=warehouse', modulo: 'warehouse' },
+            { name: t('panel.nav.assignment'), href: '/productivity?load=assignment', modulo: 'assignment' },
         ],
         },
         {
-        name: 'Compras',
+        name: t('panel.nav.purchases'),
         icon: HiClipboardDocumentList,
-        adminOnly: true,
         subNav: [
-            { name: 'Capturación de productos', href: '/productivity?load=capture' },
-            { name: 'Gestión de proveedores', href: '/productivity?load=providers' },
+            { name: t('panel.nav.missing'), href: '/productivity?load=missing', modulo: 'missing' },
+            { name: t('panel.nav.capture'), href: '/productivity?load=capture', modulo: 'capture' },
+            { name: t('panel.nav.providers'), href: '/productivity?load=providers', modulo: 'providers' },
         ],
         },
         {
-        name: 'Servicios',
+        name: t('panel.nav.services'),
         icon: FaUsersViewfinder,
-        adminOnly: true,
         subNav: [
-            { name: 'Calendario', href: '/productivity?load=calendar' },
-            { name: 'Facturación Web', href: '/productivity?load=invoice' },
-            { name: 'Gestión de cuentas activas', href: '/productivity?load=personal' },
+            { name: t('panel.nav.calendar'), href: '/productivity?load=calendar', modulo: 'calendar' },
+            { name: t('panel.nav.invoice'), href: '/productivity?load=invoice', modulo: 'invoice' },
         ],
         },
         {
-        name: 'Pedidos',
+        name: t('panel.nav.orders'),
         icon: GiAutoRepair,
         subNav: [
-            { name: 'En Sucursal', href: '/productivity?load=site' },
-            { name: 'Web (Stripe)', href: '/productivity?load=delivery', adminOnly: true },
+            { name: t('panel.nav.site'), href: '/productivity?load=site', modulo: 'site' },
+            { name: t('panel.nav.delivery'), href: '/productivity?load=delivery', modulo: 'delivery' },
         ],
         },
-        { name: 'Home', icon: AiOutlineDashboard, href: '/productivity?load=home' },
-        { name: 'Configuración', icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings' },
+        { name: t('panel.nav.home'), icon: AiOutlineDashboard, href: '/productivity?load=home', modulo: 'home' },
+        { name: t('panel.nav.settings'), icon: HiMiniCog6Tooth, href: '/productivity?load=user-settings', modulo: 'user-settings' },
+        { name: t('panel.nav.personal'), icon: FaUserShield, href: '/productivity?load=personal', modulo: 'personal' },
     ];
 
     const filteredNavItems = navItems
         .map((item) => {
-            if (item.adminOnly && !isAdmin) return null;
-            if (!item.subNav) return item;
-            const allowedSubNav = item.subNav.filter((subItem) => !subItem.adminOnly || isAdmin);
+            if (!item.subNav) return puedeVer(permisos, item.modulo, perfil) ? item : null;
+            const allowedSubNav = item.subNav.filter((subItem) => puedeVer(permisos, subItem.modulo, perfil));
             if (!allowedSubNav.length) return null;
             return { ...item, subNav: allowedSubNav };
         })
@@ -164,7 +171,7 @@ export default function NavbarPanel() {
         >
         <nav
             className="flex w-full items-center justify-between max-w-7xl mx-5 transition duration-100 ease-in-out"
-            aria-label="Global"
+            aria-label={t('navbar.ariaGlobal')}
         >
             <div className="flex w-full items-center justify-between">
             <div className="flex flex-row items-center justify-center md:mx-3 md:mt-0">
@@ -188,7 +195,7 @@ export default function NavbarPanel() {
                             src={profileImageUrl}
                             onError={() => setImgError(true)}
                             className="w-full h-full object-cover bg-gray-50"
-                            alt="Profile"
+                            alt={t('account.photo')}
                         />
                         ) : null}
                     </div>
@@ -200,6 +207,8 @@ export default function NavbarPanel() {
                     {name}
                 </div>
                 </Link>
+
+                <NotificationBell lang={lang} />
 
                 <button
                 type="button"
@@ -231,18 +240,13 @@ export default function NavbarPanel() {
                         key="salir"
                         className="px-3 bg-[rgb(var(--color-card))] text-[rgb(var(--color-error))] cursor-pointer w-full"
                         onClick={() => {
-                            try {
-                            setStorageValue('CognitoUserSession', null);
-                            userPool.getCurrentUser()?.signOut();
+                            cerrarSesion();
                             router.replace(`/calidad?lang=${lang}`);
-                            } catch (err) {
-                            console.log('No existe cuenta activa', err);
-                            }
                         }}
                         >
                         <div className="flex items-center py-2">
                             <AiOutlineLogout className="mr-3" />
-                            Salir
+                            {t('panel.nav.logout')}
                         </div>
                         </button>
                     </nav>

@@ -22,6 +22,9 @@ export default function CardPromotion({elements}) {
 
   return (
     <section className='bg-[rgb(var(--color-gray))]'>
+      {/* En la misma columna que el resto del sitio: a todo lo ancho, en una
+          pantalla grande cada promocion media 800px. */}
+      <div className='mx-auto max-w-7xl px-2 sm:px-4 lg:px-6'>
       <Swiper
         slidesPerView={slidesPerView}
         spaceBetween={20}
@@ -38,6 +41,7 @@ export default function CardPromotion({elements}) {
               <Atropos className="aspect-w-1 aspect-h-1 min-h-[160px] w-full" activeOffset={10} shadowScale={0.8}>
                 <img
                   src={element.url}
+                  alt={element.title}
                   className="h-full w-full object-cover object-center rounded-xl"
                 />
               </Atropos>
@@ -45,6 +49,7 @@ export default function CardPromotion({elements}) {
           </SwiperSlide>
         ))}
       </Swiper>
+      </div>
     </section>
   );
 }

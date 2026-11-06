@@ -1,5 +1,4 @@
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
   export default function OurWork() {
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
@@ -57,7 +56,7 @@ import '@/app/translations/i18next-translation';
   },
 ]
     return (
-      <div className="bg-[rgb(var(--color-card))] h-full min-h-screen py-12 flex justify-center items-center">
+      <div className="bg-[rgb(var(--color-card))] h-full min-h-[min(100vh,60rem)] py-16 flex justify-center items-center">
         <div className="mx-auto max-w-7xl px-6 lg:px-8">
           <div className="mx-auto max-w-2xl lg:mx-0">
             <h2 className="text-3xl font-bold tracking-tight text-[rgb(var(--color-gray-base))] sm:text-4xl mt-3">{t('about.work.title')}</h2>
