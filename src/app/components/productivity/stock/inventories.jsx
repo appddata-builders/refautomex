@@ -72,7 +72,7 @@ export default function Inventories() {
     const [catalogs, setCatalogs] = useState(EMPTY_CATALOGS);
     const [load, setLoad] = useState({ status: 'loading', message: '' });
     const [assignBranchId, setAssignBranchId] = useState(null);
-    const [assignFilter, setAssignFilter] = useState('pending');
+    const [assignFilter, setAssignFilter] = useState('toAssign');
     const [batch, setBatch] = useState([]);
     // Lo que manda Asignacion de productos; entra al lote cuando hay datos.
     const [handoff, setHandoff] = useState(null);
@@ -105,7 +105,7 @@ export default function Inventories() {
                 const data = JSON.parse(raw);
                 setTab('assign');
                 setAssignBranchId(data.idsucursal ?? null);
-                setAssignFilter('all');
+                setAssignFilter('toAssign');
                 setHandoff(data);
             }
         } catch {
@@ -236,7 +236,7 @@ export default function Inventories() {
                     catalogs={catalogs}
                     knownParts={knownParts}
                     onCreated={loadData}
-                    onAssign={(part) => startAssign({ product: productsByPart.get(part) || { num_parte: part }, filter: 'pending' })}
+                    onAssign={(part) => startAssign({ product: productsByPart.get(part) || { num_parte: part }, filter: 'toAssign' })}
                 />
             </div>
         );
@@ -257,9 +257,9 @@ export default function Inventories() {
                     pending={products.pending}
                     loading={load.status === 'loading'}
                     onRefresh={loadData}
-                    onShowPending={() => startAssign({ filter: 'pending' })}
-                    onAssignProduct={(product) => startAssign({ product, filter: 'pending' })}
-                    onBranchMissing={(branchId) => startAssign({ branchId, filter: 'missing' })}
+                    onShowPending={() => startAssign({ filter: 'toAssign' })}
+                    onAssignProduct={(product) => startAssign({ product, filter: 'toAssign' })}
+                    onBranchMissing={(branchId) => startAssign({ branchId, filter: 'toAssign' })}
                 />
 
                 <div ref={tabsRef} className="scroll-mt-28 space-y-4">

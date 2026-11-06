@@ -199,7 +199,7 @@ const newProductDetail = async ({ body }) => {
 // UpdateProductAndDetail: el UPDATE con JOIN se parte, y el JSON_TABLE de
 // rutas se resuelve en JavaScript.
 const patchProduct = async ({ body }) => {
-  const { refaccion, idsucursal, localizacion, descripcion, existencia, costo, precio,
+  const { refaccion, idsucursal, localizacion, descripcion, existencia, costo, precio, aiva,
     utilidad, mod_ini, mod_fin, idmarca, idgrupo, idcategoria, rutas } = body || {};
 
   return {
@@ -212,10 +212,12 @@ const patchProduct = async ({ body }) => {
           mod_ini ?? null, mod_fin ?? null, refaccion]
       );
 
+      // El precio sin IVA acompana al precio (lo manda la edicion del almacen);
+      // quien no lo manda deja el que estaba.
       await tx.escribir(
-        `UPDATE detalle SET existencia = ?, costo = ?, precio = ?, utilidad = ?
+        `UPDATE detalle SET existencia = ?, costo = ?, precio = ?, aiva = COALESCE(?, aiva), utilidad = ?
           WHERE num_parte = ? AND idsucursal = ?`,
-        [existencia ?? null, costo ?? null, precio ?? null, utilidad ?? null, refaccion, idsucursal]
+        [existencia ?? null, costo ?? null, precio ?? null, aiva ?? null, utilidad ?? null, refaccion, idsucursal]
       );
 
       await reubicarDetalle(tx, { num_parte: refaccion, idsucursal, localizacion });

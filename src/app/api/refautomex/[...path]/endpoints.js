@@ -28,6 +28,7 @@
 
 import { consultar, escribir } from '@/app/lib/refautomex-db';
 import { CATEGORIA_DE_PERFIL } from '@/app/lib/permisos-menu';
+import { POR_UBICAR } from './localizaciones';
 
 import { PROCEDIMIENTOS } from './endpoints-procedimientos';
 import { ESCRITURAS } from './endpoints-escrituras';
@@ -69,6 +70,13 @@ const verifyLocation = async ({ query }) => {
   const num_parte = query.get('num_parte');
 
   if (!localizacion || !idsucursal || !num_parte) return faltan('Missing parameters');
+
+  // "Por ubicar" la comparten muchos productos a proposito (localizaciones.js):
+  // nunca esta ocupada. Antes salia "ocupada por otra refaccion" y Gestion de
+  // almacen no dejaba guardar nada que estuviera en '0'.
+  if (localizacion.trim().toUpperCase() === POR_UBICAR) {
+    return { cuerpo: { exists: false, message: 'Por ubicar.' } };
+  }
 
   const filas = await consultar(
     `SELECT d.num_parte

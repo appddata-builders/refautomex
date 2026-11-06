@@ -120,8 +120,11 @@ const ACTION_TONES = {
  *     onClick }. Agregar y quitar van solo con icono (+ y palomita); el texto
  *     queda en el title y en el aria-label.
  *
- * `views` son las pestanas del modulo: [{ id, label, filter, emptyMessage }].
- * Se pueden controlar con `view` y `onViewChange`.
+ * `views` son las pestanas del modulo: [{ id, label, filter, emptyMessage,
+ * group }]. Las seguidas con el mismo `group` van juntas bajo ese titulo, y
+ * con grupos cada bloque ocupa su propio renglon (Inventarios: Por asignar y,
+ * abajo, Existentes: Productos, En sucursal). Se pueden controlar con `view` y
+ * `onViewChange`.
  */
 const FindProducts = forwardRef(({
     onAddProduct,
@@ -397,6 +400,36 @@ const FindProducts = forwardRef(({
     const branchMissing = (product) => Boolean(branch && showAllBranches
         && !product.variants?.some((variant) => String(variant.idsucursal) === String(branch.id)));
 
+    // Pestanas seguidas con el mismo `group` forman un bloque con su titulo.
+    // Con grupos, un bloque por renglon y sus pestanas del mismo ancho: asi no
+    // se acomodan distinto cuando cambia un texto (el nombre de la sucursal).
+    const viewSegments = (views || []).reduce((segments, item) => {
+        const last = segments[segments.length - 1];
+        if (item.group && last?.group === item.group) last.items.push(item);
+        else segments.push({ group: item.group || null, items: [item] });
+        return segments;
+    }, []);
+    const hasViewGroups = viewSegments.some((segment) => segment.group);
+
+    const renderViewTab = (item) => (
+        <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={activeView?.id === item.id}
+            onClick={() => changeView(item.id)}
+            title={item.label}
+            className={`flex min-h-9 min-w-0 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-semibold transition ${activeView?.id === item.id
+                ? 'bg-amber-500 text-slate-900 shadow'
+                : 'text-[rgb(var(--color-gray-base))] hover:text-[rgb(var(--color-text))]'}`}
+        >
+            <span className="truncate">{item.label}</span>
+            <span className={`shrink-0 rounded-full px-1.5 text-xs tabular-nums ${activeView?.id === item.id ? 'bg-slate-900/15' : 'bg-[rgb(var(--color-gray))]'}`}>
+                {(viewCounts[item.id] ?? 0).toLocaleString('es-MX')}
+            </span>
+        </button>
+    );
+
     const listEmpty = activeView?.emptyMessage || emptyMessage
         || t('panel.site.noRecords', { branch: userBranchLabel || t('panel.common.branch') });
 
@@ -404,25 +437,20 @@ const FindProducts = forwardRef(({
         <div className={`relative flex w-full flex-col ${folio ? 'opacity-80' : ''}`}>
             <div className="space-y-2 p-3">
                 {views?.length > 0 && (
-                    <div role="tablist" className="flex flex-wrap gap-1 rounded-xl bg-[rgb(var(--color-bg))] p-1">
-                        {views.map((item) => (
-                            <button
-                                key={item.id}
-                                type="button"
-                                role="tab"
-                                aria-selected={activeView?.id === item.id}
-                                onClick={() => changeView(item.id)}
-                                title={item.label}
-                                className={`flex min-h-9 flex-auto items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 text-sm font-semibold transition ${activeView?.id === item.id
-                                    ? 'bg-amber-500 text-slate-900 shadow'
-                                    : 'text-[rgb(var(--color-gray-base))] hover:text-[rgb(var(--color-text))]'}`}
+                    <div role="tablist" className={`${hasViewGroups ? 'flex flex-col' : 'flex flex-wrap'} gap-1 rounded-xl bg-[rgb(var(--color-bg))] p-1`}>
+                        {viewSegments.map((segment) => (segment.group ? (
+                            <div
+                                key={segment.items[0].id}
+                                role="group"
+                                aria-label={segment.group}
+                                className="flex flex-col gap-0.5 rounded-lg border border-[rgb(var(--color-border))]/70 p-0.5"
                             >
-                                <span>{item.label}</span>
-                                <span className={`shrink-0 rounded-full px-1.5 text-xs tabular-nums ${activeView?.id === item.id ? 'bg-slate-900/15' : 'bg-[rgb(var(--color-gray))]'}`}>
-                                    {(viewCounts[item.id] ?? 0).toLocaleString('es-MX')}
+                                <span className="px-2 pt-0.5 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--color-gray-base))]">
+                                    {segment.group}
                                 </span>
-                            </button>
-                        ))}
+                                <div className="grid auto-cols-fr grid-flow-col gap-1">{segment.items.map(renderViewTab)}</div>
+                            </div>
+                        ) : renderViewTab(segment.items[0])))}
                     </div>
                 )}
 

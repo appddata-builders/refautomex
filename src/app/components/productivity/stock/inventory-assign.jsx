@@ -3,6 +3,7 @@ import {
     FaCheck,
     FaCircleCheck,
     FaCircleExclamation,
+    FaCcStripe,
     FaCopy,
     FaGlobe,
     FaLock,
@@ -12,6 +13,7 @@ import {
     FaXmark,
 } from 'react-icons/fa6';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { priceForNet } from '@/app/lib/stripe-fees';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import FindProducts from '../sales/find-products';
 import Sheet, { SheetHeader } from './sheet';
@@ -128,33 +130,46 @@ export default function InventoryAssign({
         });
     };
 
+    // WEB con la comision de Stripe encima: el precio que deja limpio lo mismo
+    // que la sucursal fisica. Sube la utilidad y no el costo (el lote calcula
+    // el costo con precio / IVA / utilidad, asi queda el de esa sucursal).
+    const applyStripePrice = (part, detail) => {
+        const price = priceForNet(detail.precio);
+        if (!price || !(Number(detail.utilidad) > 0)) return;
+        updateRow(part, {
+            precio: price.toFixed(2),
+            utilidad: Number((Number(detail.utilidad) * price / Number(detail.precio)).toFixed(4)),
+        });
+    };
+
     const eligibilityMessage = (result) => {
         return result.reason === 'already' ? t('panel.inventories.alreadyInBranch', { branch: branch?.sucursal }) : '';
     };
 
+    // Por asignar: lo que no esta en ninguna sucursal y, con una sucursal
+    // elegida, lo que le falta (los dos se agregan al lote igual). Existentes:
+    // todo el catalogo y lo que ya esta en la sucursal elegida.
+    const existingGroup = t('panel.inventories.groupExisting');
+    const inBranch = (product) => Boolean(branch)
+        && branchIdsOf(productsByPart.get(product.num_parte)).has(String(branch.idsucursal));
     const finderViews = [
         {
-            id: 'pending',
-            label: t('panel.inventories.tabPending'),
-            filter: (product) => productsByPart.get(product.num_parte)?.status === 'E',
-            emptyMessage: t('panel.inventories.empty_pending'),
-        },
-        {
-            id: 'missing',
-            label: branch ? t('panel.inventories.tabMissingIn', { branch: branch.sucursal }) : t('panel.inventories.tabMissing'),
+            id: 'toAssign',
+            label: t('panel.inventories.tabToAssign'),
             filter: (product) => {
                 const model = productsByPart.get(product.num_parte);
-                return Boolean(branch && model?.status === 'A' && eligibility(model, branch).ok);
+                return Boolean(model) && (model.status === 'E' || Boolean(branch && eligibility(model, branch).ok));
             },
-            emptyMessage: branch ? t('panel.inventories.empty_missing') : t('panel.inventories.pickBranchForMissing'),
+            emptyMessage: branch ? t('panel.inventories.empty_toAssign', { branch: branch.sucursal }) : t('panel.inventories.empty_pending'),
         },
-        ...(branch ? [{
+        { id: 'all', group: existingGroup, label: t('panel.inventories.tabProducts'), emptyMessage: t('panel.inventories.empty_all') },
+        {
             id: 'inBranch',
-            label: t('panel.inventories.tabInBranch', { branch: branch.sucursal }),
-            filter: (product) => branchIdsOf(productsByPart.get(product.num_parte)).has(String(branch.idsucursal)),
-            emptyMessage: t('panel.inventories.empty_inBranch'),
-        }] : []),
-        { id: 'all', label: t('panel.inventories.tabAll'), emptyMessage: t('panel.inventories.empty_all') },
+            group: existingGroup,
+            label: branch ? t('panel.inventories.tabInBranch', { branch: branch.sucursal }) : t('panel.inventories.tabInBranchNone'),
+            filter: inBranch,
+            emptyMessage: branch ? t('panel.inventories.empty_inBranch') : t('panel.inventories.pickBranchForInBranch'),
+        },
     ];
 
     // El boton de cada producto en el buscador, segun el lote y la sucursal.
@@ -502,7 +517,7 @@ export default function InventoryAssign({
                                                                 className={INPUT_CLASS}
                                                             >
                                                                 {utilityOptions.map((value) => (
-                                                                    <option key={value} value={value}>{Math.round((value - 1) * 100)}%</option>
+                                                                    <option key={value} value={value}>{Number(((value - 1) * 100).toFixed(1))}%</option>
                                                                 ))}
                                                             </select>
                                                         </label>
@@ -537,6 +552,19 @@ export default function InventoryAssign({
                                                             >
                                                                 <FaCopy className="size-3" aria-hidden="true" />
                                                                 {t('panel.inventories.copyFrom', { branch: detail.sucursal })}
+                                                            </button>
+                                                        ))}
+                                                        {web && others.filter((detail) => Number(detail.precio) > 0).slice(0, 1).map((detail) => (
+                                                            <button
+                                                                key={`stripe-${detail.idsucursal}`}
+                                                                type="button"
+                                                                onClick={() => applyStripePrice(row.num_parte, detail)}
+                                                                disabled={saving}
+                                                                title={t('panel.inventories.stripePriceHint', { branch: detail.sucursal })}
+                                                                className="inline-flex items-center gap-1 rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-0.5 font-medium text-[rgb(var(--color-text))] hover:border-indigo-500"
+                                                            >
+                                                                <FaCcStripe className="size-3.5 text-indigo-500" aria-hidden="true" />
+                                                                {t('panel.inventories.stripePrice', { amount: formatMoney(priceForNet(detail.precio)) })}
                                                             </button>
                                                         ))}
                                                     </div>

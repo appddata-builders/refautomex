@@ -17,6 +17,11 @@ import { AuthContext } from '@/app/lib/auth-tracker';
 import { perfilDeCategoria, puedeEditar } from '@/app/lib/permisos-menu';
 import { usePermisosMenu } from '@/app/lib/use-permisos-menu';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { UNASSIGNED } from './locations';
+
+// Sin texto es "por ubicar" ('0'), la misma marca que usan Asignacion de
+// productos e Inventarios para lo que todavia no tiene lugar.
+const normalizeLocation = (location) => String(location ?? '').trim().toUpperCase() || UNASSIGNED;
 
 const hasLeadingZeroSuffix = (location = '') => {
     const parts = location.split('-');
@@ -82,7 +87,7 @@ export default function Warehouse() {
             };
             const updatedItems = exists
                 ? prevItems.filter(item => item.refaccion !== product.refaccion)
-                : [...prevItems, { ...normalizedProduct, modified: false }];
+                : [...prevItems, { ...normalizedProduct, localizacionOriginal: normalizeLocation(product.localizacion), modified: false }];
             setHasChanges(updatedItems.some(item => item.modified));
             return updatedItems;
         });
@@ -271,16 +276,26 @@ export default function Warehouse() {
         const validationResults = [];
 
         for (const item of itemsToValidate) {
-            if (item.localizacion) {
-                const result = await validateLocation(item);
-                validationResults.push({
-                    refaccion: item.refaccion,
-                    ...result
+            // Solo se revisa la ubicacion que cambio: por ubicar siempre se
+            // puede, y la que ya tenia no es un conflicto nuevo (cambiar solo el
+            // precio no debe pedir arreglar la ubicacion).
+            const location = normalizeLocation(item.localizacion);
+            if (location === UNASSIGNED || location === item.localizacionOriginal) {
+                setLocationErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors[item.refaccion];
+                    return newErrors;
                 });
+                continue;
+            }
+            const result = await validateLocation({ ...item, localizacion: location });
+            validationResults.push({
+                refaccion: item.refaccion,
+                ...result
+            });
 
-                if (!result.isValid) {
-                    allValid = false;
-                }
+            if (!result.isValid) {
+                allValid = false;
             }
         }
 
@@ -335,7 +350,7 @@ export default function Warehouse() {
                     refaccion: item.refaccion,
                     idsucursal: item.idsucursal,
                     existencia: item.existencia,
-                    localizacion: item.localizacion ? String(item.localizacion).toUpperCase() : item.localizacion,
+                    localizacion: normalizeLocation(item.localizacion),
                     descripcion: String(item.descripcion || '').toUpperCase(),
                     costo: item.costo,
                     precio: item.precio,
@@ -365,7 +380,9 @@ export default function Warehouse() {
         } finally {
             if (saveSuccessful) {
                 setItems(prevItems =>
-                    prevItems.map(item => item.modified ? { ...item, modified: false } : item)
+                    prevItems.map(item => item.modified
+                        ? { ...item, localizacionOriginal: normalizeLocation(item.localizacion), modified: false }
+                        : item)
                 );
                 setHasChanges(false);
             }
