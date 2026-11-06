@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FaClock, FaCheckToSlot, FaTruckRampBox, FaWarehouse } from 'react-icons/fa6';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 
 const money = new Intl.NumberFormat('es-MX', {
   style: 'currency',
@@ -97,6 +98,7 @@ export default function OrdersDashboard({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${await obtenerIdToken()}`,
         ...(dashboardToken ? { 'x-dashboard-token': dashboardToken } : {}),
       },
       body: JSON.stringify({ sessionId: orderId, ...payload }),
@@ -132,6 +134,7 @@ export default function OrdersDashboard({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${await obtenerIdToken()}`,
           ...(dashboardToken ? { 'x-dashboard-token': dashboardToken } : {}),
         },
         body: JSON.stringify(bodyPayload),
@@ -164,6 +167,7 @@ export default function OrdersDashboard({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: `Bearer ${await obtenerIdToken()}`,
           ...(dashboardToken ? { 'x-dashboard-token': dashboardToken } : {}),
         },
         body: JSON.stringify({ sessionId: order.id, reset: true }),

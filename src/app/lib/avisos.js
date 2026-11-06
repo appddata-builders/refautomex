@@ -27,7 +27,7 @@ const MAX_NOMBRES = 3;
 const NIVELES = { alta: 0, media: 1, info: 2 };
 
 export const CLAVES = [
-  'pedidosVencidos', 'pedidosProximos', 'agotadosHoy', 'webPorEnviar',
+  'pedidosVencidos', 'pedidosProximos', 'agotadosHoy', 'webPorSurtir',
   'facturasPorEmitir', 'pagosProveedor', 'cuentasNuevas',
   'cumpleHoy', 'cumpleManana', 'miCumple', 'calendarioNuevo', 'calendarioProximo',
 ];
@@ -144,14 +144,19 @@ export const calcularAvisos = async (usuario, permisos, vistos = {}, ahora = new
     }
   }
 
+  // Ventas del sitio pagadas y sin surtir. El webhook de Stripe las marca 'P'
+  // y Web (Stripe) las pasa a 'F' al finalizarlas (api/orders/pedidos.js). Es
+  // alta: no deben quedar encoladas. Los folios van del mas viejo al mas nuevo.
   if (ve('delivery')) {
     const web = await consultar(
-      `SELECT "idVenta" AS id FROM venta WHERE folio LIKE 'W%' AND tracking_web = 'P' ORDER BY 1`
+      `SELECT "idVenta" AS id, folio AS titulo FROM venta
+        WHERE folio LIKE 'W%' AND tracking_web = 'P'
+        ORDER BY fecha_venta, "idVenta"`
     );
     if (web.length) {
       avisos.push({
-        clave: 'webPorEnviar', nivel: 'media', modulo: 'delivery',
-        datos: { n: web.length }, firma: firmar(web.map((w) => w.id)),
+        clave: 'webPorSurtir', nivel: 'alta', modulo: 'delivery',
+        datos: { n: web.length, ...listaTitulos(web) }, firma: firmar(web.map((w) => w.id)),
       });
     }
   }

@@ -9,14 +9,18 @@ import { MdShoppingCart } from 'react-icons/md';
 import {
   FaTrashCan,
   FaCreditCard,
-  FaClock,
-  FaCheckToSlot,
+  FaCircleCheck,
+  FaClipboardList,
+  FaLock,
+  FaPhone,
   FaTruckFast,
 } from 'react-icons/fa6';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { useCart } from '@/app/lib/shopping-context';
 import { getStorageValue } from '@/app/lib/storage-values';
 import { resolveMainProductImage } from '@/app/lib/product-images';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import OrderProgress from '@/app/components/principal/account/order-progress';
 
 let stripePromise;
 const getStripe = () => {
@@ -33,13 +37,11 @@ const currencyFormatter = new Intl.NumberFormat('es-MX', {
   currency: 'MXN',
 });
 
-// Guardan la key del texto, no el texto: asi la etapa se traduce al render y
-// no queda congelada en el idioma con el que se cargo el modulo.
-const fulfillmentLabels = {
-  en_proceso: { labelKey: 'checkout.stageProcessing', icon: FaClock },
-  pedido_confirmado: { labelKey: 'checkout.stageConfirmed', icon: FaCheckToSlot },
-  en_camino: { labelKey: 'checkout.stageOnRoute', icon: FaTruckFast },
-};
+// Al volver de Stripe el webhook puede tardar unos segundos en registrar la
+// venta: se pregunta cada FOLIO_POLL_MS hasta FOLIO_POLL_TRIES veces por el
+// folio definitivo (W-...); mientras, se muestra el del pago (P-...).
+const FOLIO_POLL_MS = 2500;
+const FOLIO_POLL_TRIES = 8;
 
 const normalizeCartItem = (item, fallbackName) => {
   const price = Number(item.precio ?? item.price ?? 0) || 0;
@@ -67,8 +69,10 @@ export default function Checkout() {
   const isSuccessStatus =
     statusParam === 'success' || successParam === 'true' || redirectStatus === 'succeeded';
   const sessionId = searchParams.get('session_id');
+  const lang = searchParams.get('lang') || 'es';
 
-  const [friendlyFolio, setFriendlyFolio] = useState(null);
+  // { friendlyFolio, recorded, amount, items, etapa, paso } del pago recien hecho.
+  const [paidOrder, setPaidOrder] = useState(null);
   const [folioMessage, setFolioMessage] = useState(null);
   const [lookupFolio, setLookupFolio] = useState('');
   const [lookupResult, setLookupResult] = useState(null);
@@ -119,28 +123,31 @@ export default function Checkout() {
   useEffect(() => {
     if (!isSuccessStatus || !sessionId) return;
     const controller = new AbortController();
-    setFriendlyFolio(null);
+    let timer = null;
+    let tries = 0;
+    setPaidOrder(null);
     setFolioMessage(null);
-    fetch(`/api/orders/folio?session_id=${sessionId}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload?.error ?? t('checkout.folioNoDetail'));
-        }
-        return response.json();
-      })
-      .then((payload) => {
-        setFriendlyFolio(payload.friendlyFolio ?? null);
-      })
-      .catch((err) => {
+    const ask = async () => {
+      tries += 1;
+      try {
+        const response = await fetch(`/api/orders/folio?session_id=${encodeURIComponent(sessionId)}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (!response.ok) throw new Error(t('checkout.folioNoDetail'));
+        const payload = await response.json();
+        setPaidOrder(payload);
+        if (!payload.recorded && tries < FOLIO_POLL_TRIES) timer = setTimeout(ask, FOLIO_POLL_MS);
+      } catch (err) {
         if (err.name === 'AbortError') return;
-        setFolioMessage(
-          err instanceof Error
-            ? err.message
-            : t('checkout.folioFallback')
-        );
-      });
-    return () => controller.abort();
+        setFolioMessage(err instanceof Error ? err.message : t('checkout.folioFallback'));
+      }
+    };
+    ask();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   }, [sessionId, isSuccessStatus]);
 
   // Los precios ya incluyen IVA; solo lo desglosamos sin recargarlo.
@@ -210,9 +217,15 @@ export default function Checkout() {
         throw new Error(t('checkout.noValidItems'));
       }
 
+      // Con sesion, el pedido queda en Mis pedidos: el servidor saca al cliente
+      // del token. Sin ella (o si no se renueva) se compra como invitado.
+      const token = userData ? await obtenerIdToken().catch(() => null) : null;
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           lineItems,
           contact: {
@@ -277,28 +290,62 @@ export default function Checkout() {
           </p>
         </div>
 
-        {(statusParam === 'success' || statusParam === 'cancelled') && (
-          <div
-            className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${
-              statusParam === 'success'
-                ? 'border-emerald-400/40 bg-emerald-50 text-emerald-800'
-                : 'border-amber-400/40 bg-amber-50 text-amber-800'
-            }`}
-          >
-            {statusParam === 'success' ? (
+        {statusParam === 'cancelled' && (
+          <div className="mb-6 rounded-2xl border border-amber-400/40 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {t('checkout.cancelled')}
+          </div>
+        )}
+
+        {statusParam === 'success' && (
+          <div className="mb-10 space-y-5 rounded-3xl bg-[rgb(var(--color-bg))] p-6 shadow shadow-[rgb(var(--color-galaxy))] sm:p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-emerald-500 text-white shadow">
+                <FaCircleCheck className="size-7" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg font-semibold text-[rgb(var(--color-text))]">
+                  {t('checkout.paidTitle')}{' '}
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-0.5 font-bold tabular-nums text-emerald-700">
+                    {paidOrder?.friendlyFolio ?? t('checkout.folioPending')}
+                  </span>
+                </p>
+                <p className="text-sm text-[rgb(var(--color-text))]/70">
+                  {paidOrder && !paidOrder.recorded ? t('checkout.successRecording') : t('checkout.paidHint')}
+                </p>
+                <p className="text-sm text-[rgb(var(--color-text))]/70">{t('checkout.successContact')}</p>
+              </div>
+              {userData && (
+                <Link
+                  href={`/section/refautomex?load=history&lang=${lang}`}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[rgb(var(--color-text-base))] px-5 text-sm font-semibold text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] transition hover:bg-[rgb(var(--color-refautomex))] hover:text-slate-900"
+                >
+                  <FaClipboardList className="size-4" aria-hidden="true" />
+                  {t('checkout.viewMyOrders')}
+                </Link>
+              )}
+            </div>
+            {paidOrder && (
               <>
-                {t('checkout.paidTitle')}&nbsp;
-                <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800">
-                  {friendlyFolio ?? sessionId ?? t('checkout.folioPending')}
-                </span>
-                &nbsp;{t('checkout.paidHint')}
+                <OrderProgress etapa={paidOrder.etapa} paso={paidOrder.paso} />
+                {(paidOrder.items ?? []).length > 0 && (
+                  <ul className="space-y-2 border-t border-[rgb(var(--color-text))]/10 pt-4 text-sm text-[rgb(var(--color-text))]/80">
+                    {paidOrder.items.map((item, idx) => (
+                      <li key={`pagado-${idx}`} className="flex justify-between gap-3">
+                        <span className="truncate font-medium">{item.description}</span>
+                        <span className="whitespace-nowrap tabular-nums">
+                          {item.quantity} · {currencyFormatter.format((item.total || 0) / 100)}
+                        </span>
+                      </li>
+                    ))}
+                    <li className="flex justify-between gap-3 border-t border-[rgb(var(--color-text))]/10 pt-2 font-semibold text-[rgb(var(--color-text))]">
+                      <span>{t('checkout.total')}</span>
+                      <span className="tabular-nums text-[rgb(var(--color-success))]">{currencyFormatter.format((paidOrder.amount || 0) / 100)}</span>
+                    </li>
+                  </ul>
+                )}
               </>
-            ) : (
-              t('checkout.cancelled')
             )}
-            {statusParam === 'success' && folioMessage && (
-              <p className="mt-2 text-xs text-amber-700">{folioMessage}</p>
-            )}
+            {folioMessage && <p className="text-xs text-amber-700">{folioMessage}</p>}
           </div>
         )}
 
@@ -409,6 +456,20 @@ export default function Checkout() {
               <FaCreditCard className="w-5 h-5" />
               {isLoading ? t('checkout.redirecting') : t('checkout.title')}
             </motion.button>
+            {/* Como se vende: solo pago en linea, solo envio a domicilio, y el
+                personal surte y contacta al cliente si algo cambia. */}
+            <ul className="mt-6 space-y-3 text-sm text-[rgb(var(--color-text))]/70">
+              {[
+                [FaLock, 'checkout.payInfo'],
+                [FaTruckFast, 'checkout.shipInfo'],
+                [FaPhone, 'checkout.contactInfo'],
+              ].map(([Icon, key]) => (
+                <li key={key} className="flex items-start gap-3">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[rgb(var(--color-galaxy))]" aria-hidden="true" />
+                  <span>{t(key)}</span>
+                </li>
+              ))}
+            </ul>
           </motion.div>
         </motion.div>
 
@@ -449,56 +510,21 @@ export default function Checkout() {
                     <p className="text-lg font-bold linear-text-title">
                       {lookupResult.friendlyFolio}
                     </p>
-                    <p className="text-xs text-[rgb(var(--color-text))]/50">{lookupResult.id}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex rounded-full px-3 py-1 text-xs font-semibold bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))]">
-                      {lookupResult.paymentStatus === 'paid'
-                        ? t('checkout.paid')
-                        : lookupResult.paymentStatus === 'unpaid'
-                        ? t('checkout.pending')
-                        : t('checkout.otherStatus')}
-                    </span>
-                    {lookupResult.fulfillmentStatus && (
-                      <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 text-slate-800">
-                        {(() => {
-                          const stage =
-                            fulfillmentLabels[lookupResult.fulfillmentStatus] ||
-                            fulfillmentLabels.en_proceso;
-                          const Icon = stage.icon;
-                          return (
-                            <>
-                              <Icon className="text-base" />
-                              {t(stage.labelKey)}
-                            </>
-                          );
-                        })()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-[rgb(var(--color-text))]/80 py-4">
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">{t('account.mail')}</p>
-                    <p>{lookupResult.email || t('account.summaryEmpty')}</p>
-                  </div>
-                  <div>
+                  <div className="text-right text-sm text-[rgb(var(--color-text))]/80">
                     <p className="font-semibold text-[rgb(var(--color-text))]">{t('checkout.amount')}</p>
-                    <p>{currencyFormatter.format((lookupResult.amount || 0) / 100)}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">
-                      {t('account.phone')}
-                    </p>
-                    <p>{lookupResult.contactPhone || t('account.summaryEmpty')}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">
-                      {t('account.address')}
-                    </p>
-                    <p>{lookupResult.contactAddress || t('account.summaryEmpty')}</p>
+                    <p className="tabular-nums">{currencyFormatter.format((lookupResult.amount || 0) / 100)}</p>
                   </div>
                 </div>
+                <div className="py-4">
+                  <OrderProgress etapa={lookupResult.etapa} paso={lookupResult.paso} />
+                </div>
+                {lookupResult.email && (
+                  <p className="pb-2 text-sm text-[rgb(var(--color-text))]/70">
+                    <span className="font-semibold text-[rgb(var(--color-text))]">{t('account.mail')}: </span>
+                    {lookupResult.email}
+                  </p>
+                )}
                 {lookupResult.fulfillmentNote && (
                   <div className="mt-4 rounded-2xl border border-[rgb(var(--color-text))]/10 bg-[rgb(var(--color-card))] px-4 py-3 text-sm text-[rgb(var(--color-text))]/80">
                     <p className="text-xs uppercase font-semibold text-[rgb(var(--color-text))]/60 mb-1">
@@ -514,7 +540,7 @@ export default function Checkout() {
                   <ul className="space-y-2 text-sm text-[rgb(var(--color-text))]/80">
                     {(lookupResult.items ?? []).map((item, idx) => (
                       <li
-                        key={`${lookupResult.id}-item-${idx}`}
+                        key={`${lookupResult.friendlyFolio}-item-${idx}`}
                         className="flex justify-between gap-3"
                       >
                         <span className="font-medium truncate">{item.description}</span>

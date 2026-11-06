@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { consultar } from '@/app/lib/refautomex-db';
+import { exigirCuenta } from '@/app/lib/sesion-auth';
 import getStripe from '../orders/stripe-client';
 
 const generateFriendlyFolio = () => {
@@ -119,6 +120,12 @@ export async function POST(request) {
   const contact = payload?.contact || {};
   const orderContext = payload?.orderContext || {};
 
+  // De quien es el pedido (Mis pedidos lo busca por idusuario) sale del token
+  // verificado, no del navegador. Sin sesion, o con una vencida, se compra
+  // como invitado y el pedido se consulta con su folio.
+  const acceso = request.headers.get('authorization') ? await exigirCuenta(request) : {};
+  const cliente = acceso.usuario || null;
+
   try {
     const stripe = await getStripe();
     const session = await stripe.checkout.sessions.create({
@@ -137,16 +144,16 @@ export async function POST(request) {
         fulfillmentReturn: 'none',
         fulfillmentNote: '',
         contactAddress: contact.address || '',
-        contactName: contact.name || '',
-        contactEmail: contact.email || '',
-        orderUserId: orderContext.userId ? String(orderContext.userId) : '',
+        contactName: cliente?.nombre || contact.name || '',
+        contactEmail: cliente?.email || contact.email || '',
+        orderUserId: cliente ? String(cliente.idusuario) : '',
         orderType: orderContext.orderType || 'W',
         paymentMethodId: orderContext.paymentMethodId
           ? String(orderContext.paymentMethodId)
           : '3',
         orderNotes: orderContext.notes || '',
       },
-      customer_email: contact.email || undefined,
+      customer_email: cliente?.email || contact.email || undefined,
       allow_promotion_codes: true,
     });
 

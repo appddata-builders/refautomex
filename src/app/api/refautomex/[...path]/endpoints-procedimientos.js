@@ -133,18 +133,8 @@ const getAllProducts = async ({ body }) => {
   };
 };
 
-// webHistorySales(idusuario) - el Express devolvia sales[0], o sea el array plano
-const getUserHistory = async ({ query }) => {
-  const id = query.get('id');
-  if (!id) return faltan('Missing id parameter');
-
-  return {
-    cuerpo: await consultar(
-      "SELECT * FROM venta WHERE idusuario = ? AND folio LIKE 'W%'",
-      [id]
-    ),
-  };
-};
+// webHistorySales(idusuario) se quito: devolvia las compras de cualquier
+// idusuario que se pidiera. Mis pedidos usa /api/mis-pedidos, con sesion.
 
 // GetSaleDetailsByIdVenta(idVenta) - el Express devolvia details[0], plano
 const getSaleDetails = async ({ query }) => {
@@ -376,7 +366,6 @@ export const PROCEDIMIENTOS = {
     getProducts,
     getAllUsers,
     getInvoices,
-    getUserHistory,
     getSaleDetails,
     getWarehouseProducts,
     getFolioHistory,

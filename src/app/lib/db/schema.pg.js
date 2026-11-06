@@ -452,3 +452,13 @@ export const venta = pgTable('venta', {
   index('venta_idusuario_idx').on(t.idusuario),
   index('venta_idsucursal_idx').on(t.idsucursal),
 ]);
+
+// No vino de `drizzle-kit pull`: liga cada venta del sitio con su sesion de
+// Stripe (Mis pedidos y la consulta por folio la leen para el avance).
+// api/orders/pedidos.js la crea con el mismo DDL la primera vez. folio_pago es
+// el folio P-... que vio el cliente al pagar, antes de existir la venta.
+export const venta_stripe = pgTable('venta_stripe', {
+  idventa: integer().primaryKey().notNull().references(() => venta.idVenta, { onDelete: 'cascade' }),
+  session_id: varchar({ length: 255 }).notNull().unique(),
+  folio_pago: varchar({ length: 30 }),
+});

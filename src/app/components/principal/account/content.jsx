@@ -4,6 +4,7 @@ import { useContext, useEffect, useState } from "react";
 import { MdArrowForward, MdLocationOn, MdOutlineCalendarMonth, MdOutlineMail, MdPhoneIphone, MdWeb } from "react-icons/md";
 import { AiOutlineLogout } from "react-icons/ai";
 import { FaUserCog } from "react-icons/fa";
+import { FaCircleExclamation } from "react-icons/fa6";
 import Spinner from "@/app/components/principal/spinner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthContext } from '@/app/lib/auth-tracker';
@@ -115,6 +116,26 @@ export default function Refautomex({ loading, websiteData }) {
                                 {t('account.dashboardEdit')}
                             </button>
                         </div>
+
+                        {/* El registro corto solo pide nombre y correo: aqui se invita a
+                            completar lo que hace falta para entregar un pedido. */}
+                        {(!userData?.telefono?.trim() || !userData?.domicilio?.trim()) && (
+                            <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 sm:flex-row sm:items-center">
+                                <FaCircleExclamation className="h-5 w-5 shrink-0 text-amber-500" aria-hidden="true" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-[rgb(var(--color-text))]">{t('account.completeTitle')}</p>
+                                    <p className="text-sm text-[rgb(var(--color-text))]/70">{t('account.completeHint')}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => router.push(`/section/refautomex?load=settings&lang=${lang}`)}
+                                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[rgb(var(--color-amber))] px-4 py-2 text-sm font-semibold text-slate-900 shadow transition hover:opacity-90"
+                                >
+                                    {t('account.completeCta')}
+                                    <MdArrowForward className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                        )}
 
                         <div className="mt-8">
                             <div className="flex items-center justify-between">

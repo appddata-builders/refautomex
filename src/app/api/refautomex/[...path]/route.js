@@ -79,7 +79,10 @@ const despachar = async (metodo, request, context) => {
   }
 
   try {
+    // `request` es para los pocos endpoints que piden sesion (sesion-auth):
+    // los que cambian usuarios y roles.
     const resultado = await manejador({
+      request,
       query: request.nextUrl.searchParams,
       body: metodo === 'GET' || metodo === 'HEAD' ? {} : await leerCuerpo(request),
       segmentos,

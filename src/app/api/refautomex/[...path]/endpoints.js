@@ -28,6 +28,7 @@
 
 import { consultar, escribir } from '@/app/lib/refautomex-db';
 import { CATEGORIA_DE_PERFIL } from '@/app/lib/permisos-menu';
+import { exigirAdmin, exigirCuenta } from '@/app/lib/sesion-auth';
 import { POR_UBICAR } from './localizaciones';
 
 import { PROCEDIMIENTOS } from './endpoints-procedimientos';
@@ -37,6 +38,12 @@ import { COMPRAS } from './compras';
 const faltan = (detalle) => ({
   estado: 400,
   cuerpo: { error: 'Bad Request', details: detalle },
+});
+
+// Respuesta de sesion-auth cuando no hay acceso (401 sin sesion, 403 sin rol).
+const sinAcceso = (acceso) => ({
+  estado: acceso.estado,
+  cuerpo: { error: acceso.mensaje, details: acceso.mensaje },
 });
 
 // 'A' admin, 'S' supervisor, 'E' empleado (ver perfilDeCategoria).
@@ -190,22 +197,30 @@ const tablaCompleta = (tabla) => async () => ({
 const valorDeUsuario = (body, campo) =>
   campo === 'f_nacimiento' ? body?.[campo] || null : body?.[campo] ?? null;
 
-// Toda cuenta nueva empieza como empleado, el rol con menos permisos, aunque
-// el registro mande otra cosa: el rol solo lo cambia un admin desde Permisos.
+// El registro del sitio. Toda cuenta nueva es de cliente: empleado 0 y el
+// perfil con menos permisos, mande lo que mande el navegador. Antes `empleado`
+// venia del cuerpo y bastaba mandar 1 para entrar a lo que pide ser empleado;
+// hacer empleado a alguien es de Personal (patchUserEmployment, solo admin).
+//
+// El registro corto solo pide nombre y correo: lo demas se llena despues en
+// Configuracion, y aqui va vacio porque esas columnas son NOT NULL.
 const newUser = async ({ body }) => {
-  const campos = [
-    'email', 'cognitoid', 'nombre', 'apellido', 'telefono', 'f_nacimiento',
-    'genero', 'rfc', 'domicilio', 'categoria', 'empleado',
-  ];
+  const email = String(body?.email ?? '').trim();
+  const cognitoid = String(body?.cognitoid ?? '').trim();
+  if (!email || !cognitoid) return faltan('Missing email or cognitoid.');
 
-  const marcadores = campos.map(() => '?').join(', ');
-  const valores = campos.map((c) =>
-    c === 'categoria' ? CATEGORIA_DE_PERFIL.empleado : valorDeUsuario(body, c));
+  const [existente] = await consultar('SELECT 1 FROM usuario WHERE cognitoid = ? LIMIT 1', [cognitoid]);
+  if (existente) return { estado: 409, cuerpo: { error: 'Conflict', details: 'La cuenta ya existe.' } };
 
+  const texto = (campo, largo) => String(body?.[campo] ?? '').trim().slice(0, largo);
   return {
     cuerpo: await escribir(
-      `INSERT INTO usuario (${campos.join(', ')}) VALUES (${marcadores})`,
-      valores,
+      `INSERT INTO usuario (email, cognitoid, nombre, apellido, telefono, f_nacimiento,
+                            genero, rfc, domicilio, categoria, empleado)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      [email.slice(0, 100), cognitoid, texto('nombre', 45), texto('apellido', 45), texto('telefono', 45),
+        valorDeUsuario(body, 'f_nacimiento'), texto('genero', 10), texto('rfc', 80), texto('domicilio', 255),
+        CATEGORIA_DE_PERFIL.empleado],
       // MySQL devolvia el id en insertId; en Postgres hay que pedirlo.
       'idusuario'
     ),
@@ -216,16 +231,18 @@ const newUser = async ({ body }) => {
 // PATCH
 // ---------------------------------------------------------------------------
 
-// Lo usa Configuracion para los datos propios. No toca `categoria`: la mandaba
-// fija en 'G', y el rol solo lo cambia un admin desde Permisos.
-const patchUser = async ({ body }) => {
-  const campos = [
-    'email', 'cognitoid', 'nombre', 'apellido', 'telefono', 'f_nacimiento',
-    'genero', 'rfc', 'domicilio', 'empleado',
-  ];
+// Configuracion: los datos propios de quien tiene la sesion. Antes cambiaba
+// cualquier idusuario, con cognitoid y empleado incluidos, sin sesion: poner
+// el cognitoid propio en la cuenta de un admin bastaba para entrar como admin.
+// Ahora el usuario sale del token, y cognitoid, empleado y categoria no se
+// tocan. Lo que no venga se conserva (COALESCE).
+const patchUser = async ({ request, body }) => {
+  const acceso = await exigirCuenta(request);
+  if (!acceso.usuario) return sinAcceso(acceso);
 
-  const asignaciones = campos.map((c) => `${c} = ?`).join(', ');
-  const valores = [...campos.map((c) => valorDeUsuario(body, c)), body?.idusuario];
+  const campos = ['email', 'nombre', 'apellido', 'telefono', 'f_nacimiento', 'genero', 'rfc', 'domicilio'];
+  const asignaciones = campos.map((c) => `${c} = COALESCE(?, ${c})`).join(', ');
+  const valores = [...campos.map((c) => valorDeUsuario(body, c)), acceso.usuario.idusuario];
 
   return {
     cuerpo: await escribir(
@@ -235,9 +252,11 @@ const patchUser = async ({ body }) => {
   };
 };
 
-// `categoria` es opcional: al activar una cuenta Permisos la manda para que
-// empiece con un rol; al removerla no viene y se conserva.
-const patchUserEmployment = async ({ body }) => {
+// Personal (solo admin, permisos-menu): quien es empleado, su sucursal y su
+// perfil. Sin sesion de admin cualquiera podia darse el perfil de admin.
+const patchUserEmployment = async ({ request, body }) => {
+  const acceso = await exigirAdmin(request);
+  if (!acceso.usuario) return sinAcceso(acceso);
   if (!body?.idusuario) return faltan('Missing idusuario.');
   if (body.categoria != null && !esCategoria(body.categoria)) return faltan('Invalid categoria.');
   return {
@@ -248,7 +267,9 @@ const patchUserEmployment = async ({ body }) => {
   };
 };
 
-const patchUserCategory = async ({ body }) => {
+const patchUserCategory = async ({ request, body }) => {
+  const acceso = await exigirAdmin(request);
+  if (!acceso.usuario) return sinAcceso(acceso);
   if (!body?.idusuario || !body?.categoria) return faltan('Missing idusuario or categoria.');
   if (!esCategoria(body.categoria)) return faltan('Invalid categoria.');
   return {
@@ -262,7 +283,9 @@ const patchUserCategory = async ({ body }) => {
 // No venia del Express: es la tarjeta de un empleado en Permisos. La sucursal
 // se cambia desde su bloque y el telefono desde Editar; lo que no venga se
 // conserva.
-const patchEmployeeData = async ({ body }) => {
+const patchEmployeeData = async ({ request, body }) => {
+  const acceso = await exigirAdmin(request);
+  if (!acceso.usuario) return sinAcceso(acceso);
   if (!body?.idusuario) return faltan('Missing idusuario.');
   const telefono = body.telefono == null ? null : String(body.telefono).trim();
   return {

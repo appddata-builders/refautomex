@@ -184,12 +184,15 @@ export default function Personal() {
     };
 
     const updateUserEmployment = async ({ idusuario, empleado, idsucursal, categoria }) => {
+        // Cambiar empleados y perfiles pide sesion de admin.
+        const token = await obtenerIdToken();
         const response = await fetch(buildApiUrl('/patchUserEmployment'), {
             method: 'PATCH',
             cache: 'no-store',
             headers: {
                 'Content-Type': 'application/json',
                 Accept: 'application/json, text/plain, */*',
+                Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
                 idusuario,
@@ -207,12 +210,15 @@ export default function Personal() {
     };
 
     const updateUserCategory = async ({ idusuario, categoria }) => {
+        // Cambiar empleados y perfiles pide sesion de admin.
+        const token = await obtenerIdToken();
         const response = await fetch(buildApiUrl('/patchUserCategory'), {
             method: 'PATCH',
             cache: 'no-store',
             headers: {
                 'Content-Type': 'application/json',
                 Accept: 'application/json, text/plain, */*',
+                Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
                 idusuario,
@@ -228,12 +234,15 @@ export default function Personal() {
     };
 
     const updateEmployeeData = async ({ idusuario, idsucursal, telefono }) => {
+        // Cambiar empleados y perfiles pide sesion de admin.
+        const token = await obtenerIdToken();
         const response = await fetch(buildApiUrl('/patchEmployeeData'), {
             method: 'PATCH',
             cache: 'no-store',
             headers: {
                 'Content-Type': 'application/json',
                 Accept: 'application/json, text/plain, */*',
+                Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
                 idusuario,

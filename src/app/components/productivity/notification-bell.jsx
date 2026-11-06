@@ -9,7 +9,8 @@ import { obtenerIdToken } from '@/app/lib/cognito-manager';
 
 // Sin ventanas emergentes ni sonido: solo el numero en la campana. Se revisa
 // al cargar, cada 5 minutos con la pestana visible y al abrirla.
-const CADA_MS = 5 * 60_000;
+// Cada 2 minutos y al volver a la pestana: un pedido web no debe esperar.
+const CADA_MS = 2 * 60_000;
 
 const PUNTO = {
   alta: 'bg-rose-500',
@@ -79,8 +80,13 @@ export default function NotificationBell({ lang }) {
     const id = setInterval(() => {
       if (!document.hidden) cargar();
     }, CADA_MS);
+    const alVolver = () => {
+      if (!document.hidden) cargar();
+    };
+    document.addEventListener('visibilitychange', alVolver);
     return () => {
       clearInterval(id);
+      document.removeEventListener('visibilitychange', alVolver);
       window.removeEventListener('refautomex:calendario-actualizado', alGuardarCalendario);
     };
   }, [cargar]);

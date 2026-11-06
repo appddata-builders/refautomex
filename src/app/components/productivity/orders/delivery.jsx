@@ -6,6 +6,7 @@ import Title from '../title';
 import Spinner from '@/app/components/principal/spinner';
 import { GiAutoRepair } from 'react-icons/gi';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 
 export default function Delivery() {
     const { t } = useTranslation();
@@ -20,9 +21,12 @@ export default function Delivery() {
       setIsLoading(true);
       setError(null);
       try {
+        // La lista trae los datos de contacto de cada cliente: pide sesion de empleado.
+        const token = await obtenerIdToken();
         const response = await fetch(`/api/orders?limit=40`, {
           cache: 'no-store',
           signal: controller.signal,
+          headers: { Authorization: `Bearer ${token}` },
         });
         const payload = await response.json();
         if (!response.ok) {

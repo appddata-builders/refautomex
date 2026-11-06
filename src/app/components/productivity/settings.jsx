@@ -11,6 +11,7 @@ import { useTranslation } from '@/app/lib/text/text-provider';
 import GooglePlacesAutocomplete from '@/app/components/principal/account/google-places';
 import { FaStarHalfAlt } from 'react-icons/fa';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import UsernameField from '@/app/components/productivity/username-field';
 
@@ -197,15 +198,17 @@ export default function Settings() {
             newErrors.nombre = t('validation.name');
         }
 
-        if (!lastName || !regexGeneral.last_name.test(lastName)) {
+        // Solo el nombre es obligatorio: el registro corto deja lo demas para
+        // despues y se completa de a poco. Lo que se llena se valida.
+        if (lastName && !regexGeneral.last_name.test(lastName)) {
             newErrors.last_name = t('validation.lastname');
         }
 
-        if (!birthDate || !regexGeneral.birthDate.test(birthDate)) {
+        if (birthDate && !regexGeneral.birthDate.test(birthDate)) {
             newErrors.birthDate = t('validation.birthdate');
         }
 
-        if (!phone || !regexGeneral.phone.test(phone)) {
+        if (phone && !regexGeneral.phone.test(phone)) {
             newErrors.phone = t('validation.phone');
         }
 
@@ -237,17 +240,18 @@ export default function Settings() {
             f_nacimiento: birthDate || "",
             genero: gender || "",
             email: email || "",
-            cognitoid: cognitoid,
             domicilio: placeId || "",
-            empleado: empleado || "",
         };
 
         try {
+            // El servidor toma al usuario del token: solo se cambian los datos propios.
+            const token = await obtenerIdToken();
             const response = await fetch(buildApiUrl('/patchUser'), {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
                     Accept: 'application/json, text/plain, */*',
+                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify(user_data),
             });
