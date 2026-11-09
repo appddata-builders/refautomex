@@ -129,6 +129,7 @@ export default function NavbarPanel() {
         subNav: [
             { name: t('panel.nav.calendar'), href: '/productivity?load=calendar', modulo: 'calendar' },
             { name: t('panel.nav.invoice'), href: '/productivity?load=invoice', modulo: 'invoice' },
+            { name: t('panel.nav.promotions'), href: '/productivity?load=promotions', modulo: 'promotions' },
         ],
         },
         {

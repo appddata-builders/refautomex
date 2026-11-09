@@ -17,6 +17,8 @@ import {
 } from 'react-icons/fa6';
 import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { useCart } from '@/app/lib/shopping-context';
+import { conOferta, useOfertas } from '@/app/lib/ofertas-tienda';
+import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { getStorageValue } from '@/app/lib/storage-values';
 import { resolveMainProductImage } from '@/app/lib/product-images';
 import { useTranslation } from '@/app/lib/text/text-provider';
@@ -62,7 +64,7 @@ const normalizeCartItem = (item, fallbackName) => {
 export default function Checkout() {
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { items: cart, removeItem, totalUnits, clearCart } = useCart();
+  const { items: cart, setCart, removeItem, totalUnits, clearCart } = useCart();
   const statusParam = searchParams.get('status');
   const successParam = searchParams.get('success');
   const redirectStatus = searchParams.get('redirect_status');
@@ -111,6 +113,49 @@ export default function Checkout() {
     }),
     [normalizedCart]
   );
+
+  // El carrito guarda el precio de cuando se agrego. Antes de cobrar se pone
+  // el de hoy: el de WEB y, si sigue vigente, el de oferta. Asi el total que
+  // se ve es el que cobra Stripe aunque una oferta haya terminado (o empezado)
+  // con el producto ya en el carrito.
+  const { porParte, cargando: cargandoOfertas } = useOfertas();
+  const [preciosWeb, setPreciosWeb] = useState(null);
+  const [preciosCambiados, setPreciosCambiados] = useState(0);
+
+  useEffect(() => {
+    if (isSuccessStatus) return undefined;
+    const controller = new AbortController();
+    fetch(buildApiUrl('/getProducts'), { cache: 'no-store', signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!payload) return;
+        setPreciosWeb(new Map((payload?.[0] || []).map((product) => [product.num_parte, Number(product.precio)])));
+      })
+      .catch(() => {
+        // Sin precios nuevos se queda el del carrito; el cobro igual usa los de la base.
+      });
+    return () => controller.abort();
+  }, [isSuccessStatus]);
+
+  useEffect(() => {
+    if (!preciosWeb || cargandoOfertas || isSuccessStatus || !cart.length) return;
+    let cambios = 0;
+    const siguiente = cart.map((item) => {
+      const regular = preciosWeb.get(item.num_parte);
+      if (!(regular > 0)) return item;
+      const { precioRegular: _regular, oferta: _oferta, ...resto } = item;
+      const actual = conOferta({ ...resto, precio: regular }, porParte);
+      const igual = Math.abs(Number(actual.precio) - Number(item.precio)) < 0.005
+        && Boolean(actual.oferta) === Boolean(item.oferta);
+      if (igual) return item;
+      cambios += 1;
+      return actual;
+    });
+    if (cambios) {
+      setCart(siguiente);
+      setPreciosCambiados(cambios);
+    }
+  }, [preciosWeb, porParte, cargandoOfertas, isSuccessStatus, cart, setCart]);
 
   useEffect(() => {
     if (!isSuccessStatus) return;
@@ -355,6 +400,12 @@ export default function Checkout() {
           </div>
         )}
 
+        {preciosCambiados > 0 && (
+          <div role="status" className="mb-6 rounded-2xl border border-amber-400/60 bg-amber-400/15 px-4 py-3 text-sm text-[rgb(var(--color-text))]">
+            {t(preciosCambiados === 1 ? 'checkout.pricesUpdatedOne' : 'checkout.pricesUpdated', { count: preciosCambiados })}
+          </div>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -383,9 +434,23 @@ export default function Checkout() {
                     {product.normalizedDescription}
                   </p>
                   <div className="mt-4 flex justify-between items-center">
-                    <span className="text-base text-[rgb(var(--color-success))] font-semibold">
-                      {currencyFormatter.format(product.normalizedPrice)}
-                    </span>
+                    {product.oferta ? (
+                      <span className="flex flex-col tabular-nums">
+                        <span className="text-xs text-[rgb(var(--color-text))]/60 line-through">
+                          {currencyFormatter.format(product.precioRegular)}
+                        </span>
+                        <span className="inline-flex items-center gap-2 text-base font-bold text-amber-600 dark:text-amber-400">
+                          {currencyFormatter.format(product.normalizedPrice)}
+                          <span className="rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-2 text-[0.65rem] font-extrabold uppercase text-slate-900">
+                            {t('promotions.ribbon')}
+                          </span>
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-base text-[rgb(var(--color-success))] font-semibold tabular-nums">
+                        {currencyFormatter.format(product.normalizedPrice)}
+                      </span>
+                    )}
                     <div className="flex items-center gap-3">
                       <span className="text-sm text-[rgb(var(--color-text))]/70">{t('products.quantity')}:</span>
                       <div className="w-16 text-center rounded-md shadow shadow-[rgb(var(--color-med))]/30 bg-transparent text-[rgb(var(--color-text))]">

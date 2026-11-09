@@ -34,6 +34,7 @@ import { POR_UBICAR } from './localizaciones';
 import { PROCEDIMIENTOS } from './endpoints-procedimientos';
 import { ESCRITURAS } from './endpoints-escrituras';
 import { COMPRAS } from './compras';
+import { PRECIOS_WEB } from './precios-web';
 
 const faltan = (detalle) => ({
   estado: 400,
@@ -384,6 +385,7 @@ export const ENDPOINTS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].reduce(
       ...(PROCEDIMIENTOS[metodo] ?? {}),
       ...(ESCRITURAS[metodo] ?? {}),
       ...(COMPRAS[metodo] ?? {}),
+      ...(PRECIOS_WEB[metodo] ?? {}),
     },
   }),
   {}

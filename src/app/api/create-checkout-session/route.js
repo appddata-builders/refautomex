@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { consultar } from '@/app/lib/refautomex-db';
 import { exigirCuenta } from '@/app/lib/sesion-auth';
+import { ofertasVigentesDe } from '@/app/lib/promociones-db';
 import getStripe from '../orders/stripe-client';
 
 const generateFriendlyFolio = () => {
@@ -45,14 +46,17 @@ const webCatalog = async (parts) => {
   return new Map(rows.map((row) => [row.num_parte, row]));
 };
 
-const toLineItem = (part, quantity, product) => {
-  const precio = Math.round(Number(product.precio) * 100) / 100;
+// `oferta` es la de Promociones vigente en este momento (ofertasVigentesDe):
+// se cobra ese precio y en Stripe el producto dice que va en oferta.
+const toLineItem = (part, quantity, product, oferta) => {
+  const regular = Math.round(Number(product.precio) * 100) / 100;
+  const precio = oferta && oferta.precio < regular ? oferta.precio : regular;
   const descripcion = product.descripcion || part;
   return {
     price_data: {
       currency: 'mxn',
       product_data: {
-        name: descripcion,
+        name: precio < regular ? `${descripcion} · Oferta` : descripcion,
         // El webhook registra la venta con esto (webhooks/stripe).
         metadata: {
           refaccion: part,
@@ -65,6 +69,7 @@ const toLineItem = (part, quantity, product) => {
           isSeminew: 'N',
           isEditable: 'false',
           isPedido: 'true',
+          ...(precio < regular ? { promocion: String(oferta.idpromocion), precioRegular: regular.toFixed(2) } : {}),
         },
       },
       unit_amount: Math.round(precio * 100),
@@ -114,7 +119,17 @@ export async function POST(request) {
     );
   }
 
-  const lineItems = [...quantities].map(([part, quantity]) => toLineItem(part, quantity, catalog.get(part)));
+  // Si no se pueden leer las ofertas no se cobra a precio normal a quien vio
+  // el de oferta: se pide intentar de nuevo, como cuando fallan los precios.
+  let ofertas;
+  try {
+    ofertas = await ofertasVigentesDe([...quantities.keys()]);
+  } catch (error) {
+    console.error('Error reading active promotions:', error);
+    return NextResponse.json({ error: 'PRICES_UNAVAILABLE', message: 'No se pudieron consultar los precios. Intenta de nuevo.' }, { status: 503 });
+  }
+
+  const lineItems = [...quantities].map(([part, quantity]) => toLineItem(part, quantity, catalog.get(part), ofertas.get(part)));
 
   const friendlyFolio = generateFriendlyFolio();
   const contact = payload?.contact || {};

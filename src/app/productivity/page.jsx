@@ -14,6 +14,7 @@ import History from '@/app/components/productivity/sales/history';
 import Personal from '@/app/components/productivity/services/personal';
 import Calendar from '@/app/components/productivity/services/calendar';
 import Invoice from '@/app/components/productivity/services/invoice';
+import Promotions from '@/app/components/productivity/services/promotions';
 import Warehouse from '@/app/components/productivity/stock/warehouse';
 import Assignment from '@/app/components/productivity/stock/assignment';
 import Inventories from '@/app/components/productivity/stock/inventories';
@@ -75,6 +76,7 @@ export default function Productivity() {
       case 'calendar': return <Calendar />;
       case 'delivery': return <Delivery />;
       case 'invoice': return <Invoice />;
+      case 'promotions': return <Promotions />;
       default: return <Home />;
     }
   }, [load, allowed]);

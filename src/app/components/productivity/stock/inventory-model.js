@@ -8,6 +8,7 @@
  * sucursales salen de /getSucursalUsage, con lo que impide borrarlas.
  */
 
+import { webPriceCheck } from '@/app/lib/stripe-fees';
 import { UNASSIGNED, isValidLocation } from './locations';
 
 // Asignacion de productos deja aqui (sessionStorage) lo que no esta en una
@@ -52,6 +53,7 @@ export const parseWarehouseProducts = (data) => {
             localizacion: row.localizacion,
             existencia: row.existencia,
             precio: row.precio,
+            costo: row.costo,
             utilidad: row.utilidad,
         });
     });
@@ -105,6 +107,70 @@ export const buildCoverage = (products, branches) => {
     });
 
     return { total, pending: products.pending.length, incomplete, rows };
+};
+
+// Alza maxima que vale la pena en WEB. La cuota fija de Stripe ($3 + IVA)
+// cuesta lo mismo en una refaccion de $20 que en una de $2,000: con base de
+// unos $34 o menos, cubrirla pide subir mas de 15 %, y a ese precio el cliente
+// lo compara con el mostrador. Esos se marcan "mejor en mostrador" en vez de
+// sugerir solo el alza.
+export const WEB_MAX_RAISE = 0.15;
+
+/**
+ * Precios WEB: por cada producto que esta en WEB, si su precio cubre la
+ * comision de Stripe contra la sucursal fisica mas cara (webPriceCheck).
+ * `status`: 'short' le falta, 'covered' ya la cubre, 'noReference' no hay
+ * sucursal fisica ni costo contra que comparar. `raise` es cuanto sube el
+ * sugerido sobre el precio de mostrador, y `notWorth` si pasa de WEB_MAX_RAISE.
+ */
+export const buildWebPricing = (products) => products.active.flatMap((product) => {
+    const web = product.detalles.find(isWebBranch);
+    if (!web) return [];
+    const check = webPriceCheck({
+        webPrice: web.precio,
+        references: product.detalles
+            .filter((detail) => !isWebBranch(detail))
+            .map((detail) => ({ branch: detail.sucursal, price: detail.precio })),
+        cost: web.costo,
+    });
+    const status = check.suggested === null ? 'noReference' : check.covered ? 'covered' : 'short';
+    const raise = check.suggested !== null && check.base ? check.suggested / check.base - 1 : 0;
+    return [{ product, web, check, status, raise, notWorth: status === 'short' && raise > WEB_MAX_RAISE }];
+});
+
+// Rangos del analisis: la cuota fija de Stripe pesa mas mientras mas barato.
+export const WEB_PRICE_RANGES = [
+    { id: 'under100', max: 100 },
+    { id: 'under300', max: 300 },
+    { id: 'under1000', max: 1000 },
+    { id: 'over1000', max: Infinity },
+];
+
+// Totales de Precios WEB y el desglose por rango de precio.
+export const summarizeWebPricing = (rows) => {
+    const priced = rows.filter((row) => row.check.current !== null);
+    const short = rows.filter((row) => row.status === 'short');
+    const sum = (list, pick) => list.reduce((total, row) => total + pick(row), 0);
+    return {
+        total: rows.length,
+        short: short.length,
+        covered: rows.filter((row) => row.status === 'covered').length,
+        noReference: rows.filter((row) => row.status === 'noReference').length,
+        notWorth: short.filter((row) => row.notWorth).length,
+        averageFee: priced.length ? sum(priced, (row) => row.check.fee) / priced.length : 0,
+        gapTotal: sum(short, (row) => row.check.gap),
+        ranges: WEB_PRICE_RANGES.map((range, index) => {
+            const min = index ? WEB_PRICE_RANGES[index - 1].max : 0;
+            const inRange = short.filter((row) => (row.check.current ?? 0) >= min && (row.check.current ?? 0) < range.max);
+            const withPrice = inRange.filter((row) => row.check.current);
+            return {
+                ...range,
+                count: inRange.length,
+                averageFee: withPrice.length ? sum(withPrice, (row) => row.check.fee) / withPrice.length : 0,
+                averageRaise: withPrice.length ? sum(withPrice, (row) => row.check.gap / row.check.current) / withPrice.length : 0,
+            };
+        }).filter((range) => range.count > 0),
+    };
 };
 
 // Precio con IVA -> precio sin IVA y costo, como lo calculaba el alta.

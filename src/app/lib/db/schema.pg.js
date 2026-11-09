@@ -46,7 +46,9 @@
  * secuencias con mayusculas en el nombre; la cache ya vale 1 y no cambia nada.
  */
 
-import { date, index, integer, numeric, pgTable, real, text, timestamp, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  boolean, date, index, integer, numeric, pgTable, primaryKey, real, text, timestamp, uniqueIndex, varchar,
+} from 'drizzle-orm/pg-core';
 
 // No vino de `drizzle-kit pull`: los niveles de cada anaquel en Asignacion de
 // productos ("A,B,C,ENC"). /patchShelfLevels la crea con el mismo DDL
@@ -354,6 +356,38 @@ export const producto = pgTable('producto', {
   mod_fin: varchar({ length: 45 }),
   idelemento: integer(),
 });
+
+// Servicios > Promociones. La crea lib/promociones-db.js al guardar la primera
+// (el despliegue no corre db:pg:push): las dos definiciones van iguales.
+// `foto` es la llave relativa en S3 (promocion/<id>/...), como imagenes.ruta.
+export const promocion = pgTable('promocion', {
+  idpromocion: integer().primaryKey().generatedByDefaultAsIdentity(),
+  titulo: varchar({ length: 120 }).notNull(),
+  descripcion: varchar({ length: 500 }),
+  foto: varchar({ length: 300 }),
+  inicio: timestamp({ precision: 3, withTimezone: true, mode: 'string' }).notNull(),
+  fin: timestamp({ precision: 3, withTimezone: true, mode: 'string' }).notNull(),
+  activa: boolean().default(true).notNull(),
+  creado_por: integer().references(() => usuario.idusuario, { onDelete: 'set null' }),
+  actualizado_por: integer().references(() => usuario.idusuario, { onDelete: 'set null' }),
+  creado: timestamp({ precision: 3, mode: 'string' }).defaultNow().notNull(),
+  actualizado: timestamp({ precision: 3, mode: 'string' }).defaultNow().notNull(),
+}, (t) => [
+  index('promocion_vigencia_idx').on(t.inicio, t.fin),
+]);
+
+// El descuento de cada producto: `tipo` 'porcentaje' o 'precio' (fijo, con
+// IVA). El precio de oferta se calcula al leer (lib/promociones.js).
+export const promocion_producto = pgTable('promocion_producto', {
+  idpromocion: integer().notNull().references(() => promocion.idpromocion, { onDelete: 'cascade' }),
+  num_parte: varchar({ length: 100 }).notNull()
+    .references(() => producto.num_parte, { onUpdate: 'cascade', onDelete: 'cascade' }),
+  tipo: varchar({ length: 12 }).notNull(),
+  valor: numeric({ precision: 10, scale: 2 }).notNull(),
+}, (t) => [
+  primaryKey({ name: 'promocion_producto_pk', columns: [t.idpromocion, t.num_parte] }),
+  index('promocion_producto_num_parte_idx').on(t.num_parte),
+]);
 
 export const proveedor = pgTable('proveedor', {
   idproveedor: integer().primaryKey().generatedByDefaultAsIdentity(),

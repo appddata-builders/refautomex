@@ -8,6 +8,7 @@ import {
   resolveProductImages,
 } from '@/app/lib/product-images';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { formatoPrecio } from '@/app/lib/ofertas-tienda';
 
 export default function ProductOverview({ prodOverview }) {
   const { t } = useTranslation();
@@ -111,9 +112,24 @@ export default function ProductOverview({ prodOverview }) {
           <p className="text-xs uppercase tracking-[0.35em] text-[rgb(var(--color-text))]/50">
             {t('products.price')}
           </p>
-          <p className="mt-1 text-3xl font-semibold text-[rgb(var(--color-success))]">
-            $ {Math.ceil(Number(prodOverview?.precio || 0)).toFixed(2)} {t('promotions.currency')}
-          </p>
+          {prodOverview?.oferta ? (
+            <>
+              <p className="mt-1 text-sm tabular-nums text-[rgb(var(--color-text))]/60 line-through">
+                {formatoPrecio(prodOverview.precioRegular)}
+              </p>
+              <p className="flex flex-wrap items-baseline gap-x-3 text-3xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400">
+                {formatoPrecio(prodOverview.precio)} {t('promotions.currency')}
+                <span className="rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-2.5 py-0.5 text-sm font-extrabold uppercase text-slate-900">
+                  {t('promotions.ribbon')} -{prodOverview.oferta.ahorro} %
+                </span>
+              </p>
+              <p className="mt-1 text-sm text-[rgb(var(--color-text))]/70">{prodOverview.oferta.titulo}</p>
+            </>
+          ) : (
+            <p className="mt-1 text-3xl font-semibold tabular-nums text-[rgb(var(--color-success))]">
+              {formatoPrecio(prodOverview?.precio)} {t('promotions.currency')}
+            </p>
+          )}
         </div>
 
         {hasMoreImages && (

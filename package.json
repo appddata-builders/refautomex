@@ -1,6 +1,6 @@
 {
   "name": "refautomex",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "scripts": {
     "predev": "bash scripts/db-local.sh arrancar",

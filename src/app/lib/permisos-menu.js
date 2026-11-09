@@ -69,6 +69,12 @@ export const MODULOS = [
   // /api/calendario) y marca ahi sus vacaciones; quien lo arma es un admin.
   { clave: 'calendar', seccion: 'services', admin: 'total', supervisor: 'total', empleado: 'total' },
   { clave: 'invoice', seccion: 'services', admin: 'total', supervisor: 'no', empleado: 'no' },
+  // Cambia precios de la tienda: solo admin, y no se le puede dar a otro
+  // perfil (la API lo vuelve a exigir con exigirAdmin).
+  {
+    clave: 'promotions', seccion: 'services', admin: 'total', supervisor: 'no', empleado: 'no',
+    fijo: { admin: 'total', supervisor: 'no', empleado: 'no' },
+  },
   { clave: 'site', seccion: 'orders', admin: 'total', supervisor: 'total', empleado: 'total' },
   { clave: 'delivery', seccion: 'orders', admin: 'total', supervisor: 'no', empleado: 'no' },
   {

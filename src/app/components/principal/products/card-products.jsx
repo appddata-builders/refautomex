@@ -9,6 +9,9 @@ import { FaCircleMinus, FaCirclePlus } from 'react-icons/fa6';
 import { createPortal } from 'react-dom';
 import Spinner from '@/app/components/principal/spinner';
 import ProductOverview from '@/app/components/principal/products/product-overview';
+import Countdown from '@/app/components/principal/promotions/countdown';
+import OfferRibbon from '@/app/components/principal/promotions/offer-ribbon';
+import { conOferta, formatoPrecio, useOfertas } from '@/app/lib/ofertas-tienda';
 import { useCart } from '@/app/lib/shopping-context';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import {
@@ -101,6 +104,10 @@ export default function CardProducts({ showSearchBar = true }) {
   const [isModalMounted, setIsModalMounted] = useState(false);
 
   const { cart, addToCart, removeFromCart } = useCart();
+  // Lo que esta en una promocion vigente se pinta y se agrega con su precio
+  // de oferta (el mismo que cobra create-checkout-session).
+  const { porParte, desfase } = useOfertas();
+  const catalog = useMemo(() => products.map((product) => conOferta(product, porParte)), [products, porParte]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,10 +158,10 @@ export default function CardProducts({ showSearchBar = true }) {
   const source = useMemo(() => {
     const term = searchTerm.toLowerCase();
     const bySection = selectedSection === 'Todos'
-      ? products
-      : products.filter(p => normalizeGrupo(p.grupo) === normalizeGrupo(selectedSection));
+      ? catalog
+      : catalog.filter(p => normalizeGrupo(p.grupo) === normalizeGrupo(selectedSection));
     return bySection.filter(p => p.descripcion.toLowerCase().includes(term)).sort((a, b) => a.descripcion.localeCompare(b.descripcion));
-  }, [products, searchTerm, selectedSection]);
+  }, [catalog, searchTerm, selectedSection]);
 
   const groupedItems = useMemo(() => {
     const categoryOrder = categories;
@@ -405,8 +412,9 @@ export default function CardProducts({ showSearchBar = true }) {
                     <CardComponent
                       key={product.num_parte}
                       {...(!animationDisabled ? { custom: cardIndex, variants: cardVariants } : {})}
-                      className="group relative flex flex-col justify-between rounded-3xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-[rgb(var(--color-med))]/30 hover:-translate-y-1 hover:scale-[1.02)] bg-[rgb(var(--color-card))]"
+                      className={`group relative flex flex-col justify-between rounded-3xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-[rgb(var(--color-med))]/30 hover:-translate-y-1 hover:scale-[1.02)] bg-[rgb(var(--color-card))] ${product.oferta ? 'ring-2 ring-amber-400' : ''}`}
                     >
+                      {product.oferta && <OfferRibbon />}
                       <ImageWrapper
                         className="relative w-full aspect-square overflow-hidden"
                         {...(!animationDisabled
@@ -416,9 +424,15 @@ export default function CardProducts({ showSearchBar = true }) {
                             }
                           : {})}
                       >
-                        <span className="absolute top-3 left-3 z-10 inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-[rgb(var(--color-gray))]/70 text-[rgb(var(--color-text))] shadow">
+                        {/* Con oferta, la esquina es de la banda: el grupo baja. */}
+                        <span className={`absolute ${product.oferta ? 'bottom-3' : 'top-3'} left-3 z-10 inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-[rgb(var(--color-gray))]/70 text-[rgb(var(--color-text))] shadow`}>
                           {groupLabel}
                         </span>
+                        {product.oferta && (
+                          <span className="absolute bottom-3 right-3 z-10 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-extrabold tabular-nums text-amber-400 shadow">
+                            -{product.oferta.ahorro} %
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenOverview(product)}
@@ -443,11 +457,21 @@ export default function CardProducts({ showSearchBar = true }) {
                         <h4 className="text-lg font-semibold linear-text-title text-center line-clamp-2" title={product.descripcion}>
                           {product.descripcion}
                         </h4>
-                        <div className="flex items-center justify-center mt-2">
-                          <span className="mt-1 text-base sm:text-lg font-semibold text-[rgb(var(--color-success))]">
-                            $ {Math.ceil(Number(product.precio)).toFixed(2)} MXN
-                          </span>
-                        </div>
+                        {/* El precio exacto que se cobra: antes se redondeaba
+                            hacia arriba y no coincidia con el de Stripe. */}
+                        {product.oferta ? (
+                          <div className="mt-2 flex flex-col items-center tabular-nums">
+                            <span className="text-sm text-[rgb(var(--color-text))]/60 line-through">{formatoPrecio(product.precioRegular)}</span>
+                            <span className="text-lg sm:text-xl font-extrabold text-amber-600 dark:text-amber-400">{formatoPrecio(product.precio)} MXN</span>
+                            <Countdown fin={product.oferta.fin} desfase={desfase} variant="chica" className="mt-1 text-[rgb(var(--color-text))]/70" />
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center mt-2">
+                            <span className="mt-1 text-base sm:text-lg font-semibold tabular-nums text-[rgb(var(--color-success))]">
+                              {formatoPrecio(product.precio)} MXN
+                            </span>
+                          </div>
+                        )}
                         <div className="mt-6 grid grid-cols-2 items-center gap-2 border-t border-[rgb(var(--color-text))]/10 pt-4">
                           <div className={`col-span-1 flex ${inCart ? 'items-start justify-start' : 'items-center justify-center'} gap-2`}>
                             <button

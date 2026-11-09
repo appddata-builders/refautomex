@@ -2,9 +2,10 @@
 import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { forwardRef, useContext, useDeferredValue, useEffect, useImperativeHandle, useMemo, useState } from 'react';
 import { AuthContext } from '@/app/lib/auth-tracker';
-import { FaCheck, FaCircleExclamation, FaLock, FaMagnifyingGlass, FaPlus, FaXmark } from 'react-icons/fa6';
+import { FaCheck, FaCircleExclamation, FaLock, FaMagnifyingGlass, FaPlus, FaStore, FaXmark } from 'react-icons/fa6';
 import { LuListPlus } from 'react-icons/lu';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { buildWebPricing, parseWarehouseProducts } from '../stock/inventory-model';
 
 const PAGE = 30;
 
@@ -90,6 +91,32 @@ const isPlaceholder = (value) => /^\s*(not\s*as+ign|sin\s+categor)/i.test(String
 
 const formatPrice = (value) => (Number(value) || 0).toLocaleString('es-MX', { style: 'currency', currency: 'MXN' });
 
+// La insignia WEB del almacen: su precio y si cubre la comision de Stripe,
+// lo mismo que dice Inventarios -> Precios WEB (buildWebPricing).
+const webBadge = (pricing, t) => {
+    const price = formatPrice(pricing.check.current);
+    if (pricing.status === 'covered') {
+        return { tone: 'bg-sky-500/15', Icon: FaCheck, price, title: t('panel.findProducts.webCovered', { price }) };
+    }
+    if (pricing.notWorth) {
+        return {
+            tone: 'bg-amber-400/30',
+            Icon: FaStore,
+            price,
+            title: t('panel.findProducts.webNotWorth', { price, percent: `${(pricing.raise * 100).toFixed(1)} %` }),
+        };
+    }
+    if (pricing.status === 'short') {
+        return {
+            tone: 'bg-[rgb(var(--color-error))]/15',
+            Icon: FaCircleExclamation,
+            price,
+            title: t('panel.findProducts.webShort', { price, suggested: formatPrice(pricing.check.suggested) }),
+        };
+    }
+    return { tone: 'bg-sky-500/15', Icon: null, price, title: t('panel.findProducts.webNoReference', { price }) };
+};
+
 const ACTION_TONES = {
     primary: 'bg-amber-500 text-slate-900 shadow hover:bg-amber-400',
     added: 'bg-emerald-500/20 text-[rgb(var(--color-text))] hover:bg-emerald-500/30',
@@ -165,6 +192,8 @@ const FindProducts = forwardRef(({
     const [error, setError] = useState(null);
     const [limit, setLimit] = useState(PAGE);
     const [stockAlerts, setStockAlerts] = useState({});
+    // Solo en el almacen: num_parte -> si su precio de WEB cubre Stripe.
+    const [webPricing, setWebPricing] = useState(() => new Map());
     const [ownView, setOwnView] = useState(views?.[0]?.id ?? null);
     const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
     const isPickerMode = typeof onProductPick === 'function';
@@ -260,6 +289,11 @@ const FindProducts = forwardRef(({
         });
         if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
         const data = await response.json();
+        // La misma respuesta trae los precios de todas las sucursales: con eso
+        // se sabe si el de WEB cubre la comision, sin pedir nada mas.
+        if (isWarehouse) {
+            setWebPricing(new Map(buildWebPricing(parseWarehouseProducts(data)).map((row) => [row.product.num_parte, row])));
+        }
         return (data?.[0] || []).map((product) => createProductRecord({
             ...product,
             idsucursal: product.idsucursal ?? null,
@@ -585,18 +619,36 @@ const FindProducts = forwardRef(({
                                                     {highlightText(product.descripcion, deferredTerm)}
                                                 </span>
                                                 <span className="mt-1 flex flex-wrap gap-1">
-                                                    {(product.branchBadges || []).map((badge) => (
-                                                        <span
-                                                            key={`${badge.type}-${badge.label}`}
-                                                            className={`rounded-full px-2 text-xs font-medium ${badge.type === 'pending'
-                                                                ? 'bg-amber-400/25'
-                                                                : badge.type === 'web' || String(badge.label).toUpperCase() === 'WEB'
-                                                                    ? 'bg-sky-500/15'
-                                                                    : 'bg-emerald-500/15'}`}
-                                                        >
-                                                            {badge.label}
-                                                        </span>
-                                                    ))}
+                                                    {(product.branchBadges || []).map((badge) => {
+                                                        const isWebBadge = badge.type === 'web' || String(badge.label).toUpperCase() === 'WEB';
+                                                        const pricing = isWarehouse && isWebBadge ? webPricing.get(product.num_parte) : null;
+                                                        if (pricing) {
+                                                            const { tone, Icon, price, title } = webBadge(pricing, t);
+                                                            return (
+                                                                <span
+                                                                    key={`${badge.type}-${badge.label}`}
+                                                                    title={title}
+                                                                    className={`inline-flex items-center gap-1 rounded-full px-2 text-xs font-medium tabular-nums ${tone}`}
+                                                                >
+                                                                    {Icon && <Icon className="size-2.5 shrink-0" aria-hidden="true" />}
+                                                                    <span aria-hidden="true">{badge.label} {price}</span>
+                                                                    <span className="sr-only">{title}</span>
+                                                                </span>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <span
+                                                                key={`${badge.type}-${badge.label}`}
+                                                                className={`rounded-full px-2 text-xs font-medium ${badge.type === 'pending'
+                                                                    ? 'bg-amber-400/25'
+                                                                    : isWebBadge
+                                                                        ? 'bg-sky-500/15'
+                                                                        : 'bg-emerald-500/15'}`}
+                                                            >
+                                                                {badge.label}
+                                                            </span>
+                                                        );
+                                                    })}
                                                     {[product.grupo, product.categoria].filter((chip) => chip && !isPlaceholder(chip)).map((chip) => (
                                                         <span key={chip} className="rounded-full bg-[rgb(var(--color-gray))] px-2 text-xs text-[rgb(var(--color-gray-base))]">{chip}</span>
                                                     ))}

@@ -24,8 +24,8 @@ import { getStorageValue } from '@/app/lib/storage-values';
 import PopPortal from '@/app/lib/pop-portal';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import { UNASSIGNED } from './locations';
-import { STRIPE_MX, netAfterStripe, priceForNet, stripeFee } from '@/app/lib/stripe-fees';
-import { DEFAULT_UTILITY, IVA_FACTOR, formatMoney, pluralKey } from './inventory-model';
+import { STRIPE_MX, webPriceCheck } from '@/app/lib/stripe-fees';
+import { IVA_FACTOR, WEB_MAX_RAISE, formatMoney, pluralKey } from './inventory-model';
 import { Field, INPUT_CLASS, SELECT_STYLES } from './product-form';
 import Sheet, { SheetHeader } from './sheet';
 
@@ -1163,19 +1163,24 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
         };
     })();
     // En WEB: cuanto se queda Stripe con el precio actual y que precio deja
-    // limpio lo mismo que la sucursal fisica (o, si no esta en ninguna, el
-    // precio con la utilidad base). La tarifa vive en lib/stripe-fees.
+    // limpio lo mismo que la sucursal fisica mas cara (o, si no esta en
+    // ninguna, el precio con la utilidad base). Es la misma cuenta de
+    // Inventarios -> Precios WEB (webPriceCheck en lib/stripe-fees).
     const webFee = (() => {
         if (!isWebBranchSelected) return null;
-        const current = parseFloat(currentProduct.precio);
-        const base = referencePrice?.price ?? parseFloat(priceFrom(currentProduct.costo, DEFAULT_UTILITY));
-        const suggested = base > 0 ? priceForNet(base) : null;
+        const check = webPriceCheck({
+            webPrice: currentProduct.precio,
+            references: branchDetails
+                .filter(detail => !isWebBranchValue(detail.idsucursal))
+                .map(detail => ({ branch: detail.sucursal, price: detail.precio })),
+            cost: currentProduct.costo,
+        });
+        const raise = check.suggested !== null && check.base ? check.suggested / check.base - 1 : 0;
         return {
-            fee: current > 0 ? stripeFee(current) : null,
-            net: current > 0 ? netAfterStripe(current) : null,
-            base,
-            suggested,
-            covered: suggested !== null && current >= suggested - 0.005,
+            ...check,
+            raise,
+            notWorth: check.covered !== true && raise > WEB_MAX_RAISE,
+            reference: check.reference && { ...check.reference, amount: formatMoney(check.reference.price) },
         };
     })();
     const confirmBusy = !!deletingBranchId || productDeleting;
@@ -1660,17 +1665,23 @@ export default function EditRegister({ prodOverview, onCancelEdit, setProdOvervi
                                         webFee.covered ? (
                                             <p className="flex items-center gap-2 font-medium text-[rgb(var(--color-success))]">
                                                 <FaCircleCheck className="size-3.5 shrink-0" aria-hidden="true" />
-                                                {referencePrice
-                                                    ? t('panel.editRegister.stripeCovered', { branch: referencePrice.branch, amount: referencePrice.amount })
+                                                {webFee.reference
+                                                    ? t('panel.editRegister.stripeCovered', { branch: webFee.reference.branch, amount: webFee.reference.amount })
                                                     : t('panel.editRegister.stripeCoveredBase', { amount: formatMoney(webFee.base) })}
                                             </p>
                                         ) : (
                                             <div className="flex flex-wrap items-center justify-between gap-2">
                                                 <p className="min-w-0 flex-1 tabular-nums">
-                                                    {referencePrice
-                                                        ? t('panel.editRegister.stripeSuggest', { branch: referencePrice.branch, amount: referencePrice.amount, suggested: formatMoney(webFee.suggested) })
+                                                    {webFee.reference
+                                                        ? t('panel.editRegister.stripeSuggest', { branch: webFee.reference.branch, amount: webFee.reference.amount, suggested: formatMoney(webFee.suggested) })
                                                         : t('panel.editRegister.stripeSuggestBase', { amount: formatMoney(webFee.base), suggested: formatMoney(webFee.suggested) })}
                                                 </p>
+                                                {webFee.notWorth && (
+                                                    <p className="flex w-full items-start gap-2 rounded-xl bg-amber-400/20 px-3 py-2 text-xs">
+                                                        <FaStore className="mt-0.5 size-3.5 shrink-0 text-amber-600" aria-hidden="true" />
+                                                        {t('panel.editRegister.stripeNotWorth', { percent: `${(webFee.raise * 100).toFixed(1)} %` })}
+                                                    </p>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleSuggestedPrice(webFee.suggested)}

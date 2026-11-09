@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     FaBoxesPacking,
+    FaCcStripe,
     FaCircleCheck,
     FaCircleExclamation,
     FaCirclePlus,
@@ -17,11 +18,20 @@ import ProductForm from './product-form';
 import InventoryAssign from './inventory-assign';
 import InventoryBranches from './inventory-branches';
 import InventoryStatus from './inventory-status';
-import { ASSIGN_HANDOFF_KEY, buildCoverage, newBatchRow, parseWarehouseProducts, pluralKey } from './inventory-model';
+import InventoryWebPrices from './inventory-web-prices';
+import {
+    ASSIGN_HANDOFF_KEY,
+    buildCoverage,
+    buildWebPricing,
+    newBatchRow,
+    parseWarehouseProducts,
+    pluralKey,
+    summarizeWebPricing,
+} from './inventory-model';
 
 const TOAST_MS = 6000;
 const PREFS_KEY = 'inventarios';
-const TABS = ['product', 'assign', 'branches'];
+const TABS = ['product', 'assign', 'branches', 'web'];
 const EMPTY_PRODUCTS = { pending: [], active: [] };
 const EMPTY_CATALOGS = { groups: [], categories: [], brands: [], providers: [] };
 
@@ -153,6 +163,8 @@ export default function Inventories() {
         setHandoff(null);
     }, [handoff, load.status, productsByPart]);
     const coverage = useMemo(() => buildCoverage(products, branches), [products, branches]);
+    const webPricing = useMemo(() => buildWebPricing(products), [products]);
+    const webSummary = useMemo(() => summarizeWebPricing(webPricing), [webPricing]);
 
     const changeTab = (next) => {
         setTab(next);
@@ -188,7 +200,22 @@ export default function Inventories() {
             badge: batch.length || null,
         },
         { id: 'branches', icon: FaStore, title: t('panel.inventories.tabBranches'), hint: t('panel.inventories.tabBranchesHint') },
+        {
+            id: 'web',
+            icon: FaCcStripe,
+            title: t('panel.webPrices.tab'),
+            hint: t('panel.webPrices.tabHint'),
+            // Los que conviene subir y aun no cubren la comision.
+            badge: (webSummary.short - webSummary.notWorth) || null,
+        },
     ];
+
+    const handleWebPricesApplied = ({ updated, skipped }) => {
+        loadData();
+        if (updated && !skipped) notify({ message: t(pluralKey('panel.webPrices.applied', updated), { count: updated }) });
+        else if (updated) notify({ message: t('panel.webPrices.appliedSome', { count: updated, skipped }), error: true });
+        else notify({ message: t('panel.webPrices.appliedNone'), error: true });
+    };
 
     const renderTab = () => {
         if (load.status === 'error' && !branches.length) {
@@ -220,6 +247,16 @@ export default function Inventories() {
                         loadData();
                         notify({ message: t('panel.inventories.removed', { part, branch }) });
                     }}
+                />
+            );
+        }
+        if (tab === 'web') {
+            return (
+                <InventoryWebPrices
+                    rows={webPricing}
+                    summary={webSummary}
+                    loading={load.status === 'loading'}
+                    onApplied={handleWebPricesApplied}
                 />
             );
         }
@@ -263,7 +300,7 @@ export default function Inventories() {
                 />
 
                 <div ref={tabsRef} className="scroll-mt-28 space-y-4">
-                    <div role="tablist" aria-label={t('panel.inventories.title')} className="grid grid-cols-3 gap-2 sm:gap-3">
+                    <div role="tablist" aria-label={t('panel.inventories.title')} className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
                         {tabs.map(({ id, icon: Icon, title, hint, badge }) => {
                             const selected = tab === id;
                             return (
