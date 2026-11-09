@@ -53,12 +53,12 @@ export default function Countdown({ fin, desfase = 0, variant = 'grande', classN
     ];
     return (
         <div className={className}>
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.25em] text-white/80">{t('promotions.endsIn')}</p>
+            <p className="mb-2 text-center text-xs font-bold uppercase tracking-[0.25em] text-white/80 lg:text-left">{t('promotions.endsIn')}</p>
             {/* El lector de pantalla no necesita cada segundo: se lee una vez. */}
             <span className="sr-only">
                 {t('promotions.endsAt', { date: new Date(fin).toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' }) })}
             </span>
-            <div className="flex gap-2 sm:gap-3" aria-hidden="true">
+            <div className="flex justify-center gap-2 sm:gap-3 lg:justify-start" aria-hidden="true">
                 {partes.map(({ valor, etiqueta }) => (
                     <div key={etiqueta} className="min-w-[3.75rem] rounded-2xl bg-slate-950/55 px-2 py-2 text-center ring-1 ring-white/15 backdrop-blur sm:min-w-[4.75rem] sm:px-3">
                         <span className="block text-2xl font-extrabold tabular-nums text-amber-400 sm:text-4xl">{dos(valor)}</span>

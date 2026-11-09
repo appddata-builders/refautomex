@@ -2196,7 +2196,7 @@
   "es.panel.promotions.pause": "Pausar",
   "es.panel.promotions.paused": "Promoción pausada: sus productos vuelven a su precio.",
   "es.panel.promotions.photoChange": "Cambiar foto",
-  "es.panel.promotions.photoHint": "Horizontal (16:9) se ve mejor. JPG, PNG, WebP o HEIC, hasta {{mb}} MB.",
+  "es.panel.promotions.photoHint": "Se muestra completa, en cualquier proporción (cuadrada, horizontal o vertical). JPG, PNG, WebP o HEIC, hasta {{mb}} MB.",
   "es.panel.promotions.photoPick": "Elige o arrastra una foto",
   "es.panel.promotions.photoPreparing": "Preparando la foto…",
   "es.panel.promotions.photoTitle": "Foto de la temporada",

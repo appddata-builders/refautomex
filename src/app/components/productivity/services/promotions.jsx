@@ -234,9 +234,12 @@ export default function Promotions() {
                                 const enCurso = ocupado === promocion.idpromocion;
                                 return (
                                     <li key={promocion.idpromocion} className="flex flex-col overflow-hidden rounded-2xl bg-[rgb(var(--color-card))] shadow shadow-[rgb(var(--color-galaxy))]">
-                                        <div className="relative aspect-[16/9] bg-[rgb(var(--color-bg))]">
+                                        <div className="relative aspect-[16/9] overflow-hidden bg-slate-950">
                                             {promocion.foto && (
-                                                <img src={`${multimediaSrc}${promocion.foto}`} alt="" loading="lazy" className="size-full object-cover" />
+                                                <>
+                                                    <img src={`${multimediaSrc}${promocion.foto}`} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 size-full scale-125 object-cover opacity-60 blur-2xl" />
+                                                    <img src={`${multimediaSrc}${promocion.foto}`} alt="" loading="lazy" className="relative size-full object-contain" />
+                                                </>
                                             )}
                                             <span className={`absolute left-3 top-3 rounded-full px-2.5 py-0.5 text-xs font-bold shadow ${ESTADOS[promocion.estado]} backdrop-blur`}>
                                                 {t(`panel.promotions.status_${promocion.estado}`)}

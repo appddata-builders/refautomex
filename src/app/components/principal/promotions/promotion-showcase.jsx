@@ -79,9 +79,13 @@ function ProductoEnOferta({ producto, promocion }) {
 }
 
 /**
- * Una promocion vigente en el sitio: la foto de la temporada de fondo, su
- * titulo, descripcion y conteo regresivo, y abajo sus productos con la banda
- * de oferta, el precio de antes tachado y el de oferta.
+ * Una promocion vigente en el sitio: la foto de la temporada completa y, a su
+ * lado, su titulo, descripcion y conteo regresivo; abajo sus productos con la
+ * banda de oferta, el precio de antes tachado y el de oferta.
+ *
+ * La foto no se recorta ni lleva texto encima: casi siempre es un arte de
+ * temporada con su propio texto (cuadrado, horizontal o vertical). De fondo va
+ * ella misma desenfocada, para que el banner tome sus colores.
  */
 export default function PromotionShowcase({ promocion, desfase }) {
     const { t } = useTranslation();
@@ -91,22 +95,33 @@ export default function PromotionShowcase({ promocion, desfase }) {
 
     return (
         <article className="space-y-8">
-            <header className="relative isolate overflow-hidden rounded-[2rem] bg-slate-900 shadow-2xl">
-                {foto && <img src={foto} alt="" className="absolute inset-0 -z-10 size-full object-cover" />}
-                <div className="absolute inset-0 -z-10 bg-gradient-to-t from-slate-950/90 via-slate-950/55 to-slate-950/10 sm:bg-gradient-to-r sm:from-slate-950/90 sm:via-slate-950/60 sm:to-transparent" />
-                <div className="flex min-h-[22rem] flex-col justify-end gap-5 p-6 sm:min-h-[26rem] sm:p-10 lg:max-w-3xl">
-                    {mayorAhorro > 0 && (
-                        <span className="w-fit rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-4 py-1 text-sm font-extrabold uppercase tracking-wider text-slate-900 shadow">
-                            {t('promotions.upTo', { percent: mayorAhorro })}
-                        </span>
+            <header className="relative isolate overflow-hidden rounded-[2rem] bg-slate-950 shadow-2xl">
+                {foto && (
+                    <img src={foto} alt="" aria-hidden="true" className="absolute inset-0 -z-10 size-full scale-125 object-cover opacity-60 blur-3xl" />
+                )}
+                <div className="absolute inset-0 -z-10 bg-slate-950/45" />
+                <div className={`grid items-center gap-6 p-4 sm:p-8 lg:gap-10 lg:p-10 ${foto ? 'lg:grid-cols-2' : ''}`}>
+                    {foto && (
+                        <img
+                            src={foto}
+                            alt={promocion.titulo}
+                            className="mx-auto max-h-[75vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/15"
+                        />
                     )}
-                    <div>
-                        <h3 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">{promocion.titulo}</h3>
-                        {promocion.descripcion && (
-                            <p className="mt-3 max-w-2xl text-base text-white/85 sm:text-lg">{promocion.descripcion}</p>
+                    <div className="flex flex-col items-center gap-5 text-center lg:items-start lg:text-left">
+                        {mayorAhorro > 0 && (
+                            <span className="w-fit rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-4 py-1 text-sm font-extrabold uppercase tracking-wider text-slate-900 shadow">
+                                {t('promotions.upTo', { percent: mayorAhorro })}
+                            </span>
                         )}
+                        <div>
+                            <h3 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">{promocion.titulo}</h3>
+                            {promocion.descripcion && (
+                                <p className="mt-3 max-w-2xl text-base text-white/85 sm:text-lg">{promocion.descripcion}</p>
+                            )}
+                        </div>
+                        <Countdown fin={promocion.fin} desfase={desfase} />
                     </div>
-                    <Countdown fin={promocion.fin} desfase={desfase} />
                 </div>
             </header>
 

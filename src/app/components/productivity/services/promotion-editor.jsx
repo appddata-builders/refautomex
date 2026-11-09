@@ -261,7 +261,9 @@ export default function PromotionEditor({ promocion, onCancel, onSave }) {
                         >
                             {fotoActual ? (
                                 <>
-                                    <img src={fotoActual} alt="" className="absolute inset-0 size-full object-cover" />
+                                    {/* Completa, como en el sitio: el arte de temporada trae su propio texto. */}
+                                    <img src={fotoActual} alt="" aria-hidden="true" className="absolute inset-0 size-full scale-125 object-cover opacity-60 blur-2xl" />
+                                    <img src={fotoActual} alt="" className="absolute inset-0 size-full object-contain" />
                                     <span className="absolute bottom-3 right-3 inline-flex items-center gap-2 rounded-full bg-slate-900/80 px-3 py-1.5 text-sm font-semibold text-white">
                                         <FaCamera className="size-3.5" aria-hidden="true" />
                                         {t('panel.promotions.photoChange')}
