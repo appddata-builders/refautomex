@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import buildApiUrl from '@/app/lib/refautomex-api';
 import { getSecretValue } from '@/app/lib/secrets';
 import getStripe from '../../orders/stripe-client';
+import { marcarEnvio, registrarSesion, ventaDeSesion } from '../../orders/pedidos';
 
 const getBaseUrl = () =>
   process.env.APP_URL ||
@@ -44,9 +45,13 @@ const persistSale = async (salePayload) => {
   return response.json();
 };
 
-const handleCheckoutCompleted = async (session) => {
-  if (session.metadata?.saleRecorded === 'true') return;
+const handleCheckoutCompleted = async (paidSession) => {
+  // Stripe reintenta el aviso si tarda en contestar, y el evento trae la sesion
+  // como era al pagar (sin saleRecorded): sin esto la venta se duplicaba.
+  if (await ventaDeSesion(paidSession.id).catch(() => null)) return;
   const stripe = await getStripe();
+  const session = await stripe.checkout.sessions.retrieve(paidSession.id);
+  if (session.metadata?.saleRecorded === 'true') return;
   const lineItems = await stripe.checkout.sessions.listLineItems(session.id, {
     limit: 100,
     expand: ['data.price.product'],
@@ -87,9 +92,18 @@ const handleCheckoutCompleted = async (session) => {
 
   const result = await persistSale(salePayload);
   if (result?.folio) {
+    // La venta queda ligada a su sesion (Mis pedidos y la consulta por folio
+    // la encuentran sin buscar en Stripe). El folio del pago (P-...) se
+    // conserva: es el que el cliente vio al pagar y lo puede seguir usando.
+    await registrarSesion({ folio: result.folio, sessionId: session.id, folioPago: metadata.friendlyFolio })
+      .catch((error) => console.error('No se pudo ligar la venta con su sesion de Stripe:', error.message));
+    // Por surtir: es lo que hace sonar la campana del panel.
+    await marcarEnvio(result.folio, 'P')
+      .catch((error) => console.error('No se pudo marcar la venta por surtir:', error.message));
     await stripe.checkout.sessions.update(session.id, {
       metadata: {
         ...metadata,
+        checkoutFolio: metadata.friendlyFolio || '',
         friendlyFolio: result.folio,
         saleRecorded: 'true',
       },

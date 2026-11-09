@@ -1,7 +1,6 @@
 'use client';
 import { FaTools, FaCar, FaHandsHelping } from "react-icons/fa";
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation'
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Features() {
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
@@ -50,7 +49,7 @@ export default function Features() {
                     </div>
                 <img
                     src={`${multimediaSrc}place.jpg`}
-                    alt="Product screenshot"
+                    alt={t('alt.place')}
                     className="w-[40rem] max-w-none rounded-xl shadow-xl sm:w-[57rem]"
                     width={2432}
                     height={1442}

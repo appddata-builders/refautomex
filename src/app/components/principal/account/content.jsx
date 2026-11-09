@@ -4,18 +4,18 @@ import { useContext, useEffect, useState } from "react";
 import { MdArrowForward, MdLocationOn, MdOutlineCalendarMonth, MdOutlineMail, MdPhoneIphone, MdWeb } from "react-icons/md";
 import { AiOutlineLogout } from "react-icons/ai";
 import { FaUserCog } from "react-icons/fa";
+import { FaCircleExclamation } from "react-icons/fa6";
 import Spinner from "@/app/components/principal/spinner";
-import { userPool } from '@/app/lib/cognito-manager';
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthContext } from '@/app/lib/auth-tracker';
-import { getStorageValue, setStorageValue } from "@/app/lib/storage-values";
-import { useTranslation } from 'react-i18next';
+import { getStorageValue } from "@/app/lib/storage-values";
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Refautomex({ loading, websiteData }) {
     const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3;
     const [imgError, setImgError] = useState(false);
-    const { isAuthenticated } = useContext(AuthContext);
+    const { isAuthenticated, cerrarSesion } = useContext(AuthContext);
     const router = useRouter();
     const searchParams = useSearchParams();
     const lang = searchParams.get('lang') || 'es';
@@ -46,14 +46,14 @@ export default function Refautomex({ loading, websiteData }) {
 
     const items = [
         {
-        name: 'Historial de Pedidos',
-        description: 'Productos comprados desde tu cuenta y relación de entregas',
+        name: t('account.itemsHistoryTitle'),
+        description: t('account.itemsHistoryDesc'),
         icon: MdWeb,
         path: `/section/refautomex?load=history&lang=${lang}`,
         },
         {
-        name: 'Configuración de la cuenta',
-        description: 'Datos personales, información de la cuenta y domicilio registrado.',
+        name: t('account.itemsSettingsTitle'),
+        description: t('account.itemsSettingsDesc'),
         icon: FaUserCog,
         path: `/section/refautomex?load=settings&lang=${lang}`,
         },
@@ -84,7 +84,7 @@ export default function Refautomex({ loading, websiteData }) {
                                         {profileImageUrl && !imgError ? (
                                             <img
                                                 src={profileImageUrl}
-                                                alt="profile"
+                                                alt={t('account.photo')}
                                                 className="h-full w-full object-cover"
                                                 onError={() => setImgError(true)}
                                             />
@@ -100,7 +100,7 @@ export default function Refautomex({ loading, websiteData }) {
                                         {t('account.dashboardTitle')}
                                     </p>
                                     <p className="mt-1 text-base text-[rgb(var(--color-text))]">
-                                        {name ? `${t('account.services')} ${name}` : 'Cargando...'}
+                                        {name ? `${t('account.services')} ${name}` : t('common.loading')}
                                     </p>
                                     <p className="mt-2 text-sm text-[rgb(var(--color-text))]/70">
                                         {t('account.dashboardSubtitle')}
@@ -117,13 +117,33 @@ export default function Refautomex({ loading, websiteData }) {
                             </button>
                         </div>
 
+                        {/* El registro corto solo pide nombre y correo: aqui se invita a
+                            completar lo que hace falta para entregar un pedido. */}
+                        {(!userData?.telefono?.trim() || !userData?.domicilio?.trim()) && (
+                            <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 p-4 sm:flex-row sm:items-center">
+                                <FaCircleExclamation className="h-5 w-5 shrink-0 text-amber-500" aria-hidden="true" />
+                                <div className="min-w-0 flex-1">
+                                    <p className="font-semibold text-[rgb(var(--color-text))]">{t('account.completeTitle')}</p>
+                                    <p className="text-sm text-[rgb(var(--color-text))]/70">{t('account.completeHint')}</p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => router.push(`/section/refautomex?load=settings&lang=${lang}`)}
+                                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-[rgb(var(--color-amber))] px-4 py-2 text-sm font-semibold text-slate-900 shadow transition hover:opacity-90"
+                                >
+                                    {t('account.completeCta')}
+                                    <MdArrowForward className="h-4 w-4" aria-hidden="true" />
+                                </button>
+                            </div>
+                        )}
+
                         <div className="mt-8">
                             <div className="flex items-center justify-between">
                                 <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">
                                     {t('account.quickAccess')}
                                 </h3>
                                 <span className="text-xs uppercase tracking-[0.2em] text-[rgb(var(--color-text))]/60">
-                                    Refautomex
+                                    {t('meta.brand')}
                                 </span>
                             </div>
                             <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -184,13 +204,8 @@ export default function Refautomex({ loading, websiteData }) {
                             type="button"
                             className="w-full rounded-3xl border border-red-200/60 bg-[rgb(var(--color-error))]/30 p-5 mt-5 text-left shadow hover:shadow-lg transition cursor-pointer"
                             onClick={() => {
-                                try {
-                                    setStorageValue('CognitoUserSession', null);
-                                    userPool.getCurrentUser()?.signOut();
-                                    router.replace('/');
-                                } catch (err) {
-                                    console.log('No existe cuenta activa', err);
-                                }
+                                cerrarSesion();
+                                router.replace('/');
                             }}
                         >
                             <div className="flex items-center gap-3">

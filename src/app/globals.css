@@ -101,6 +101,14 @@ html, body {
     -webkit-appearance: none;
     margin: 0;
   }
+  /* Chrome y Safari ponen un tache propio en los campos de busqueda que solo
+     aparece al pasar el cursor. Los buscadores del panel traen su boton de
+     borrar visible cuando hay texto. */
+  input[type='search']::-webkit-search-cancel-button,
+  input[type='search']::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }
 
 @layer components {
@@ -150,16 +158,6 @@ html, body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
 }
-
-@keyframes fall {
-  0%   { transform: rotate(0deg) translateX(0%) translateY(0%); opacity: 1; }
-  25%  { transform: rotate(90deg) translateX(-30vw) translateY(200vh); }
-  50%  { transform: rotate(180deg) translateX(-60vw) translateY(75vh); }
-  75%  { transform: rotate(250deg) translateX(-90vw) translateY(180.75vh); }
-  100% { transform: rotate(360deg) translateX(-100vw) translateY(100vh); opacity: 0; }
-}
-
-.star { opacity: 0; animation: fall linear infinite; }
 
 @keyframes slideUp {
   from { opacity: 0; transform: translateY(20px); }
@@ -231,3 +229,74 @@ html, body {
 :root{--fc-daygrid-event-dot-width:8px}.fc-daygrid-day-events:after,.fc-daygrid-day-events:before,.fc-daygrid-day-frame:after,.fc-daygrid-day-frame:before,.fc-daygrid-event-harness:after,.fc-daygrid-event-harness:before{clear:both;content:"";display:table}.fc .fc-daygrid-body{position:relative;z-index:1}.fc .fc-daygrid-day.fc-day-today{background-color:var(--fc-today-bg-color)}.fc .fc-daygrid-day-frame{min-height:100%;position:relative}.fc .fc-daygrid-day-top{display:flex;flex-direction:row-reverse}.fc .fc-day-other .fc-daygrid-day-top{opacity:.3}.fc .fc-daygrid-day-number{padding:4px;position:relative;z-index:4}.fc .fc-daygrid-month-start{font-size:1.1em;font-weight:700}.fc .fc-daygrid-day-events{margin-top:1px}.fc .fc-daygrid-body-balanced .fc-daygrid-day-events{left:0;position:absolute;right:0}.fc .fc-daygrid-body-unbalanced .fc-daygrid-day-events{min-height:2em;position:relative}.fc .fc-daygrid-body-natural .fc-daygrid-day-events{margin-bottom:1em}.fc .fc-daygrid-event-harness{position:relative}.fc .fc-daygrid-event-harness-abs{left:0;position:absolute;right:0;top:0}.fc .fc-daygrid-bg-harness{bottom:0;position:absolute;top:0}.fc .fc-daygrid-day-bg .fc-non-business{z-index:1}.fc .fc-daygrid-day-bg .fc-bg-event{z-index:2}.fc .fc-daygrid-day-bg .fc-highlight{z-index:3}.fc .fc-daygrid-event{margin-top:1px;z-index:6}.fc .fc-daygrid-event.fc-event-mirror{z-index:7}.fc .fc-daygrid-day-bottom{font-size:.85em;margin:0 2px}.fc .fc-daygrid-day-bottom:after,.fc .fc-daygrid-day-bottom:before{clear:both;content:"";display:table}.fc .fc-daygrid-more-link{border-radius:3px;cursor:pointer;line-height:1;margin-top:1px;max-width:100%;overflow:hidden;padding:2px;position:relative;white-space:nowrap;z-index:4}.fc .fc-daygrid-more-link:hover{background-color:rgba(0,0,0,.1)}.fc .fc-daygrid-week-number{background-color:var(--fc-neutral-bg-color);color:var(--fc-neutral-text-color);min-width:1.5em;padding:2px;position:absolute;text-align:center;top:0;z-index:5}.fc .fc-more-popover .fc-popover-body{min-width:220px;padding:10px}.fc-direction-ltr .fc-daygrid-event.fc-event-start,.fc-direction-rtl .fc-daygrid-event.fc-event-end{margin-left:2px}.fc-direction-ltr .fc-daygrid-event.fc-event-end,.fc-direction-rtl .fc-daygrid-event.fc-event-start{margin-right:2px}.fc-direction-ltr .fc-daygrid-more-link{float:left}.fc-direction-ltr .fc-daygrid-week-number{border-radius:0 0 3px 0;left:0}.fc-direction-rtl .fc-daygrid-more-link{float:right}.fc-direction-rtl .fc-daygrid-week-number{border-radius:0 0 0 3px;right:0}.fc-liquid-hack .fc-daygrid-day-frame{position:static}.fc-daygrid-event{border-radius:3px;font-size:var(--fc-small-font-size);position:relative;white-space:nowrap}.fc-daygrid-block-event .fc-event-time{font-weight:700}.fc-daygrid-block-event .fc-event-time,.fc-daygrid-block-event .fc-event-title{padding:1px}.fc-daygrid-dot-event{align-items:center;display:flex;padding:2px 0}.fc-daygrid-dot-event .fc-event-title{flex-grow:1;flex-shrink:1;font-weight:700;min-width:0;overflow:hidden}.fc-daygrid-dot-event.fc-event-mirror,.fc-daygrid-dot-event:hover{background:rgba(0,0,0,.1)}.fc-daygrid-dot-event.fc-event-selected:before{bottom:-10px;top:-10px}.fc-daygrid-event-dot{border:calc(var(--fc-daygrid-event-dot-width)/2) solid var(--fc-event-border-color);border-radius:calc(var(--fc-daygrid-event-dot-width)/2);box-sizing:content-box;height:0;margin:0 4px;width:0}.fc-direction-ltr .fc-daygrid-event .fc-event-time{margin-right:3px}.fc-direction-rtl .fc-daygrid-event .fc-event-time{margin-left:3px}
 
 .fc .fc-multimonth{border:1px solid var(--fc-border-color);display:flex;flex-wrap:wrap;overflow-x:hidden;overflow-y:auto}.fc .fc-multimonth-title{font-size:1.2em;font-weight:700;padding:1em 0;text-align:center}.fc .fc-multimonth-daygrid{background:var(--fc-page-bg-color)}.fc .fc-multimonth-daygrid-table,.fc .fc-multimonth-header-table{table-layout:fixed;width:100%}.fc .fc-multimonth-daygrid-table{border-top-style:hidden!important}.fc .fc-multimonth-singlecol .fc-multimonth{position:relative}.fc .fc-multimonth-singlecol .fc-multimonth-header{background:var(--fc-page-bg-color);position:relative;top:0;z-index:2}.fc .fc-multimonth-singlecol .fc-multimonth-daygrid{position:relative;z-index:1}.fc .fc-multimonth-singlecol .fc-multimonth-daygrid-table,.fc .fc-multimonth-singlecol .fc-multimonth-header-table{border-left-style:hidden;border-right-style:hidden}.fc .fc-multimonth-singlecol .fc-multimonth-month:last-child .fc-multimonth-daygrid-table{border-bottom-style:hidden}.fc .fc-multimonth-multicol{line-height:1}.fc .fc-multimonth-multicol .fc-multimonth-month{padding:0 1.2em 1.2em}.fc .fc-multimonth-multicol .fc-daygrid-more-link{border:1px solid var(--fc-event-border-color);display:block;float:none;padding:1px}.fc .fc-multimonth-compact{line-height:1}.fc .fc-multimonth-compact .fc-multimonth-daygrid-table,.fc .fc-multimonth-compact .fc-multimonth-header-table{font-size:.9em}.fc-media-screen .fc-multimonth-singlecol .fc-multimonth-header{position:sticky}.fc-media-print .fc-multimonth{overflow:visible}
+
+/* ------------------------------------------------------------------ Loader --
+   Las orbitas y el giro del loader (components/principal/star-loader.jsx).
+   Son CSS para que se muevan desde el primer pintado, antes de que llegue el
+   JavaScript, que es justo cuando se ve el loader. Cada estrella recorre su
+   elipse con offset-path; la duracion y el retraso vienen en su style. */
+.loader-orbita {
+  offset-rotate: 0deg;
+  animation-name: loader-orbita, loader-profundidad;
+  animation-timing-function: linear, ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.loader-orbita-inversa { animation-name: loader-orbita, loader-profundidad-inversa; }
+
+@keyframes loader-orbita {
+  from { offset-distance: 0%; }
+  to   { offset-distance: 100%; }
+}
+
+/* Enfrente (la mitad de abajo de la elipse) crece y brilla; atras se achica y
+   se apaga, sin desaparecer. Cada cuarto de elipse mide lo mismo, asi que el
+   25% de la vuelta cae justo abajo y el 75% justo arriba. */
+@keyframes loader-profundidad {
+  0%, 50%, 100% { scale: 0.92; opacity: 0.78; }
+  25%           { scale: 1.15; opacity: 1; }
+  75%           { scale: 0.7;  opacity: 0.55; }
+}
+
+@keyframes loader-profundidad-inversa {
+  0%, 50%, 100% { scale: 0.92; opacity: 0.78; }
+  25%           { scale: 0.7;  opacity: 0.55; }
+  75%           { scale: 1.15; opacity: 1; }
+}
+
+/* 72 grados es una vuelta completa para una estrella de cinco puntas: el ciclo
+   vuelve a empezar sin salto. */
+.loader-giro { animation: loader-giro 3.2s ease-in-out infinite; }
+
+@keyframes loader-giro {
+  0%   { rotate: 0deg;  scale: 1; }
+  50%  { rotate: 36deg; scale: 1.1; }
+  100% { rotate: 72deg; scale: 1; }
+}
+
+.loader-pulso { animation: loader-pulso 2.6s ease-in-out infinite; }
+
+@keyframes loader-pulso {
+  0%, 100% { opacity: 0.45; scale: 0.9; }
+  50%      { opacity: 0.85; scale: 1.15; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-orbita, .loader-giro, .loader-pulso { animation: none; }
+  .loader-orbita { offset-distance: 25%; }
+  .loader-estela { display: none; }
+}
+
+/* ------------------------------------------------------- Pantallas grandes --
+   El sitio esta medido en rem (Tailwind): subir el tamano base agranda texto,
+   espacios y columnas (max-w-7xl) parejo, como si la pagina se hubiera hecho
+   para ese ancho. Los breakpoints no se mueven: en una media query, rem vale
+   siempre 16px. Solo el sitio publico (main[data-zona], layout-client.jsx); el
+   panel conserva su tamano. */
+@media (min-width: 1920px) {
+  :root:has(main[data-zona='sitio']) { font-size: 112.5%; }
+}
+
+@media (min-width: 2400px) {
+  :root:has(main[data-zona='sitio']) { font-size: 125%; }
+}

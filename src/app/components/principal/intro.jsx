@@ -3,8 +3,7 @@ import { RiOilFill } from "react-icons/ri";
 import { GiCarWheel } from 'react-icons/gi';
 import { PiPlugsConnectedFill } from "react-icons/pi";
 import { FaCarCrash } from "react-icons/fa";
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation'
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function Intro() {
     const { t } = useTranslation();

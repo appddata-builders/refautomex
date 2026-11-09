@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import '@/app/translations/i18next-translation';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { IoMdCloseCircle } from "react-icons/io";
 import { FaRegLightbulb } from "react-icons/fa6";
 import Portal from '@/app/lib/pop-portal';

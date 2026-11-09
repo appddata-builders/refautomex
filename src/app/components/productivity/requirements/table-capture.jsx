@@ -1,4 +1,5 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import Select from 'react-select';
 import { MdDelete, MdDeleteSweep } from 'react-icons/md';
 import { IoText } from 'react-icons/io5';
@@ -51,6 +52,7 @@ const TableCapture = forwardRef(({
     folio = null,
     defaultDiscounts = {}
 }, ref) => {
+    const { t } = useTranslation();
     const [quantities, setQuantities] = useState({});
     const [costs, setCosts] = useState({});
     const [baseCosts, setBaseCosts] = useState({});
@@ -132,16 +134,16 @@ const TableCapture = forwardRef(({
             const current = prev[productRef] || [];
             if (current.length >= MAX_DISCOUNTS) {
                 if (!isGeneralRow) {
-                    setError('Cada refacción permite máximo 3 descuentos.');
+                    setError(t('panel.tableCapture.maxDiscounts'));
                 }
                 return prev;
             }
             if (current.some((row) => !row.confirmed)) {
-                setError('Confirma o elimina el descuento pendiente antes de agregar otro.');
+                setError(t('panel.tableCapture.pendingDiscount'));
                 return prev;
             }
             if (Number.isFinite(numericDiscount) && (numericDiscount < 0 || numericDiscount >= 1)) {
-                setError('El descuento debe estar entre 0 y 0.9999.');
+                setError(t('panel.tableCapture.decimalRange'));
                 return prev;
             }
             const hasNumericValue = Number.isFinite(numericDiscount) && numericDiscount > 0;
@@ -170,11 +172,11 @@ const TableCapture = forwardRef(({
         if (isGeneral) {
             const numericDiscount = Number(discountValue);
             if (!items.length) {
-                setError('Agrega al menos una refacción antes de aplicar descuentos.');
+                setError(t('panel.newCapture.needPartsForDiscount'));
                 return;
             }
             if (!Number.isFinite(numericDiscount) || numericDiscount <= 0 || numericDiscount >= 1) {
-                setError('El descuento debe ser mayor a 0 y menor a 1.');
+                setError(t('panel.tableCapture.discountRange'));
                 return;
             }
             let applied = false;
@@ -188,21 +190,25 @@ const TableCapture = forwardRef(({
                 }
             });
             if (!applied) {
-                setError('No fue posible aplicar el descuento general.');
+                setError(t('panel.tableCapture.generalDiscountError'));
             }
             return;
         }
 
         if (!productRef) {
-            setError('Selecciona una refacción para agregar el descuento.');
+            setError(t('panel.tableCapture.pickPart'));
             return;
         }
 
         appendDiscountRow(productRef, Number(discountValue), { autoConfirm });
     };
 
+    // El costo base sale del estado o, si todavia no se lleno (los descuentos de
+    // una captura a editar llegan en el mismo render que sus renglones), del
+    // renglon mismo. Sin esto el costo quedaba en 0 al editar.
     const recalculateDiscounts = (productRef, rows) => {
-        const base = Number(baseCosts[productRef] ?? 0);
+        const item = items.find((entry) => entry.refaccion === productRef);
+        const base = Number(baseCosts[productRef] ?? item?.costoBase ?? item?.costo ?? 0);
         let price = base;
         rows.filter((row) => row.confirmed).forEach((row) => {
             const discountedAmount = Number((price * row.value).toFixed(2));
@@ -249,7 +255,7 @@ const TableCapture = forwardRef(({
             const rows = prev[productRef] || [];
             const target = rows.find((row) => row.id === discountId);
             if (!target || target.value <= 0) {
-                setError('Ingresa un decimal válido antes de confirmar.');
+                setError(t('panel.tableCapture.invalidDecimal'));
                 return prev;
             }
             const updated = rows.map((row) =>
@@ -267,7 +273,7 @@ const TableCapture = forwardRef(({
     const handleDiscountChange = (productRef, discountId, value) => {
         const numericValue = value === '' ? '' : Number(value);
         if (value !== '' && (Number.isNaN(numericValue) || numericValue < 0 || numericValue >= 1)) {
-            setError('El descuento debe estar entre 0 y 0.9999.');
+            setError(t('panel.tableCapture.decimalRange'));
             return;
         }
         setDiscountRows((prev) => {
@@ -339,19 +345,16 @@ const TableCapture = forwardRef(({
                 errors.push(`Confirma o elimina los descuentos pendientes en ${ref}.`);
                 return;
             }
-            const actualStock = Number(item.existencia ?? 0);
-            const totalStock = actualStock + qty;
+            // Lo que espera /newCapture (compras.js): la cantidad comprada, el
+            // costo ya con descuentos y el de lista. La existencia final y los
+            // importes los calcula el servidor.
             const confirmed = (discountRows[ref] || []).filter((row) => row.confirmed);
             detail.push({
-                ref,
+                num_parte: ref,
+                cantidad: qty,
                 costo: Number(currentCost.toFixed(2)),
-                costo_a: Number(baseCost.toFixed(2)),
-                actual: actualStock,
-                exis: qty,
-                cant: totalStock,
-                neto: Number((baseCost * qty).toFixed(2)),
-                importe: Number((currentCost * qty).toFixed(2)),
-                ut: Number(item.utilidad ?? 0),
+                costo_lista: Number(baseCost.toFixed(2)),
+                utilidad: Number(item.utilidad) || undefined,
                 d1: Number(confirmed[0]?.value ?? 0),
                 d2: Number(confirmed[1]?.value ?? 0),
                 d3: Number(confirmed[2]?.value ?? 0)
@@ -451,24 +454,24 @@ const TableCapture = forwardRef(({
     };
 
     return (
-        <div className="h-[690px] bg-[rgb(var(--color-card))] rounded-2xl my-5 flex shadow relative justify-center">
-            <div className="flex flex-col overflow-x-auto pt-5 lg:mx-1">
+        <div className="min-h-[420px] bg-[rgb(var(--color-card))] rounded-2xl flex shadow relative">
+            <div className="flex w-full flex-col overflow-x-auto pt-5 lg:mx-1">
                 {error && (
                     <div className="mx-6 mb-3 rounded-md border border-red-400 bg-red-100/40 text-red-600 text-xs px-3 py-2">
                         {error}
                     </div>
                 )}
-                <table className="w-[845px] text-sm text-left text-[rgb(var(--color-text))] shadow-sm">
+                <table className="w-full min-w-[845px] text-sm text-left text-[rgb(var(--color-text))] shadow-sm">
                     <thead className="text-xs text-[rgb(var(--color-text))] uppercase bg-[rgb(var(--color-card))]">
                         <tr>
-                            <th className="p-3">REFACCIÓN</th>
-                            <th className="p-3">DESCRIPCIÓN</th>
-                            <th className="p-3">EXISTENCIA</th>
-                            <th className="p-3">NUEVA CANTIDAD</th>
-                            <th className="p-3">COSTO</th>
-                            <th className="p-3">P. VENTA</th>
-                            <th className="p-3">DESCUENTO</th>
-                            <th className="p-3">IMPORTE</th>
+                            <th className="p-3">{t('panel.table.part')}</th>
+                            <th className="p-3">{t('panel.table.description')}</th>
+                            <th className="p-3">{t('panel.table.stock')}</th>
+                            <th className="p-3">{t('panel.table.newQuantity')}</th>
+                            <th className="p-3">{t('panel.table.cost')}</th>
+                            <th className="p-3">{t('panel.table.salePrice')}</th>
+                            <th className="p-3">{t('panel.table.discount')}</th>
+                            <th className="p-3">{t('panel.table.amount')}</th>
                             <th className="p-3"></th>
                         </tr>
                     </thead>
@@ -493,7 +496,7 @@ const TableCapture = forwardRef(({
                                         </td>
                                         <td className="py-4 flex justify-center">
                                             <Select
-                                                value={{ value: item.existencia, label: item.existencia.toString() }}
+                                                value={{ value: item.existencia ?? 0, label: String(item.existencia ?? 0) }}
                                                 isDisabled={true}
                                                 styles={customStyles}
                                                 className="pointer-events-none"
@@ -536,7 +539,7 @@ const TableCapture = forwardRef(({
                                                 <div className='bg-yellow-500 rounded-full shadow h-5 w-5 flex items-center justify-center'>
                                                     <RiCoinsFill />
                                                 </div>
-                                                <span className='bg-[rgb(var(--color-card))] rounded-md mt-2 p-1'>Descuento</span>
+                                                <span className='bg-[rgb(var(--color-card))] rounded-md mt-2 p-1'>{t('panel.capture.discount')}</span>
                                             </div>
                                         </td>
                                         <td className="p-4">{amount}</td>
@@ -545,7 +548,7 @@ const TableCapture = forwardRef(({
                                                 onClick={() => handleRemoveClick(item)}
                                                 className={`rounded-full p-2 ${item.locked ? 'bg-gray-400 cursor-not-allowed text-white' : 'bg-red-500 text-white hover:bg-red-700'}`}
                                                 disabled={!!folio || item.locked}
-                                                title={item.locked ? 'No es posible eliminar refacciones guardadas previamente.' : 'Eliminar refacción'}
+                                                title={item.locked ? t('panel.tableCapture.lockedRow') : t('panel.tableCapture.removePart')}
                                             >
                                                 <MdDelete />
                                             </button>
@@ -568,7 +571,7 @@ const TableCapture = forwardRef(({
                                         value={notes}
                                         onChange={(e) => handleAddNote(e.target.value)}
                                         className="w-full px-2 py-1 border border-[rgb(var(--color-border))] rounded text-xs text-blue-500 focus:ring-blue-500 focus:border-blue-500 bg-[rgb(var(--color-card))] uppercase text-[rgb(var(--color-text))] placeholder:text-[rgb(var(--color-text))] placeholder:opacity-60"
-                                        placeholder="Pagado por entregar (¿Que?)"
+                                        placeholder={t('panel.table.notePlaceholder')}
                                         rows="3"
                                         maxLength="80"
                                         disabled={!!folio}
@@ -577,27 +580,27 @@ const TableCapture = forwardRef(({
                             </tr>
                         )}
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">NETO:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.net')}</td>
                             <td className="py-4 px-1 font-bold text-md text-[rgb(var(--color-text))]" colSpan="8">
-                                {neto.toFixed(2)} MXN
+                                {neto.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">DESCUENTO TOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.totalDiscount')}</td>
                             <td className="py-4 px-1 font-bold text-md text-[rgb(var(--color-text))]" colSpan="8">
-                                {totalDiscount.toFixed(2)} MXN
+                                {totalDiscount.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">SUBTOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.subtotal')}</td>
                             <td className="py-4 px-1 font-bold text-md text-[rgb(var(--color-text))]" colSpan="8">
-                                {subtotal.toFixed(2)} MXN
+                                {subtotal.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                         <tr className="bg-[rgb(var(--color-card))] border-b border-[rgb(var(--color-border))]">
-                            <td className="py-4 px-3 font-bold">TOTAL:</td>
+                            <td className="py-4 px-3 font-bold">{t('panel.table.total2')}</td>
                             <td className="py-4 px-1 font-bold text-xl text-green-600" colSpan="8">
-                                {totalWithTax.toFixed(2)} MXN
+                                {totalWithTax.toFixed(2)} {t('promotions.currency')}
                             </td>
                         </tr>
                     </tbody>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation } from '@/app/lib/text/text-provider';
 import { motion, Variants } from 'framer-motion';
 import { CgMoreO } from 'react-icons/cg';
 import { MdOutlineViewInAr, MdDelete } from 'react-icons/md';
@@ -9,9 +9,16 @@ import { FaCircleMinus, FaCirclePlus } from 'react-icons/fa6';
 import { createPortal } from 'react-dom';
 import Spinner from '@/app/components/principal/spinner';
 import ProductOverview from '@/app/components/principal/products/product-overview';
+import Countdown from '@/app/components/principal/promotions/countdown';
+import OfferRibbon from '@/app/components/principal/promotions/offer-ribbon';
+import { conOferta, formatoPrecio, useOfertas } from '@/app/lib/ofertas-tienda';
 import { useCart } from '@/app/lib/shopping-context';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import '@/app/translations/i18next-translation';
+import {
+  PRODUCT_FALLBACK_IMAGE,
+  parseProductRoutes,
+  resolveProductImage,
+} from '@/app/lib/product-images';
 
 const GROUP_PAGE_SIZE = 16;
 
@@ -50,9 +57,11 @@ function normalizeGrupo(grupo) {
   return (grupo || '').toLowerCase().trim();
 }
 
-function displayGrupo(grupo) {
+// `emptyLabel` llega desde el componente porque este helper vive fuera del
+// arbol de React y no puede leer los textos con el hook.
+function displayGrupo(grupo, emptyLabel = '') {
   const g = normalizeGrupo(grupo);
-  if (!g) return 'Sin grupo';
+  if (!g) return emptyLabel;
   return g.charAt(0).toUpperCase() + g.slice(1);
 }
 
@@ -76,7 +85,6 @@ function useCategories(products) {
 }
 
 export default function CardProducts({ showSearchBar = true }) {
-  const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
   const { t } = useTranslation();
 
   const [products, setProducts] = useState([]);
@@ -96,6 +104,10 @@ export default function CardProducts({ showSearchBar = true }) {
   const [isModalMounted, setIsModalMounted] = useState(false);
 
   const { cart, addToCart, removeFromCart } = useCart();
+  // Lo que esta en una promocion vigente se pinta y se agrega con su precio
+  // de oferta (el mismo que cobra create-checkout-session).
+  const { porParte, desfase } = useOfertas();
+  const catalog = useMemo(() => products.map((product) => conOferta(product, porParte)), [products, porParte]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -118,16 +130,11 @@ export default function CardProducts({ showSearchBar = true }) {
         const payload = await response.json();
         if (!isMounted) return;
         const raw = payload?.[0] ?? [];
+        // `rutas` llega como array desde Postgres (json_agg) y como string
+        // JSON desde el MySQL original: parseProductRoutes acepta las dos.
         const parsed = raw.map(p => ({
           ...p,
-          rutasParsed: (() => {
-            try {
-              const arr = JSON.parse(p.rutas || '[]');
-              return Array.isArray(arr) ? arr : [];
-            } catch {
-              return [];
-            }
-          })(),
+          rutasParsed: parseProductRoutes(p.rutas),
         }));
         setProducts(parsed);
       } catch (err) {
@@ -151,10 +158,10 @@ export default function CardProducts({ showSearchBar = true }) {
   const source = useMemo(() => {
     const term = searchTerm.toLowerCase();
     const bySection = selectedSection === 'Todos'
-      ? products
-      : products.filter(p => normalizeGrupo(p.grupo) === normalizeGrupo(selectedSection));
+      ? catalog
+      : catalog.filter(p => normalizeGrupo(p.grupo) === normalizeGrupo(selectedSection));
     return bySection.filter(p => p.descripcion.toLowerCase().includes(term)).sort((a, b) => a.descripcion.localeCompare(b.descripcion));
-  }, [products, searchTerm, selectedSection]);
+  }, [catalog, searchTerm, selectedSection]);
 
   const groupedItems = useMemo(() => {
     const categoryOrder = categories;
@@ -164,7 +171,7 @@ export default function CardProducts({ showSearchBar = true }) {
       if (!map.has(key)) {
         map.set(key, {
           key,
-          label: displayGrupo(product.grupo),
+          label: displayGrupo(product.grupo, t('products.noGroup')),
           items: [],
         });
       }
@@ -286,7 +293,7 @@ export default function CardProducts({ showSearchBar = true }) {
   if (error) {
     return (
       <div className="px-6 py-20 text-center text-[rgb(var(--color-text))] space-y-4">
-        <p className="text-lg font-semibold">{t('common.error', { defaultValue: 'An error occurred while loading products.' })}</p>
+        <p className="text-lg font-semibold">{t('common.errorProducts')}</p>
         {error?.message && (
           <p className="text-sm text-[rgb(var(--color-text))]/70 break-words">
             {error.message}
@@ -297,7 +304,7 @@ export default function CardProducts({ showSearchBar = true }) {
           onClick={() => setRefreshIndex((prev) => prev + 1)}
           className="inline-flex items-center rounded-full bg-[rgb(var(--color-text))] px-6 py-2 text-sm font-semibold text-[rgb(var(--color-card))] shadow shadow-[rgb(var(--color-med))]/70 hover:opacity-90 transition"
         >
-          {t('common.retry', { defaultValue: 'Reintentar' })}
+          {t('common.retry')}
         </button>
       </div>
     );
@@ -325,10 +332,10 @@ export default function CardProducts({ showSearchBar = true }) {
 
       <div className="mx-auto max-w-7xl px-6 lg:px-8 text-center">
         <h2 className="text-4xl font-bold tracking-tight sm:text-5xl gradient-text-title py-1 pt-3">
-          {t('products.title', { defaultValue: 'Productos' })}
+          {t('products.title')}
         </h2>
         <p className="mt-4 text-lg text-[rgb(var(--color-text))]/70 max-w-2xl mx-auto">
-          {t('products.subtitle', { defaultValue: 'Explora por categoría o visualiza todo el catálogo.' })}
+          {t('products.subtitle')}
         </p>
 
         <div className="mt-4 flex flex-col sm:flex-row justify-center items-center gap-4">
@@ -337,9 +344,9 @@ export default function CardProducts({ showSearchBar = true }) {
             onChange={(e) => setSelectedSection(e.target.value)}
             className="rounded-full bg-[rgb(var(--color-bg))] border border-[rgb(var(--color-text))]/20 text-[rgb(var(--color-text))] px-5 py-3 focus:ring-2 focus:ring-amber-400 outline-none"
           >
-            <option value="Todos">{t('common.all', { defaultValue: 'Todos' })}</option>
+            <option value="Todos">{t('common.all')}</option>
             {categories.map((g) => (
-              <option key={g} value={g}>{displayGrupo(g)}</option>
+              <option key={g} value={g}>{displayGrupo(g, t('products.noGroup'))}</option>
             ))}
           </select>
 
@@ -347,7 +354,7 @@ export default function CardProducts({ showSearchBar = true }) {
             <input
               type="text"
               name="products-search"
-              placeholder={t('products.filter', { defaultValue: 'Buscar producto…' })}
+              placeholder={t('products.filter')}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full max-w-md rounded-full px-5 py-3 bg-[rgb(var(--color-bg))] text-[rgb(var(--color-text))] border border-[rgb(var(--color-text))]/20 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--color-galaxy))] placeholder:text-[rgb(var(--color-text))]/50"
@@ -369,7 +376,7 @@ export default function CardProducts({ showSearchBar = true }) {
         >
           {groupedItems.length === 0 && (
             <p className="col-span-full text-[rgb(var(--color-text))]/70 text-lg">
-              {t('products.empty', { defaultValue: 'No se encontraron productos.' })}
+              {t('products.empty')}
             </p>
           )}
 
@@ -382,11 +389,11 @@ export default function CardProducts({ showSearchBar = true }) {
               <Fragment key={section.key}>
                 <div className="col-span-full flex flex-col sm:flex-row sm:items-center sm:justify-between bg-[rgb(var(--color-bg))]/60 border border-dashed border-[rgb(var(--color-text))]/20 rounded-2xl px-5 py-3 mb-4">
                   <div className="text-left">
-                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(var(--color-text))]/50">Categoría</p>
+                    <p className="text-xs uppercase tracking-[0.25em] text-[rgb(var(--color-text))]/50">{t('products.category')}</p>
                     <p className="text-lg font-semibold text-[rgb(var(--color-text))]">{section.label}</p>
                   </div>
                   <span className="text-xs text-[rgb(var(--color-text))]/60 mt-2 sm:mt-0">
-                    {section.items.length} {section.items.length === 1 ? 'producto' : 'productos'}
+                    {section.items.length} {section.items.length === 1 ? t('products.countOne') : t('products.countMany')}
                   </span>
                 </div>
                 {groupPageItems.map((product) => {
@@ -396,19 +403,18 @@ export default function CardProducts({ showSearchBar = true }) {
                   const inputValue = productInCart
                     ? (productInCart.quantity || MIN_QTY)
                     : (storedValue === undefined ? MIN_QTY : storedValue);
-                  const img = product.rutasParsed?.[0]
-                    ? `${multimediaSrc}${product.rutasParsed[0]}`
-                    : `${multimediaSrc}productos/no-img.png`;
+                  const img = resolveProductImage(product.rutasParsed?.[0]);
                   const inCart = Boolean(productInCart);
                   const cardIndex = animationCounter++;
-                  const groupLabel = displayGrupo(product.grupo);
+                  const groupLabel = displayGrupo(product.grupo, t('products.noGroup'));
 
                   return (
                     <CardComponent
                       key={product.num_parte}
                       {...(!animationDisabled ? { custom: cardIndex, variants: cardVariants } : {})}
-                      className="group relative flex flex-col justify-between rounded-3xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-[rgb(var(--color-med))]/30 hover:-translate-y-1 hover:scale-[1.02)] bg-[rgb(var(--color-card))]"
+                      className={`group relative flex flex-col justify-between rounded-3xl shadow-lg overflow-hidden transition-all duration-500 hover:shadow-[rgb(var(--color-med))]/30 hover:-translate-y-1 hover:scale-[1.02)] bg-[rgb(var(--color-card))] ${product.oferta ? 'ring-2 ring-amber-400' : ''}`}
                     >
+                      {product.oferta && <OfferRibbon />}
                       <ImageWrapper
                         className="relative w-full aspect-square overflow-hidden"
                         {...(!animationDisabled
@@ -418,14 +424,20 @@ export default function CardProducts({ showSearchBar = true }) {
                             }
                           : {})}
                       >
-                        <span className="absolute top-3 left-3 z-10 inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-[rgb(var(--color-gray))]/70 text-[rgb(var(--color-text))] shadow">
+                        {/* Con oferta, la esquina es de la banda: el grupo baja. */}
+                        <span className={`absolute ${product.oferta ? 'bottom-3' : 'top-3'} left-3 z-10 inline-flex items-center px-3 py-1 text-xs font-semibold rounded-full bg-[rgb(var(--color-gray))]/70 text-[rgb(var(--color-text))] shadow`}>
                           {groupLabel}
                         </span>
+                        {product.oferta && (
+                          <span className="absolute bottom-3 right-3 z-10 rounded-full bg-slate-900 px-2.5 py-1 text-xs font-extrabold tabular-nums text-amber-400 shadow">
+                            -{product.oferta.ahorro} %
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleOpenOverview(product)}
                           className="absolute top-3 right-3 z-10 flex items-center justify-center h-9 w-9 rounded-full bg-[rgb(var(--color-bg))]/80 shadow text-[rgb(var(--color-text))] hover:scale-105 transition-all"
-                          aria-label={t('products.details', { defaultValue: 'Ver detalles' })}
+                          aria-label={t('products.details')}
                         >
                           <CgMoreO />
                         </button>
@@ -433,6 +445,11 @@ export default function CardProducts({ showSearchBar = true }) {
                           src={img}
                           alt={product.descripcion}
                           className="h-full w-full object-contain object-center bg-white"
+                          // Una ruta que ya no existe en S3 dejaba el texto
+                          // alternativo encima de la etiqueta de la tarjeta.
+                          onError={(evento) => {
+                            if (!evento.currentTarget.src.endsWith('no-img.png')) evento.currentTarget.src = PRODUCT_FALLBACK_IMAGE;
+                          }}
                         />
                       </ImageWrapper>
 
@@ -440,11 +457,21 @@ export default function CardProducts({ showSearchBar = true }) {
                         <h4 className="text-lg font-semibold linear-text-title text-center line-clamp-2" title={product.descripcion}>
                           {product.descripcion}
                         </h4>
-                        <div className="flex items-center justify-center mt-2">
-                          <span className="mt-1 text-base sm:text-lg font-semibold text-[rgb(var(--color-success))]">
-                            $ {Math.ceil(Number(product.precio)).toFixed(2)} MXN
-                          </span>
-                        </div>
+                        {/* El precio exacto que se cobra: antes se redondeaba
+                            hacia arriba y no coincidia con el de Stripe. */}
+                        {product.oferta ? (
+                          <div className="mt-2 flex flex-col items-center tabular-nums">
+                            <span className="text-sm text-[rgb(var(--color-text))]/60 line-through">{formatoPrecio(product.precioRegular)}</span>
+                            <span className="text-lg sm:text-xl font-extrabold text-amber-600 dark:text-amber-400">{formatoPrecio(product.precio)} MXN</span>
+                            <Countdown fin={product.oferta.fin} desfase={desfase} variant="chica" className="mt-1 text-[rgb(var(--color-text))]/70" />
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-center mt-2">
+                            <span className="mt-1 text-base sm:text-lg font-semibold tabular-nums text-[rgb(var(--color-success))]">
+                              {formatoPrecio(product.precio)} MXN
+                            </span>
+                          </div>
+                        )}
                         <div className="mt-6 grid grid-cols-2 items-center gap-2 border-t border-[rgb(var(--color-text))]/10 pt-4">
                           <div className={`col-span-1 flex ${inCart ? 'items-start justify-start' : 'items-center justify-center'} gap-2`}>
                             <button
@@ -452,7 +479,7 @@ export default function CardProducts({ showSearchBar = true }) {
                               onClick={() => handleDecrement(productId)}
                               className={`${inCart ? 'cursor-not-allowed opacity-0 pointer-events-none' : 'cursor-pointer'} flex items-center justify-center h-6 w-6 rounded-full shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-med))] hover:bg-[rgb(var(--color-bg))]/60 transition`}
                               disabled={inCart}
-                              aria-label={t('products.decrease', { defaultValue: 'Disminuir' })}
+                              aria-label={t('products.decrease')}
                             >
                               <FaCircleMinus />
                             </button>
@@ -472,7 +499,7 @@ export default function CardProducts({ showSearchBar = true }) {
                               onClick={() => handleIncrement(productId)}
                               className={`${inCart ? 'cursor-not-allowed opacity-0 pointer-events-none' : 'cursor-pointer'} flex items-center justify-center h-6 w-6 rounded-full shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-med))] hover:bg-[rgb(var(--color-bg))]/60 transition`}
                               disabled={inCart}
-                              aria-label={t('products.increase', { defaultValue: 'Incrementar' })}
+                              aria-label={t('products.increase')}
                             >
                               <FaCirclePlus />
                             </button>
@@ -491,7 +518,7 @@ export default function CardProducts({ showSearchBar = true }) {
                                 className="flex items-center gap-2 rounded-full bg-red-500/90 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 transition-all"
                               >
                                 <MdDelete className="text-base" />
-                                {t('products.remove', { defaultValue: 'Quitar' })}
+                                {t('products.remove')}
                               </ActionButton>
                             ) : (
                               <ActionButton
@@ -504,7 +531,7 @@ export default function CardProducts({ showSearchBar = true }) {
                                 onClick={() => handleAddProduct(product)}
                                 className="rounded-full cursor-pointer bg-[rgb(var(--color-text))] px-4 py-2 text-sm font-semibold text-[rgb(var(--color-card))] transition-all"
                               >
-                                {t('products.add', { defaultValue: 'Agregar' })}
+                                {t('products.add')}
                               </ActionButton>
                             )}
                           </div>
@@ -523,11 +550,10 @@ export default function CardProducts({ showSearchBar = true }) {
                       disabled={currentGroupPage === 1}
                       className="rounded-full px-4 py-2 text-xs font-semibold shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-text))] disabled:opacity-40"
                     >
-                      {t('common.prev', { defaultValue: 'Anterior' })}
+                      {t('common.prev')}
                     </button>
                     <span className="text-[rgb(var(--color-text))]/70 text-xs">
                       {t('common.pageOf', {
-                        defaultValue: '{{category}}: Página {{page}} de {{total}}',
                         category: section.label,
                         page: currentGroupPage,
                         total: totalGroupPages,
@@ -541,7 +567,7 @@ export default function CardProducts({ showSearchBar = true }) {
                       disabled={currentGroupPage === totalGroupPages}
                       className="rounded-full px-4 py-2 text-xs font-semibold shadow shadow-[rgb(var(--color-med))]/70 text-[rgb(var(--color-text))] disabled:opacity-40"
                     >
-                      {t('common.next', { defaultValue: 'Siguiente' })}
+                      {t('common.next')}
                     </button>
                   </div>
                 )}
@@ -571,7 +597,7 @@ export default function CardProducts({ showSearchBar = true }) {
                 <div>
                   <p className="flex items-center gap-2 text-xs uppercase tracking-[0.35em] text-[rgb(var(--color-text))]/50">
                     <MdOutlineViewInAr className="h-4 w-4" />
-                    Detalle del producto
+                    {t('products.detailTitle')}
                   </p>
                   <h3 className="mt-1 text-lg font-semibold line-clamp-2">
                     {prodOverview.descripcion}
@@ -580,9 +606,9 @@ export default function CardProducts({ showSearchBar = true }) {
                 <button
                   onClick={handleCloseModal}
                   className="rounded-full border border-[rgb(var(--color-text))]/30 px-4 py-1 text-sm font-semibold text-[rgb(var(--color-text))] transition hover:bg-[rgb(var(--color-card))]"
-                  aria-label={t('common.close', { defaultValue: 'Cerrar' })}
+                  aria-label={t('common.close')}
                 >
-                  {t('common.close', { defaultValue: 'Cerrar' })}
+                  {t('common.close')}
                 </button>
               </div>
               <div className="max-h-[80vh] overflow-y-auto px-4 py-6 sm:px-8">

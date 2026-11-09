@@ -9,12 +9,20 @@ import { MdShoppingCart } from 'react-icons/md';
 import {
   FaTrashCan,
   FaCreditCard,
-  FaClock,
-  FaCheckToSlot,
+  FaCircleCheck,
+  FaClipboardList,
+  FaLock,
+  FaPhone,
   FaTruckFast,
 } from 'react-icons/fa6';
+import { obtenerIdToken } from '@/app/lib/cognito-manager';
 import { useCart } from '@/app/lib/shopping-context';
+import { conOferta, useOfertas } from '@/app/lib/ofertas-tienda';
+import { buildApiUrl } from '@/app/lib/refautomex-api';
 import { getStorageValue } from '@/app/lib/storage-values';
+import { resolveMainProductImage } from '@/app/lib/product-images';
+import { useTranslation } from '@/app/lib/text/text-provider';
+import OrderProgress from '@/app/components/principal/account/order-progress';
 
 let stripePromise;
 const getStripe = () => {
@@ -31,44 +39,42 @@ const currencyFormatter = new Intl.NumberFormat('es-MX', {
   currency: 'MXN',
 });
 
-const DEFAULT_IMAGE = `${process.env.NEXT_PUBLIC_S3 || ''}productos/no-img.png`;
+// Al volver de Stripe el webhook puede tardar unos segundos en registrar la
+// venta: se pregunta cada FOLIO_POLL_MS hasta FOLIO_POLL_TRIES veces por el
+// folio definitivo (W-...); mientras, se muestra el del pago (P-...).
+const FOLIO_POLL_MS = 2500;
+const FOLIO_POLL_TRIES = 8;
 
-const fulfillmentLabels = {
-  en_proceso: { label: 'En proceso', icon: FaClock },
-  pedido_confirmado: { label: 'Pedido confirmado', icon: FaCheckToSlot },
-  en_camino: { label: 'En camino', icon: FaTruckFast },
-};
-
-const normalizeCartItem = (item) => {
+const normalizeCartItem = (item, fallbackName) => {
   const price = Number(item.precio ?? item.price ?? 0) || 0;
   const quantity = Number(item.quantity ?? item.qty ?? 1) || 1;
-  const image =
-    item.image ||
-    item.mainImage ||
-    (Array.isArray(item.rutasParsed) && item.rutasParsed[0]
-      ? `${process.env.NEXT_PUBLIC_S3 || ''}${item.rutasParsed[0]}`
-      : DEFAULT_IMAGE);
+  // Un carrito guardado en localStorage antes del arreglo de `rutas` trae
+  // rutasParsed vacio y el rutas bueno: resolveMainProductImage mira ambos.
+  const image = resolveMainProductImage(item);
   return {
     ...item,
     normalizedPrice: price,
     normalizedQuantity: quantity,
     normalizedImage: image,
-    normalizedName: item.descripcion || item.name || 'Producto',
+    normalizedName: item.descripcion || item.name || fallbackName,
     normalizedDescription: item.descripcion || item.description || '',
   };
 };
 
 export default function Checkout() {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { items: cart, removeItem, totalUnits, clearCart } = useCart();
+  const { items: cart, setCart, removeItem, totalUnits, clearCart } = useCart();
   const statusParam = searchParams.get('status');
   const successParam = searchParams.get('success');
   const redirectStatus = searchParams.get('redirect_status');
   const isSuccessStatus =
     statusParam === 'success' || successParam === 'true' || redirectStatus === 'succeeded';
   const sessionId = searchParams.get('session_id');
+  const lang = searchParams.get('lang') || 'es';
 
-  const [friendlyFolio, setFriendlyFolio] = useState(null);
+  // { friendlyFolio, recorded, amount, items, etapa, paso } del pago recien hecho.
+  const [paidOrder, setPaidOrder] = useState(null);
   const [folioMessage, setFolioMessage] = useState(null);
   const [lookupFolio, setLookupFolio] = useState('');
   const [lookupResult, setLookupResult] = useState(null);
@@ -81,7 +87,10 @@ export default function Checkout() {
   const username = cognitoUserSession?.idToken?.payload?.['cognito:username'];
   const userData = username ? getStorageValue(`user_${username}`) : null;
 
-  const normalizedCart = useMemo(() => cart.map(normalizeCartItem), [cart]);
+  const normalizedCart = useMemo(
+    () => cart.map((item) => normalizeCartItem(item, t('checkout.productFallback'))),
+    [cart, t]
+  );
 
   const saleItems = useMemo(() =>
     normalizedCart.map((product) => {
@@ -105,6 +114,49 @@ export default function Checkout() {
     [normalizedCart]
   );
 
+  // El carrito guarda el precio de cuando se agrego. Antes de cobrar se pone
+  // el de hoy: el de WEB y, si sigue vigente, el de oferta. Asi el total que
+  // se ve es el que cobra Stripe aunque una oferta haya terminado (o empezado)
+  // con el producto ya en el carrito.
+  const { porParte, cargando: cargandoOfertas } = useOfertas();
+  const [preciosWeb, setPreciosWeb] = useState(null);
+  const [preciosCambiados, setPreciosCambiados] = useState(0);
+
+  useEffect(() => {
+    if (isSuccessStatus) return undefined;
+    const controller = new AbortController();
+    fetch(buildApiUrl('/getProducts'), { cache: 'no-store', signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => {
+        if (!payload) return;
+        setPreciosWeb(new Map((payload?.[0] || []).map((product) => [product.num_parte, Number(product.precio)])));
+      })
+      .catch(() => {
+        // Sin precios nuevos se queda el del carrito; el cobro igual usa los de la base.
+      });
+    return () => controller.abort();
+  }, [isSuccessStatus]);
+
+  useEffect(() => {
+    if (!preciosWeb || cargandoOfertas || isSuccessStatus || !cart.length) return;
+    let cambios = 0;
+    const siguiente = cart.map((item) => {
+      const regular = preciosWeb.get(item.num_parte);
+      if (!(regular > 0)) return item;
+      const { precioRegular: _regular, oferta: _oferta, ...resto } = item;
+      const actual = conOferta({ ...resto, precio: regular }, porParte);
+      const igual = Math.abs(Number(actual.precio) - Number(item.precio)) < 0.005
+        && Boolean(actual.oferta) === Boolean(item.oferta);
+      if (igual) return item;
+      cambios += 1;
+      return actual;
+    });
+    if (cambios) {
+      setCart(siguiente);
+      setPreciosCambiados(cambios);
+    }
+  }, [preciosWeb, porParte, cargandoOfertas, isSuccessStatus, cart, setCart]);
+
   useEffect(() => {
     if (!isSuccessStatus) return;
     clearCart();
@@ -116,28 +168,31 @@ export default function Checkout() {
   useEffect(() => {
     if (!isSuccessStatus || !sessionId) return;
     const controller = new AbortController();
-    setFriendlyFolio(null);
+    let timer = null;
+    let tries = 0;
+    setPaidOrder(null);
     setFolioMessage(null);
-    fetch(`/api/orders/folio?session_id=${sessionId}`, { signal: controller.signal })
-      .then(async (response) => {
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(payload?.error ?? 'Sin detalles del folio.');
-        }
-        return response.json();
-      })
-      .then((payload) => {
-        setFriendlyFolio(payload.friendlyFolio ?? null);
-      })
-      .catch((err) => {
+    const ask = async () => {
+      tries += 1;
+      try {
+        const response = await fetch(`/api/orders/folio?session_id=${encodeURIComponent(sessionId)}`, {
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        if (!response.ok) throw new Error(t('checkout.folioNoDetail'));
+        const payload = await response.json();
+        setPaidOrder(payload);
+        if (!payload.recorded && tries < FOLIO_POLL_TRIES) timer = setTimeout(ask, FOLIO_POLL_MS);
+      } catch (err) {
         if (err.name === 'AbortError') return;
-        setFolioMessage(
-          err instanceof Error
-            ? err.message
-            : 'No pudimos recuperar tu folio amigable. Usa el folio largo.'
-        );
-      });
-    return () => controller.abort();
+        setFolioMessage(err instanceof Error ? err.message : t('checkout.folioFallback'));
+      }
+    };
+    ask();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
   }, [sessionId, isSuccessStatus]);
 
   // Los precios ya incluyen IVA; solo lo desglosamos sin recargarlo.
@@ -153,7 +208,7 @@ export default function Checkout() {
     event.preventDefault();
     const trimmed = lookupFolio.trim();
     if (!trimmed) {
-      setLookupError('Ingresa un folio válido.');
+      setLookupError(t('checkout.folioInvalid'));
       return;
     }
     setIsLookupLoading(true);
@@ -165,13 +220,13 @@ export default function Checkout() {
       );
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.error ?? 'No encontramos ese folio.');
+        throw new Error(payload?.error ?? t('checkout.folioNotFound'));
       }
       setLookupResult(payload);
     } catch (err) {
       setLookupResult(null);
       setLookupError(
-        err instanceof Error ? err.message : 'Hubo un problema al buscar tu folio.'
+        err instanceof Error ? err.message : t('checkout.folioError')
       );
     } finally {
       setIsLookupLoading(false);
@@ -204,12 +259,18 @@ export default function Checkout() {
         .filter((item) => item.precio > 0 && item.quantity > 0);
 
       if (!lineItems.length) {
-        throw new Error('No hay productos válidos para procesar.');
+        throw new Error(t('checkout.noValidItems'));
       }
 
+      // Con sesion, el pedido queda en Mis pedidos: el servidor saca al cliente
+      // del token. Sin ella (o si no se renueva) se compra como invitado.
+      const token = userData ? await obtenerIdToken().catch(() => null) : null;
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           lineItems,
           contact: {
@@ -219,7 +280,7 @@ export default function Checkout() {
           },
           orderContext: {
             userId: userData?.idusuario || '',
-            clientName: userData?.nombre || 'Cliente web',
+            clientName: userData?.nombre || t('checkout.webClient'),
             clientEmail: userData?.email || '',
             paymentMethodId: 3,
             orderType: 'W',
@@ -230,7 +291,7 @@ export default function Checkout() {
 
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload?.message ?? 'No se pudo iniciar el pago.');
+        throw new Error(payload?.message ?? t('checkout.startError'));
       }
 
       if (payload.url) {
@@ -239,12 +300,12 @@ export default function Checkout() {
       }
 
       if (!payload.sessionId) {
-        throw new Error('No se pudo crear la sesión de pago.');
+        throw new Error(t('checkout.sessionError'));
       }
 
       const stripe = await getStripe();
       if (!stripe) {
-        throw new Error('Stripe no está configurado en este dispositivo.');
+        throw new Error(t('checkout.stripeMissing'));
       }
 
       const result = await stripe.redirectToCheckout({
@@ -255,7 +316,7 @@ export default function Checkout() {
         throw new Error(result.error.message);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al procesar el pago.');
+      setError(err instanceof Error ? err.message : t('checkout.payError'));
     } finally {
       setIsLoading(false);
     }
@@ -267,41 +328,81 @@ export default function Checkout() {
         <div className="text-center mb-10">
           <h2 className="text-4xl font-bold tracking-tight linear-text-title">
             <MdShoppingCart className="inline-block w-10 h-10 mr-2 text-[rgb(var(--color-galaxy))]" />
-            Proceder al pago
+            {t('checkout.title')}
           </h2>
           <p className="mt-4 text-lg text-[rgb(var(--color-text))]/70">
-            Revisa tus productos antes de finalizar tu compra.
+            {t('checkout.subtitle')}
           </p>
         </div>
 
-        {(statusParam === 'success' || statusParam === 'cancelled') && (
-          <div
-            className={`mb-6 rounded-2xl border px-4 py-3 text-sm ${
-              statusParam === 'success'
-                ? 'border-emerald-400/40 bg-emerald-50 text-emerald-800'
-                : 'border-amber-400/40 bg-amber-50 text-amber-800'
-            }`}
-          >
-            {statusParam === 'success' ? (
+        {statusParam === 'cancelled' && (
+          <div className="mb-6 rounded-2xl border border-amber-400/40 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {t('checkout.cancelled')}
+          </div>
+        )}
+
+        {statusParam === 'success' && (
+          <div className="mb-10 space-y-5 rounded-3xl bg-[rgb(var(--color-bg))] p-6 shadow shadow-[rgb(var(--color-galaxy))] sm:p-8">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+              <span className="grid size-14 shrink-0 place-items-center rounded-2xl bg-emerald-500 text-white shadow">
+                <FaCircleCheck className="size-7" aria-hidden="true" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-lg font-semibold text-[rgb(var(--color-text))]">
+                  {t('checkout.paidTitle')}{' '}
+                  <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-3 py-0.5 font-bold tabular-nums text-emerald-700">
+                    {paidOrder?.friendlyFolio ?? t('checkout.folioPending')}
+                  </span>
+                </p>
+                <p className="text-sm text-[rgb(var(--color-text))]/70">
+                  {paidOrder && !paidOrder.recorded ? t('checkout.successRecording') : t('checkout.paidHint')}
+                </p>
+                <p className="text-sm text-[rgb(var(--color-text))]/70">{t('checkout.successContact')}</p>
+              </div>
+              {userData && (
+                <Link
+                  href={`/section/refautomex?load=history&lang=${lang}`}
+                  className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[rgb(var(--color-text-base))] px-5 text-sm font-semibold text-[rgb(var(--color-text))] shadow shadow-[rgb(var(--color-galaxy))] transition hover:bg-[rgb(var(--color-refautomex))] hover:text-slate-900"
+                >
+                  <FaClipboardList className="size-4" aria-hidden="true" />
+                  {t('checkout.viewMyOrders')}
+                </Link>
+              )}
+            </div>
+            {paidOrder && (
               <>
-                ¡Pago confirmado! Folio:&nbsp;
-                <span className="inline-flex items-center rounded-full bg-emerald-100 px-3 py-0.5 text-xs font-semibold text-emerald-800">
-                  {friendlyFolio ?? sessionId ?? 'pendiente'}
-                </span>
-                &nbsp;Guárdalo para cualquier aclaración.
+                <OrderProgress etapa={paidOrder.etapa} paso={paidOrder.paso} />
+                {(paidOrder.items ?? []).length > 0 && (
+                  <ul className="space-y-2 border-t border-[rgb(var(--color-text))]/10 pt-4 text-sm text-[rgb(var(--color-text))]/80">
+                    {paidOrder.items.map((item, idx) => (
+                      <li key={`pagado-${idx}`} className="flex justify-between gap-3">
+                        <span className="truncate font-medium">{item.description}</span>
+                        <span className="whitespace-nowrap tabular-nums">
+                          {item.quantity} · {currencyFormatter.format((item.total || 0) / 100)}
+                        </span>
+                      </li>
+                    ))}
+                    <li className="flex justify-between gap-3 border-t border-[rgb(var(--color-text))]/10 pt-2 font-semibold text-[rgb(var(--color-text))]">
+                      <span>{t('checkout.total')}</span>
+                      <span className="tabular-nums text-[rgb(var(--color-success))]">{currencyFormatter.format((paidOrder.amount || 0) / 100)}</span>
+                    </li>
+                  </ul>
+                )}
               </>
-            ) : (
-              'Tu pago se canceló. Puedes intentarlo nuevamente cuando estés listo.'
             )}
-            {statusParam === 'success' && folioMessage && (
-              <p className="mt-2 text-xs text-amber-700">{folioMessage}</p>
-            )}
+            {folioMessage && <p className="text-xs text-amber-700">{folioMessage}</p>}
           </div>
         )}
 
         {error && (
           <div className="mb-6 rounded-2xl border border-red-400/60 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {preciosCambiados > 0 && (
+          <div role="status" className="mb-6 rounded-2xl border border-amber-400/60 bg-amber-400/15 px-4 py-3 text-sm text-[rgb(var(--color-text))]">
+            {t(preciosCambiados === 1 ? 'checkout.pricesUpdatedOne' : 'checkout.pricesUpdated', { count: preciosCambiados })}
           </div>
         )}
 
@@ -333,18 +434,32 @@ export default function Checkout() {
                     {product.normalizedDescription}
                   </p>
                   <div className="mt-4 flex justify-between items-center">
-                    <span className="text-base text-[rgb(var(--color-success))] font-semibold">
-                      {currencyFormatter.format(product.normalizedPrice)}
-                    </span>
+                    {product.oferta ? (
+                      <span className="flex flex-col tabular-nums">
+                        <span className="text-xs text-[rgb(var(--color-text))]/60 line-through">
+                          {currencyFormatter.format(product.precioRegular)}
+                        </span>
+                        <span className="inline-flex items-center gap-2 text-base font-bold text-amber-600 dark:text-amber-400">
+                          {currencyFormatter.format(product.normalizedPrice)}
+                          <span className="rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-2 text-[0.65rem] font-extrabold uppercase text-slate-900">
+                            {t('promotions.ribbon')}
+                          </span>
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-base text-[rgb(var(--color-success))] font-semibold tabular-nums">
+                        {currencyFormatter.format(product.normalizedPrice)}
+                      </span>
+                    )}
                     <div className="flex items-center gap-3">
-                      <span className="text-sm text-[rgb(var(--color-text))]/70">Cantidad:</span>
+                      <span className="text-sm text-[rgb(var(--color-text))]/70">{t('products.quantity')}:</span>
                       <div className="w-16 text-center rounded-md shadow shadow-[rgb(var(--color-med))]/30 bg-transparent text-[rgb(var(--color-text))]">
                         {product.normalizedQuantity}
                       </div>
                       <button
                         onClick={() => removeItem(product)}
                         className="text-red-400 hover:text-red-500 transition"
-                        aria-label="Eliminar producto"
+                        aria-label={t('checkout.removeItem')}
                       >
                         <FaTrashCan className="w-5 h-5" />
                       </button>
@@ -356,9 +471,9 @@ export default function Checkout() {
 
             {normalizedCart.length === 0 && (
               <p className="text-[rgb(var(--color-text))]/60 text-center py-10">
-                Tu carrito está vacío.&nbsp;
+                {t('products.emptyCart')}&nbsp;
                 <Link href="/section/products" className="text-[rgb(var(--color-refautomex))] font-semibold">
-                  Ver Productos
+                  {t('navbar.products')}
                 </Link>
               </p>
             )}
@@ -371,28 +486,28 @@ export default function Checkout() {
             className="bg-[rgb(var(--color-bg))] shadow shadow-[rgb(var(--color-galaxy))] rounded-2xl p-8 will-change-transform transform-gpu"
           >
             <h3 className="text-2xl font-semibold text-[rgb(var(--color-text))] mb-6 text-center">
-              Resumen de compra
+              {t('checkout.summary')}
             </h3>
             <div className="space-y-3 text-[rgb(var(--color-text))]/80">
               <div className="flex justify-between">
-                <span>IVA (16%)</span>
+                <span>{t('checkout.tax')}</span>
                 <span>{currencyFormatter.format(ivaIncluido)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Subtotal</span>
+                <span>{t('checkout.subtotal')}</span>
                 <span>{currencyFormatter.format(subtotalSinIva)}</span>
               </div>
               <div className="border-t border-[rgb(var(--color-text))]/10 my-4"></div>
               <div className="flex justify-between font-semibold text-[rgb(var(--color-text))]">
-                <span>Total</span>
+                <span>{t('checkout.total')}</span>
                 <span className='text-[rgb(var(--color-success))]'>{currencyFormatter.format(total)}</span>
               </div>
               <div className="flex justify-between text-xs text-[rgb(var(--color-text))]/60">
-                <span>Productos diferentes</span>
+                <span>{t('checkout.distinctItems')}</span>
                 <span>{normalizedCart.length}</span>
               </div>
               <div className="flex justify-between text-xs text-[rgb(var(--color-text))]/60">
-                <span>Unidades totales</span>
+                <span>{t('checkout.totalUnits')}</span>
                 <span>{totalUnits}</span>
               </div>
             </div>
@@ -404,8 +519,22 @@ export default function Checkout() {
               className="mt-8 w-full rounded-full bg-[rgb(var(--color-text-base))] text-[rgb(var(--color-text))] font-semibold py-3 px-5 flex items-center justify-center gap-2 hover:bg-[rgb(var(--color-refautomex))] hover:text-[rgb(var(--color-text-base))] transition will-change-transform transform-gpu disabled:opacity-40 disabled:cursor-not-allowed shadow shadow-[rgb(var(--color-galaxy))]"
             >
               <FaCreditCard className="w-5 h-5" />
-              {isLoading ? 'Redirigiendo al pago' : 'Proceder al pago'}
+              {isLoading ? t('checkout.redirecting') : t('checkout.title')}
             </motion.button>
+            {/* Como se vende: solo pago en linea, solo envio a domicilio, y el
+                personal surte y contacta al cliente si algo cambia. */}
+            <ul className="mt-6 space-y-3 text-sm text-[rgb(var(--color-text))]/70">
+              {[
+                [FaLock, 'checkout.payInfo'],
+                [FaTruckFast, 'checkout.shipInfo'],
+                [FaPhone, 'checkout.contactInfo'],
+              ].map(([Icon, key]) => (
+                <li key={key} className="flex items-start gap-3">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-[rgb(var(--color-galaxy))]" aria-hidden="true" />
+                  <span>{t(key)}</span>
+                </li>
+              ))}
+            </ul>
           </motion.div>
         </motion.div>
 
@@ -414,17 +543,17 @@ export default function Checkout() {
         <div className="mt-16 max-w-7xl mx-auto">
           <div className="rounded-3xl bg-[rgb(var(--color-bg))] p-8 shadow shadow-[rgb(var(--color-galaxy))]">
             <h3 className="text-2xl font-semibold linear-text-title text-center">
-              Consulta tu folio
+              {t('checkout.lookupTitle')}
             </h3>
             <p className="mt-2 text-sm text-[rgb(var(--color-text))]/70">
-              Ingresa el folio corto que aparece al finalizar tu pago para conocer el estatus.
+              {t('checkout.lookupHint')}
             </p>
             <form className="mt-6 flex flex-col sm:flex-row gap-4" onSubmit={handleLookup}>
               <input
                 name="folio"
                 value={lookupFolio}
                 onChange={(event) => setLookupFolio(event.target.value.toUpperCase())}
-                placeholder="W-111222333"
+                placeholder={t('checkout.lookupPlaceholder')}
                 className="flex-1 rounded-2xl border border-[rgb(var(--color-text))]/20 bg-transparent px-4 py-3 text-sm text-[rgb(var(--color-text))] focus:border-cyan-400 focus:outline-none uppercase"
               />
               <button
@@ -432,7 +561,7 @@ export default function Checkout() {
                 disabled={isLookupLoading}
                 className="rounded-2xl bg-[rgb(var(--color-text-base))] text-[rgb(var(--color-text))] px-6 py-3 text-sm font-semibold shadow shadow-[rgb(var(--color-galaxy))] transition hover:bg-[rgb(var(--color-refautomex))] hover:text-[rgb(var(--color-text-base))] disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLookupLoading ? 'Buscando…' : 'Ver folio'}
+                {isLookupLoading ? t('checkout.searching') : t('checkout.lookupSubmit')}
               </button>
             </form>
             {lookupError && <p className="mt-4 text-sm text-red-600">{lookupError}</p>}
@@ -441,77 +570,42 @@ export default function Checkout() {
                 <div className="flex flex-wrap justify-between gap-3 border-b border-[rgb(var(--color-text))]/10 pb-4">
                   <div>
                     <p className="text-xs uppercase font-semibold text-[rgb(var(--color-text))]/60">
-                      Folio corto
+                      {t('checkout.shortFolio')}
                     </p>
                     <p className="text-lg font-bold linear-text-title">
                       {lookupResult.friendlyFolio}
                     </p>
-                    <p className="text-xs text-[rgb(var(--color-text))]/50">{lookupResult.id}</p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex rounded-full px-3 py-1 text-xs font-semibold bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text))]">
-                      {lookupResult.paymentStatus === 'paid'
-                        ? 'Pagado'
-                        : lookupResult.paymentStatus === 'unpaid'
-                        ? 'Pendiente'
-                        : 'Otro'}
-                    </span>
-                    {lookupResult.fulfillmentStatus && (
-                      <span className="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold bg-slate-100 text-slate-800">
-                        {(() => {
-                          const stage =
-                            fulfillmentLabels[lookupResult.fulfillmentStatus] ||
-                            fulfillmentLabels.en_proceso;
-                          const Icon = stage.icon;
-                          return (
-                            <>
-                              <Icon className="text-base" />
-                              {stage.label}
-                            </>
-                          );
-                        })()}
-                      </span>
-                    )}
+                  <div className="text-right text-sm text-[rgb(var(--color-text))]/80">
+                    <p className="font-semibold text-[rgb(var(--color-text))]">{t('checkout.amount')}</p>
+                    <p className="tabular-nums">{currencyFormatter.format((lookupResult.amount || 0) / 100)}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-[rgb(var(--color-text))]/80 py-4">
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">Correo</p>
-                    <p>{lookupResult.email || 'Sin registro'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">Monto</p>
-                    <p>{currencyFormatter.format((lookupResult.amount || 0) / 100)}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">
-                      Teléfono
-                    </p>
-                    <p>{lookupResult.contactPhone || 'Sin registro'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-[rgb(var(--color-text))]">
-                      Dirección
-                    </p>
-                    <p>{lookupResult.contactAddress || 'Sin registro'}</p>
-                  </div>
+                <div className="py-4">
+                  <OrderProgress etapa={lookupResult.etapa} paso={lookupResult.paso} />
                 </div>
+                {lookupResult.email && (
+                  <p className="pb-2 text-sm text-[rgb(var(--color-text))]/70">
+                    <span className="font-semibold text-[rgb(var(--color-text))]">{t('account.mail')}: </span>
+                    {lookupResult.email}
+                  </p>
+                )}
                 {lookupResult.fulfillmentNote && (
                   <div className="mt-4 rounded-2xl border border-[rgb(var(--color-text))]/10 bg-[rgb(var(--color-card))] px-4 py-3 text-sm text-[rgb(var(--color-text))]/80">
                     <p className="text-xs uppercase font-semibold text-[rgb(var(--color-text))]/60 mb-1">
-                      Nota
+                      {t('checkout.note')}
                     </p>
                     <p>{lookupResult.fulfillmentNote}</p>
                   </div>
                 )}
                 <div className="py-4 border-t border-[rgb(var(--color-text))]/10">
                   <p className="text-xs font-semibold uppercase text-[rgb(var(--color-text))]/60 mb-2">
-                    Artículos
+                    {t('checkout.items')}
                   </p>
                   <ul className="space-y-2 text-sm text-[rgb(var(--color-text))]/80">
                     {(lookupResult.items ?? []).map((item, idx) => (
                       <li
-                        key={`${lookupResult.id}-item-${idx}`}
+                        key={`${lookupResult.friendlyFolio}-item-${idx}`}
                         className="flex justify-between gap-3"
                       >
                         <span className="font-medium truncate">{item.description}</span>

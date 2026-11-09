@@ -1,1024 +1,676 @@
-import { buildApiUrl } from '@/app/lib/refautomex-api';
-import { useState, useEffect, useMemo, useRef } from 'react';
-import Title from '../title';
+import React, { useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { HiClipboardDocumentList } from 'react-icons/hi2';
-import { FaSearch, FaBox, FaChevronDown } from 'react-icons/fa';
-import { FaMoneyBillTransfer } from 'react-icons/fa6';
-import { FaSignature } from "react-icons/fa";
-import { MdRateReview, MdDeleteForever } from "react-icons/md";
+import {
+    FaBox,
+    FaCircleCheck,
+    FaCircleExclamation,
+    FaClockRotateLeft,
+    FaFileSignature,
+    FaMagnifyingGlass,
+    FaPlus,
+    FaPrint,
+    FaReceipt,
+    FaTrashCan,
+} from 'react-icons/fa6';
+import Title from '../title';
+import PopPortal from '@/app/lib/pop-portal';
+import Sheet, { SheetHeader } from '../stock/sheet';
+import { AuthContext } from '@/app/lib/auth-tracker';
+import { buildApiUrl } from '@/app/lib/refautomex-api';
+import { useTranslation } from '@/app/lib/text/text-provider';
+import { highlightText } from '../sales/find-products';
 import NewCapture from './new-capture';
+import CaptureDetail from './capture-detail';
+import PolicySheet from './policy-sheet';
+import { CAPTURE_HANDOFF_KEY } from './reorder-model';
+import { buildPaymentReceiptHtml, buildReviewHtml, formatCurrency, formatDate, printHtml, todayIso } from './print-docs';
 
-const formatCurrency = (value = 0) => {
-    const numericValue = Number(value) || 0;
-    return numericValue.toLocaleString('es-MX', {
-        style: 'currency',
-        currency: 'MXN'
-    });
+const TOAST_MS = 6000;
+const HISTORY_PAGE = 30;
+const DELETE_TITLE_ID = 'captura-eliminar';
+const CANCEL_TITLE_ID = 'captura-cancelar-poliza';
+
+const isWeb = (branch) => Number(branch.idsucursal) === 1 || String(branch.sucursal || '').trim().toUpperCase() === 'WEB';
+
+const getJson = async (path) => {
+    const response = await fetch(buildApiUrl(path), { cache: 'no-store', headers: { Accept: 'application/json' } });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(data?.details || data?.message || `Error ${response.status}`);
+    return data;
 };
 
-const formatDate = (value) => {
-    if (!value) return '---';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString('es-MX', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric'
-    });
+// El numero de poliza en lo que se busca: "1328", "P-1328", "#1328" o "POLIZA 1328".
+const policyNumber = (term) => {
+    const match = /^(?:P[OÓ]LIZA\s*|P-?\s*|#\s*)?(\d+)$/.exec(term);
+    return match ? Number(match[1]) : null;
 };
 
-const getInvoiceId = (invoice) =>
-    invoice?.idCompra ?? invoice?.idcompra ?? invoice?.id ?? invoice?.folio ?? invoice?.num_factura ?? invoice?.noFactura;
-
-const getProviderId = (record) =>
-    `${record?.idProveedor ?? record?.idproveedor ?? record?.id ?? ''}`;
-
-const getProviderName = (record) =>
-    record?.empresa ?? record?.proveedor ?? '---';
-
-const getInvoiceAmount = (invoice) =>
-    Number(invoice?.total ?? invoice?.monto_total ?? invoice?.importe ?? 0);
-
-const getInvoiceDueDate = (invoice) =>
-    invoice?.fecha_pago ??
-    invoice?.fecha_vencimiento ??
-    invoice?.fecha_venc ??
-    invoice?.fecha_limite ??
-    invoice?.fechaVencimiento ??
-    invoice?.fecha_pago_estimada ??
-    null;
-
-const escapeHtml = (value = '') => {
-    const stringValue = value == null ? '' : value.toString();
-    return stringValue
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
+// Dias de hoy a la fecha de pago: negativo es vencida.
+const daysUntil = (iso) => {
+    if (!iso) return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    const [ty, tm, td] = todayIso().split('-').map(Number);
+    return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(ty, tm - 1, td)) / 86400000);
 };
 
-const buildPrintableHtml = (type, providerGroups, issueDate, logoSrc) => {
-    const docTitle = type === 'revision' ? 'Contra recibos' : 'Póliza de pago';
-    const subtitle = type === 'revision'
-        ? 'Detalle de facturas para revisión interna'
-        : 'Detalle de facturas para póliza de pago';
-    const sanitizedDate = escapeHtml(issueDate);
-    const sanitizedLogo = escapeHtml(logoSrc);
-    const sections = providerGroups.map((group, index) => {
-        const invoiceRows = group.invoices.length
-            ? group.invoices.map((invoice) => {
-                const invoiceNumber = escapeHtml(invoice?.num_factura ?? invoice?.noFactura ?? '---');
-                const purchaseDate = escapeHtml(formatDate(invoice?.fecha_compra ?? invoice?.fecha ?? invoice?.fecha_cap));
-                const dueDate = escapeHtml(formatDate(getInvoiceDueDate(invoice)));
-                const amount = escapeHtml(formatCurrency(getInvoiceAmount(invoice)));
-                return `
-                    <tr>
-                        <td>${invoiceNumber}</td>
-                        <td>${purchaseDate}</td>
-                        <td>${dueDate}</td>
-                        <td class="text-right">${amount}</td>
-                    </tr>
-                `;
-            }).join('')
-            : '<tr><td colspan="4" class="empty">Sin facturas pendientes.</td></tr>';
-        return `
-            <section class="provider-section${index < providerGroups.length - 1 ? ' page-break' : ''}">
-                <div class="provider-header">
-                    <div>
-                        <h2>${escapeHtml(group.providerName)}</h2>
-                        <p>ID ${escapeHtml(group.providerId)} · ${group.invoices.length} ${group.invoices.length === 1 ? 'factura' : 'facturas'}</p>
-                    </div>
-                    <div class="provider-total">
-                        <span>Total a pagar</span>
-                        <strong>${escapeHtml(formatCurrency(group.total))}</strong>
-                    </div>
-                </div>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Factura</th>
-                            <th>Fecha compra</th>
-                            <th>Fecha vencimiento</th>
-                            <th>Importe</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${invoiceRows}
-                    </tbody>
-                </table>
-            </section>
-        `;
-    }).join('');
-
-    return `
-        <!DOCTYPE html>
-        <html lang="es">
-            <head>
-                <meta charSet="utf-8" />
-                <title>${docTitle} · Refautomex</title>
-                <style>
-                    * { box-sizing: border-box; }
-                    body { font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif; margin: 32px; color: #111827; background: #fff; }
-                    .document-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #111827; padding-bottom: 12px; margin-bottom: 24px; }
-                    .logo-block { display: flex; align-items: center; gap: 16px; }
-                    .logo-block img { height: 60px; width: auto; }
-                    .logo-block div { line-height: 1.2; }
-                    .logo-block strong { font-size: 18px; display: block; }
-                    .logo-block span { font-size: 12px; color: #6b7280; }
-                    .meta { text-align: right; font-size: 13px; color: #374151; }
-                    .meta span { font-weight: 600; color: #111827; }
-                    h1 { font-size: 20px; margin-bottom: 16px; }
-                    .provider-section { border: 1px solid #e5e7eb; border-radius: 16px; padding: 16px; margin-bottom: 24px; background: #f8fafc; }
-                    .provider-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-                    .provider-header h2 { margin: 0; font-size: 18px; }
-                    .provider-header p { margin: 0; color: #6b7280; font-size: 13px; }
-                    .provider-total { text-align: right; }
-                    .provider-total span { font-size: 12px; display: block; color: #6b7280; }
-                    .provider-total strong { font-size: 20px; color: #111827; }
-                    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-                    th, td { border: 1px solid #d1d5db; padding: 8px; font-size: 13px; text-align: left; }
-                    th { background: #e5e7eb; font-weight: 600; text-transform: uppercase; font-size: 12px; }
-                    td.text-right { text-align: right; }
-                    .empty { text-align: center; color: #6b7280; padding: 16px 8px; font-style: italic; }
-                    .page-break { page-break-after: always; }
-                    @media print {
-                        body { margin: 12mm; }
-                        .provider-section { page-break-inside: avoid; }
-                    }
-                </style>
-            </head>
-            <body>
-                <header class="document-header">
-                    <div class="logo-block">
-                        <img src="${sanitizedLogo}" alt="Refautomex" />
-                        <div>
-                            <strong>Refacciones Automotrices de México</strong>
-                            <span>Excelencia en Autopartes.</span>
-                        </div>
-                    </div>
-                    <div class="meta">
-                        <div><span>Documento:</span> ${docTitle}</div>
-                        <div><span>Emitido:</span> ${sanitizedDate}</div>
-                    </div>
-                </header>
-                <h1>${subtitle}</h1>
-                ${sections || '<p>No hay proveedores seleccionados para imprimir.</p>'}
-            </body>
-        </html>
-    `;
-};
-
-function ProviderCheckbox({ indeterminate, ...props }) {
-    const checkboxRef = useRef(null);
-    useEffect(() => {
-        if (checkboxRef.current) {
-            checkboxRef.current.indeterminate = Boolean(indeterminate);
-        }
-    }, [indeterminate]);
-    return <input ref={checkboxRef} type="checkbox" {...props} />;
+function DueBadge({ date }) {
+    const { t } = useTranslation();
+    const days = daysUntil(date);
+    if (days === null) return null;
+    const [key, className] = days < 0
+        ? ['overdue', 'bg-[rgb(var(--color-error))]/12']
+        : days <= 7
+            ? (days === 0 ? ['dueToday', 'bg-orange-500/15'] : ['dueSoon', 'bg-amber-400/20'])
+            : ['dueLater', 'bg-[rgb(var(--color-gray))]'];
+    return (
+        <span className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-xs font-semibold ${className}`}>
+            {t(`panel.capture.${key}`, { count: Math.abs(days) })}
+        </span>
+    );
 }
 
-function PurchasesTable({
-    groups,
-    selectedInvoices,
-    onToggleInvoice,
-    onToggleProvider,
-    onEdit,
-    onDelete
-}) {
-    const [expandedProviders, setExpandedProviders] = useState({});
-
-    const toggleExpand = (providerId) => {
-        setExpandedProviders((prev) => ({
-            ...prev,
-            [providerId]: !(prev[providerId] ?? true)
-        }));
-    };
-
-    if (!groups.length) {
-        return (
-            <div className="py-16 text-center text-sm text-[rgb(var(--color-muted))]">
-                No hay compras registradas con los filtros actuales.
-            </div>
-        );
-    }
-
+function Kpi({ label, value, hint, tone = '' }) {
     return (
-        <div className="space-y-4">
-            {groups.map((group) => {
-                const totalInvoices = group.invoices.length;
-                const invoiceIds = group.invoices
-                    .map((invoice) => getInvoiceId(invoice))
-                    .filter(Boolean);
-                const selectedCount = invoiceIds.filter((id) => selectedInvoices.includes(id)).length;
-                const allSelected = totalInvoices > 0 && selectedCount === totalInvoices;
-                const isIndeterminate = selectedCount > 0 && selectedCount < totalInvoices;
-                const isExpanded = expandedProviders[group.providerId] ?? true;
-
-                return (
-                    <div key={group.providerId} className="rounded-2xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] shadow-sm">
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between p-4">
-                            <div className="flex items-center gap-3">
-                                <ProviderCheckbox
-                                    className="accent-[rgb(var(--color-galaxy))]"
-                                    checked={allSelected}
-                                    indeterminate={isIndeterminate}
-                                    onChange={() => onToggleProvider(group.providerId)}
-                                    disabled={totalInvoices === 0}
-                                />
-                                <div>
-                                    <p className="font-semibold text-[rgb(var(--color-text))]">{group.providerName}</p>
-                                    <p className="text-xs text-[rgb(var(--color-muted))]">
-                                        ID {group.providerId} · {totalInvoices} {totalInvoices === 1 ? 'factura' : 'facturas'}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div className="text-right">
-                                    <p className="text-xs text-[rgb(var(--color-muted))]">Total por pagar</p>
-                                    <p className="text-base font-bold text-[rgb(var(--color-text))]">
-                                        {formatCurrency(group.total)}
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => toggleExpand(group.providerId)}
-                                    className="inline-flex items-center rounded-full border border-[rgb(var(--color-border))] p-2 text-[rgb(var(--color-muted))] hover:text-[rgb(var(--color-text))]"
-                                >
-                                    <FaChevronDown className={`transition-transform duration-200 ${isExpanded ? '' : 'rotate-180'}`} />
-                                </button>
-                            </div>
-                        </div>
-                        {isExpanded && (
-                            <div className="border-t border-[rgb(var(--color-border))]">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-sm text-left text-[rgb(var(--color-text))]">
-                                        <thead className="text-xs uppercase bg-[rgb(var(--color-card))]">
-                                            <tr>
-                                                <th className="p-3">Sel.</th>
-                                                <th className="p-3">Factura</th>
-                                                <th className="p-3">Estado</th>
-                                                <th className="p-3">Fecha compra</th>
-                                                <th className="p-3">Fecha vencimiento</th>
-                                                <th className="p-3">Monto</th>
-                                                <th className="p-3 text-center">Acción</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {group.invoices.map((invoice, index) => {
-                                                const realInvoiceId = getInvoiceId(invoice);
-                                                const rowKey = realInvoiceId || `${group.providerId}-${index}`;
-                                                const isSelectable = Boolean(realInvoiceId);
-                                                const isChecked = isSelectable && selectedInvoices.includes(realInvoiceId);
-                                                const amount = getInvoiceAmount(invoice);
-                                                const dueDate = getInvoiceDueDate(invoice);
-                                                const status = invoice?.estado ?? invoice?.status ?? 'Pendiente';
-                                                return (
-                                                    <tr key={rowKey} className="border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-                                                        <td className="p-3">
-                                                            <input
-                                                                type="checkbox"
-                                                                className="accent-[rgb(var(--color-galaxy))]"
-                                                                checked={isChecked}
-                                                                disabled={!isSelectable}
-                                                                onChange={() => isSelectable && onToggleInvoice(realInvoiceId)}
-                                                            />
-                                                        </td>
-                                                        <td className="p-3 font-semibold">
-                                                            {invoice?.num_factura ?? invoice?.noFactura ?? '---'}
-                                                        </td>
-                                                        <td className="p-3">
-                                                            <span className="px-2 py-1 rounded-full text-xs bg-[rgb(var(--color-gray))] text-[rgb(var(--color-text))]">
-                                                                {status}
-                                                            </span>
-                                                        </td>
-                                                        <td className="p-3">{formatDate(invoice?.fecha_compra ?? invoice?.fecha ?? invoice?.fecha_cap)}</td>
-                                                        <td className="p-3">{formatDate(dueDate)}</td>
-                                                        <td className="p-3 font-semibold">{formatCurrency(amount)}</td>
-                                                        <td className="p-3 text-center">
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => onEdit(invoice)}
-                                                                    className="inline-flex items-center rounded-md bg-[rgb(var(--color-galaxy))] px-3 py-1 text-white text-xs font-semibold shadow hover:opacity-85"
-                                                                >
-                                                                    Detalle
-                                                                </button>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => onDelete(invoice)}
-                                                                    className="inline-flex items-center rounded-md bg-red-600 px-3 py-1 text-white text-xs font-semibold shadow hover:bg-red-700"
-                                                                >
-                                                                    <MdDeleteForever />
-                                                                </button>
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                );
-            })}
+        <div className="min-w-0 rounded-2xl bg-[rgb(var(--color-card))] p-3 shadow-sm sm:p-4">
+            <span className="block truncate text-xs font-medium text-[rgb(var(--color-gray-base))]">{label}</span>
+            <span className={`block truncate text-xl font-bold tabular-nums sm:text-2xl ${tone}`}>{value}</span>
+            <span className="block truncate text-xs text-[rgb(var(--color-gray-base))]">{hint}</span>
         </div>
     );
 }
 
-function PoliciesTable({ rows }) {
-    return (
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left text-[rgb(var(--color-text))]">
-                <thead className="text-xs uppercase bg-[rgb(var(--color-card))]">
-                    <tr>
-                        <th className="p-3">No. Póliza</th>
-                        <th className="p-3">Proveedor</th>
-                        <th className="p-3">Tipo pago</th>
-                        <th className="p-3">Fecha póliza</th>
-                        <th className="p-3">Importe</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.length === 0 ? (
-                        <tr>
-                            <td colSpan={5} className="p-4 text-center text-[rgb(var(--color-muted))]">
-                                No hay pólizas registradas.
-                            </td>
-                        </tr>
-                    ) : (
-                        rows.map((policy) => {
-                            const amount = policy?.importe ?? policy?.total ?? policy?.monto_total ?? 0;
-                            const provider = policy?.empresa ?? policy?.proveedor ?? '---';
-                            return (
-                                <tr key={policy?.idPoliza ?? policy?.idpoliza ?? policy?.folio ?? `${provider}-${policy?.fecha}`}
-                                    className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-                                    <td className="p-3 font-semibold">{policy?.idPoliza ?? policy?.idpoliza ?? '---'}</td>
-                                    <td className="p-3">{provider}</td>
-                                    <td className="p-3">{policy?.tipo_pago ?? policy?.tipo ?? '---'}</td>
-                                    <td className="p-3">{formatDate(policy?.fecha_poliza ?? policy?.fecha)}</td>
-                                    <td className="p-3 font-semibold">{formatCurrency(amount)}</td>
-                                </tr>
-                            );
-                        })
-                    )}
-                </tbody>
-            </table>
-        </div>
-    );
-}
+// Lo de alrededor de un valor dentro de un texto traducido ("Póliza {{id}}"),
+// para resaltar solo el valor.
+const around = (text) => text.split('\u0000');
 
-function CaptureDetailView({ header, detail, onBack }) {
-    if (!header) {
-        return (
-            <div className="bg-white/70 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                No se encontró información de la captura seleccionada.
-                <div className="mt-4">
-                    <button
-                        type="button"
-                        onClick={onBack}
-                        className="inline-flex items-center rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-slate-700"
-                    >
-                        Volver
-                    </button>
-                </div>
+function PolicyCard({ policy, onPrint, onCancel, highlighted = false, term = '' }) {
+    const { t } = useTranslation();
+    const via = policy.tipo === 'EFECTIVO'
+        ? t('panel.capture.pay_EFECTIVO')
+        : [t(`panel.capture.pay_${policy.tipo}`), policy.banco, policy.referencia].filter(Boolean).join(' · ');
+    const [policyBefore, policyAfter] = around(t('panel.capture.policyShort', { id: '\u0000' }));
+    const [listBefore, listAfter] = around(t('panel.capture.invoicesList', { count: policy.compras.length, list: '\u0000' }));
+    return (
+        <li className={`flex flex-col gap-3 rounded-2xl bg-[rgb(var(--color-bg))] p-3 sm:flex-row sm:items-center sm:p-4 ${highlighted ? 'ring-2 ring-amber-400' : ''}`}>
+            <div className="min-w-0 flex-1">
+                <p className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-bold">{policyBefore}{highlightText(String(policy.idpoliza), term)}{policyAfter}</span>
+                    <span className="font-semibold">{highlightText(policy.empresa || '—', term)}</span>
+                    <span className="text-sm text-[rgb(var(--color-gray-base))]">{formatDate(policy.fecha_poliza)}</span>
+                </p>
+                <p className="truncate text-sm text-[rgb(var(--color-gray-base))]">{highlightText(via, term)}</p>
+                <p className="truncate text-xs text-[rgb(var(--color-gray-base))]">
+                    {listBefore}{highlightText(policy.compras.map((c) => c.num_factura).join(', '), term)}{listAfter}
+                </p>
             </div>
-        );
-    }
-
-    const totals = [
-        { label: 'Neto', value: formatCurrency(header.neto_total ?? header.netoTotal ?? 0) },
-        { label: 'Descuento', value: formatCurrency(header.descuento_total ?? header.descuentoTotal ?? 0) },
-        { label: 'Subtotal', value: formatCurrency(header.subtotal ?? 0) },
-        { label: 'Total', value: formatCurrency(header.total ?? 0) }
-    ];
-
-    const detailRows = Array.isArray(detail) ? detail : [];
-
-    return (
-        <div className="bg-[rgb(var(--color-card))] rounded-2xl shadow p-6 space-y-6">
-            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between border-b border-[rgb(var(--color-border))] pb-4">
-                <div>
-                    <h2 className="text-2xl font-bold text-[rgb(var(--color-text))]">
-                        Factura {header.num_factura ?? header.no_factura ?? header.factura ?? '---'}
-                    </h2>
-                    <p className="text-sm text-[rgb(var(--color-muted))]">
-                        Proveedor: {header.empresa ?? header.proveedor ?? '---'}
-                    </p>
-                    <p className="text-sm text-[rgb(var(--color-muted))]">
-                        Fecha de compra: {formatDate(header.fecha_compra ?? header.fecha ?? header.fecha_cap)}
-                    </p>
-                </div>
-                <button
-                    type="button"
-                    onClick={onBack}
-                    className="inline-flex items-center rounded-md bg-slate-800 px-4 py-2 text-white text-sm font-semibold shadow hover:bg-slate-700"
-                >
-                    Volver
+            <span className="text-lg font-bold tabular-nums">{formatCurrency(policy.importe)}</span>
+            <div className="flex gap-2">
+                <button type="button" onClick={() => onPrint(policy)} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-[rgb(var(--color-border))] px-3 text-sm font-semibold hover:border-amber-400">
+                    <FaPrint className="size-3.5" aria-hidden="true" />
+                    {t('panel.capture.receiptShort')}
                 </button>
+                {onCancel && (
+                    <button type="button" onClick={() => onCancel(policy)} className="inline-flex h-10 items-center rounded-xl px-3 text-sm font-semibold text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/10">
+                        {t('panel.capture.cancelPolicy')}
+                    </button>
+                )}
             </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {totals.map((item) => (
-                    <div key={item.label} className="rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] p-4">
-                        <p className="text-xs uppercase text-[rgb(var(--color-muted))]">{item.label}</p>
-                        <p className="text-lg font-semibold text-[rgb(var(--color-text))]">{item.value}</p>
-                    </div>
-                ))}
-            </div>
-
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left text-[rgb(var(--color-text))]">
-                    <thead className="text-xs uppercase bg-[rgb(var(--color-card))]">
-                        <tr>
-                            <th className="p-3">Refacción</th>
-                            <th className="p-3">Descripción</th>
-                            <th className="p-3">Cantidad</th>
-                            <th className="p-3">Costo</th>
-                            <th className="p-3">Descuentos</th>
-                            <th className="p-3">Importe</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {detailRows.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="p-4 text-center text-[rgb(var(--color-muted))]">
-                                    No hay detalle registrado para esta captura.
-                                </td>
-                            </tr>
-                        ) : (
-                            detailRows.map((item, index) => {
-                                const ref = item.num_parte ?? item.ref ?? item.refaccion ?? `item-${index}`;
-                                const description = item.descripcion ?? item.detalle ?? '---';
-                                const quantity = item.cantidad ?? item.exis ?? item.existencia ?? item.qty ?? 0;
-                                const cost = Number(item.costo ?? item.costo_actual ?? item.costo_a ?? 0);
-                                const importTotal = Number(item.importe ?? cost * quantity);
-                                const discounts = [item.d1, item.d2, item.d3, item.descuento_uno, item.descuento_dos, item.descuento_tres]
-                                    .filter((value) => Number(value) > 0)
-                                    .map((value) => `${Number(value * 100).toFixed(2)}%`)
-                                    .join(', ') || 'N/A';
-
-                                return (
-                                    <tr key={`${ref}-${index}`} className="border-b border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]">
-                                        <td className="p-3 font-semibold">{ref}</td>
-                                        <td className="p-3">{description}</td>
-                                        <td className="p-3">{quantity}</td>
-                                        <td className="p-3">{formatCurrency(cost)}</td>
-                                        <td className="p-3">{discounts}</td>
-                                        <td className="p-3 font-semibold">{formatCurrency(importTotal)}</td>
-                                    </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </div>
+        </li>
     );
 }
 
+/**
+ * Captura: las facturas de proveedor por pagar y su pago.
+ *
+ * Por pagar: las compras pendientes por proveedor, con su vencimiento (fecha
+ * de compra + plazo del proveedor). Se eligen facturas para imprimir el contra
+ * recibo o pagarlas con una poliza (de un solo proveedor). Polizas: las
+ * pagadas, con su comprobante; cancelar una regresa sus facturas a por pagar.
+ * Historial: las polizas del sistema anterior (2020-2024), solo para consulta.
+ *
+ * Una captura nueva puede llegar armada desde Faltantes (sessionStorage).
+ */
 export default function Capture() {
-    const [purchases, setPurchases] = useState([]);
+    const { t } = useTranslation();
+    const { userData } = useContext(AuthContext);
+    const [pending, setPending] = useState([]);
     const [policies, setPolicies] = useState([]);
+    const [history, setHistory] = useState(null);
+    const [banks, setBanks] = useState([]);
+    const [branches, setBranches] = useState([]);
     const [providers, setProviders] = useState([]);
-    const [providerFilter, setProviderFilter] = useState('0');
-    const [partFilter, setPartFilter] = useState('');
-    const [activeTab, setActiveTab] = useState('purchases');
-    const [selectedInvoices, setSelectedInvoices] = useState([]);
-    const [actionError, setActionError] = useState('');
-    const [actionSuccess, setActionSuccess] = useState('');
-    const [pendingDeleteCapture, setPendingDeleteCapture] = useState(null);
-    const [isDeletingCapture, setIsDeletingCapture] = useState(false);
-    const [isEditing, setIsEditing] = useState(false);
-    const [isAdding, setIsAdding] = useState(false);
-    const [error, setError] = useState(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [captureEditData, setCaptureEditData] = useState(null);
-    const [isLoadingCaptureEdit, setIsLoadingCaptureEdit] = useState(false);
-    const [editCaptureError, setEditCaptureError] = useState(null);
+    const [load, setLoad] = useState({ status: 'loading', message: '' });
+    const [tab, setTab] = useState('pending');
+    const [providerFilter, setProviderFilter] = useState('');
+    const [term, setTerm] = useState('');
+    const searchTerm = useDeferredValue(term.trim().toUpperCase());
+    const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
+    const [selected, setSelected] = useState(() => new Set());
+    const [view, setView] = useState({ type: 'list' });
+    const [paying, setPaying] = useState(false);
+    const [toDelete, setToDelete] = useState(null);
+    const [toCancel, setToCancel] = useState(null);
+    const [busy, setBusy] = useState(false);
+    const [sheetError, setSheetError] = useState('');
+    const [toast, setToast] = useState(null);
+    const toastTimer = useRef(null);
 
-    const today = useMemo(() => new Date().toISOString().split('T')[0], []);
-
-    useEffect(() => {
-        fetchInvoices();
-        fetchProviders();
+    const notify = useCallback((message, error = false) => {
+        clearTimeout(toastTimer.current);
+        setToast({ message, error });
+        toastTimer.current = setTimeout(() => setToast(null), TOAST_MS);
     }, []);
 
-    const fetchInvoices = async () => {
+    useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+    const loadInvoices = useCallback(async () => {
+        setLoad((prev) => ({ ...prev, status: 'loading' }));
         try {
-            setIsLoading(true);
-            const response = await fetch(buildApiUrl('/getInvoicesCaptured'), {
-                cache: 'no-store',
-                headers: { Accept: 'application/json, text/plain, */*' }
-            });
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: ${response.statusText}`);
-            }
-            const data = await response.json();
-            if (Array.isArray(data)) {
-                const [purchaseList, policyList] = data;
-                setPurchases(Array.isArray(purchaseList) ? purchaseList : []);
-                setPolicies(Array.isArray(policyList) ? policyList : []);
-            } else {
-                setPurchases([]);
-                setPolicies([]);
-            }
-            setError(null);
-        } catch (err) {
-            console.error('Error fetching invoices:', err);
-            setError(err.message);
-            setPurchases([]);
-            setPolicies([]);
-        } finally {
-            setIsLoading(false);
+            const [pendientes, polizas] = await getJson('/getInvoicesCaptured');
+            setPending(Array.isArray(pendientes) ? pendientes : []);
+            setPolicies(Array.isArray(polizas) ? polizas : []);
+            setSelected((prev) => new Set([...prev].filter((id) => pendientes.some((p) => p.idcompra === id))));
+            setLoad({ status: 'ready', message: '' });
+        } catch (error) {
+            setLoad({ status: 'error', message: error.message });
         }
-    };
+    }, []);
 
-    const fetchProviders = async () => {
+    useEffect(() => {
+        loadInvoices();
+        getJson('/getBanks').then(setBanks).catch(() => setBanks([]));
+        getJson('/getSucursal').then((rows) => setBranches(rows.filter((b) => !isWeb(b)))).catch(() => setBranches([]));
+        getJson('/getAllProviders').then((rows) => setProviders(rows.filter((p) => p.empresa !== 'NINGUNO'))).catch(() => setProviders([]));
         try {
-            const response = await fetch(buildApiUrl('/getAllProviders'), {
-                cache: 'no-store',
-                headers: { Accept: 'application/json, text/plain, */*' }
+            const handoff = sessionStorage.getItem(CAPTURE_HANDOFF_KEY);
+            if (handoff) {
+                sessionStorage.removeItem(CAPTURE_HANDOFF_KEY);
+                setView({ type: 'new', prefill: JSON.parse(handoff) });
+            }
+        } catch {
+            // Sin almacenamiento no hay pedido que traer.
+        }
+    }, [loadInvoices]);
+
+    useEffect(() => {
+        if (tab !== 'history' || history) return;
+        getJson('/getPolicyHistory').then(setHistory).catch(() => setHistory([]));
+    }, [tab, history]);
+
+    const matches = (values) => !searchTerm || values.some((v) => String(v ?? '').toUpperCase().includes(searchTerm));
+
+    const groups = useMemo(() => {
+        const map = new Map();
+        pending
+            .filter((invoice) => !providerFilter || String(invoice.idproveedor) === providerFilter)
+            .filter((invoice) => matches([invoice.num_factura, invoice.empresa, invoice.sucursal]))
+            .forEach((invoice) => {
+                if (!map.has(invoice.idproveedor)) map.set(invoice.idproveedor, { id: invoice.idproveedor, name: invoice.empresa, invoices: [], total: 0, overdue: 0 });
+                const group = map.get(invoice.idproveedor);
+                group.invoices.push(invoice);
+                group.total += Number(invoice.total);
+                if (daysUntil(invoice.fecha_pago) < 0) group.overdue += 1;
             });
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: ${response.statusText}`);
-            }
-            const payload = await response.json();
-            setProviders(Array.isArray(payload) ? payload : []);
-        } catch (err) {
-            console.error('Error fetching providers:', err);
-        }
+        return [...map.values()].sort((a, b) => b.overdue - a.overdue || b.total - a.total);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [pending, providerFilter, searchTerm]);
+
+    // Una poliza se busca por su numero, sus facturas, el proveedor, el banco o
+    // la referencia. Si lo buscado es un numero de poliza, esa va primero: un
+    // "1328" tambien aparece dentro de folios de factura.
+    const wantedPolicy = policyNumber(searchTerm);
+    // Lo que se resalta: el numero de poliza si se busco asi ("P-1328" -> 1328).
+    const highlightTerm = wantedPolicy === null ? searchTerm : String(wantedPolicy);
+    const filterPolicies = (list) => {
+        const rows = (list || [])
+            .filter((p) => !providerFilter || String(p.idproveedor) === providerFilter)
+            .filter((p) => p.idpoliza === wantedPolicy
+                || matches([p.idpoliza, p.empresa, t(`panel.capture.pay_${p.tipo}`), p.banco, p.referencia, ...p.compras.map((c) => c.num_factura)]));
+        return wantedPolicy === null ? rows : [...rows].sort((a, b) => (b.idpoliza === wantedPolicy) - (a.idpoliza === wantedPolicy));
     };
+    const visiblePolicies = useMemo(() => filterPolicies(policies), [policies, providerFilter, searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+    const visibleHistory = useMemo(() => filterPolicies(history), [history, providerFilter, searchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const filteredPurchases = useMemo(() => {
-        const byProvider = providerFilter;
-        const term = partFilter.trim().toLowerCase();
-        return purchases.filter((invoice) => {
-            const providerId = getProviderId(invoice);
-            const matchesProvider = byProvider === '0' || providerId === byProvider;
-            const searchable = [
-                invoice?.num_factura,
-                invoice?.noFactura,
-                invoice?.empresa,
-                invoice?.proveedor,
-                invoice?.refaccion,
-                invoice?.num_parte
-            ].filter(Boolean);
-            const matchesTerm = !term || searchable.some((value) =>
-                value?.toString().toLowerCase().includes(term)
-            );
-            return matchesProvider && matchesTerm;
+    const kpis = useMemo(() => {
+        const sum = (list) => list.reduce((acc, i) => acc + Number(i.total), 0);
+        const overdue = pending.filter((i) => daysUntil(i.fecha_pago) < 0);
+        const week = pending.filter((i) => {
+            const d = daysUntil(i.fecha_pago);
+            return d !== null && d >= 0 && d <= 7;
         });
-    }, [purchases, providerFilter, partFilter]);
-
-    const filteredPolicies = useMemo(() => {
-        const term = partFilter.trim().toLowerCase();
-        return policies.filter((policy) => {
-            const providerId = `${policy?.idProveedor ?? policy?.idproveedor ?? ''}`;
-            const matchesProvider = providerFilter === '0' || providerId === providerFilter;
-            const searchable = [policy?.idPoliza, policy?.empresa, policy?.proveedor];
-            const matchesTerm = !term || searchable.some((value) =>
-                value?.toString().toLowerCase().includes(term)
-            );
-            return matchesProvider && matchesTerm;
-        });
-    }, [policies, providerFilter, partFilter]);
-
-    const groupedPurchases = useMemo(() => {
-        const groups = new Map();
-        filteredPurchases.forEach((invoice) => {
-            const providerName = getProviderName(invoice);
-            const providerId = getProviderId(invoice) || `sin-id-${providerName}`;
-            if (!groups.has(providerId)) {
-                groups.set(providerId, {
-                    providerId,
-                    providerName,
-                    invoices: [],
-                    total: 0
-                });
-            }
-            const group = groups.get(providerId);
-            group.invoices.push(invoice);
-            group.total += getInvoiceAmount(invoice);
-        });
-        return Array.from(groups.values());
-    }, [filteredPurchases]);
-
-    const purchaseTotal = groupedPurchases.reduce((acc, group) => acc + group.total, 0);
-
-    const toggleInvoiceSelection = (invoiceId) => {
-        setActionError('');
-        setActionSuccess('');
-        setSelectedInvoices((prev) =>
-            prev.includes(invoiceId)
-                ? prev.filter((id) => id !== invoiceId)
-                : [...prev, invoiceId]
-        );
-    };
-
-    const toggleProviderSelection = (providerId) => {
-        setActionError('');
-        setActionSuccess('');
-        const providerGroup = groupedPurchases.find((group) => group.providerId === providerId);
-        if (!providerGroup) return;
-        const invoiceIds = providerGroup.invoices
-            .map((invoice) => getInvoiceId(invoice))
-            .filter(Boolean);
-        if (!invoiceIds.length) return;
-        setSelectedInvoices((prev) => {
-            const hasAll = invoiceIds.every((id) => prev.includes(id));
-            if (hasAll) {
-                return prev.filter((id) => !invoiceIds.includes(id));
-            }
-            const merged = new Set([...prev, ...invoiceIds]);
-            return Array.from(merged);
-        });
-    };
-
-    const handlePrintDocument = (type) => {
-        setActionError('');
-        setActionSuccess('');
-        if (!selectedInvoices.length) {
-            setActionError('Selecciona al menos un proveedor para imprimir.');
-            return;
-        }
-        const providersForPrint = groupedPurchases.filter((group) =>
-            group.invoices.some((invoice) => selectedInvoices.includes(getInvoiceId(invoice)))
-        );
-        if (!providersForPrint.length) {
-            setActionError('No se encontraron proveedores asociados a tu selección.');
-            return;
-        }
-        if (typeof window === 'undefined') {
-            setActionError('La impresión solo está disponible en el navegador.');
-            return;
-        }
-        const issueDate = new Date().toLocaleString('es-MX', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-        const baseLogo = process.env.NEXT_PUBLIC_S3 || '';
-        const normalizedBase = baseLogo ? (baseLogo.endsWith('/') ? baseLogo : `${baseLogo}/`) : '';
-        const logoSrc = normalizedBase ? `${normalizedBase}refautomex_bn.svg` : '/file.svg';
-        const html = buildPrintableHtml(type, providersForPrint, issueDate, logoSrc);
-        const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=900,height=700');
-        if (!printWindow) {
-            setActionError('No se pudo abrir la ventana de impresión. Habilita los pop-ups e inténtalo nuevamente.');
-            return;
-        }
-        printWindow.document.write(html);
-        printWindow.document.close();
-        const triggerPrint = () => {
-            printWindow.focus();
-            printWindow.print();
-            printWindow.close();
+        const month = todayIso().slice(0, 7);
+        const paidMonth = policies.filter((p) => String(p.fecha_poliza).startsWith(month));
+        return {
+            pending: { amount: sum(pending), count: pending.length },
+            overdue: { amount: sum(overdue), count: overdue.length },
+            week: { amount: sum(week), count: week.length },
+            paid: { amount: paidMonth.reduce((acc, p) => acc + Number(p.importe), 0), count: paidMonth.length },
         };
-        if (printWindow.document.readyState === 'complete') {
-            triggerPrint();
-        } else {
-            printWindow.onload = triggerPrint;
+    }, [pending, policies]);
+
+    const selectedInvoices = pending.filter((invoice) => selected.has(invoice.idcompra));
+    const selectedProviders = new Set(selectedInvoices.map((invoice) => invoice.idproveedor));
+    const selectedTotal = selectedInvoices.reduce((acc, invoice) => acc + Number(invoice.total), 0);
+
+    const toggle = (id) => setSelected((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+    });
+
+    const toggleGroup = (group) => setSelected((prev) => {
+        const ids = group.invoices.map((invoice) => invoice.idcompra);
+        const all = ids.every((id) => prev.has(id));
+        const next = new Set(prev);
+        ids.forEach((id) => (all ? next.delete(id) : next.add(id)));
+        return next;
+    });
+
+    const payGroup = (group) => {
+        setSelected(new Set(group.invoices.map((invoice) => invoice.idcompra)));
+        setPaying(true);
+    };
+
+    const printReview = () => {
+        const byProvider = new Map();
+        selectedInvoices.forEach((invoice) => {
+            if (!byProvider.has(invoice.idproveedor)) byProvider.set(invoice.idproveedor, { name: invoice.empresa, invoices: [], total: 0 });
+            const group = byProvider.get(invoice.idproveedor);
+            group.invoices.push(invoice);
+            group.total += Number(invoice.total);
+        });
+        if (!printHtml(buildReviewHtml([...byProvider.values()], t))) notify(t('panel.capture.printPopupBlocked'), true);
+    };
+
+    const printReceipt = (policy) => {
+        if (!printHtml(buildPaymentReceiptHtml(policy, t))) notify(t('panel.capture.printPopupBlocked'), true);
+    };
+
+    const openDetail = async (idcompra) => {
+        setView({ type: 'loading' });
+        try {
+            const data = await getJson(`/getCaptureWithDetails?id=${idcompra}`);
+            setView({ type: 'detail', data });
+        } catch (error) {
+            setView({ type: 'list' });
+            notify(error.message, true);
         }
     };
 
-    const handleEdit = async (invoice) => {
-        const invoiceId = getInvoiceId(invoice);
-        if (!invoiceId) return;
-        setIsEditing(true);
-        setIsAdding(false);
-        setActionError('');
-        setActionSuccess('');
-        setCaptureEditData(null);
-        setEditCaptureError(null);
-        setIsLoadingCaptureEdit(true);
+    const confirmDelete = async () => {
+        setBusy(true);
+        setSheetError('');
         try {
-            const response = await fetch(buildApiUrl(`/getCaptureWithDetails?id=${invoiceId}`), {
-                cache: 'no-store',
-                headers: { Accept: 'application/json, text/plain, */*' }
-            });
-            if (!response.ok) {
-                throw new Error(`Error ${response.status}: ${response.statusText}`);
-            }
-            const data = await response.json();
-            if (data.success === false || !data.header) {
-                throw new Error(data.message || 'No se pudo obtener la captura seleccionada.');
-            }
-            setCaptureEditData(data);
-        } catch (err) {
-            console.error('Error loading capture detail:', err);
-            setEditCaptureError(err.message);
-        } finally {
-            setIsLoadingCaptureEdit(false);
-        }
-    };
-
-    const requestDeleteCapture = (invoice) => {
-        setActionError('');
-        setActionSuccess('');
-        setPendingDeleteCapture(invoice);
-    };
-
-    const cancelDeleteCapture = () => {
-        if (isDeletingCapture) return;
-        setPendingDeleteCapture(null);
-    };
-
-    const confirmDeleteCapture = async () => {
-        if (!pendingDeleteCapture) return;
-        const invoiceId = getInvoiceId(pendingDeleteCapture);
-        if (!invoiceId) return;
-        try {
-            setIsDeletingCapture(true);
             const response = await fetch(buildApiUrl('/deleteCapture'), {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: invoiceId })
+                body: JSON.stringify({ id: toDelete.idcompra }),
             });
             const payload = await response.json().catch(() => ({}));
-            if (!response.ok || payload?.success === false) {
-                throw new Error(payload?.message || 'No fue posible eliminar la captura.');
-            }
-            setActionSuccess('Captura eliminada correctamente.');
-            setSelectedInvoices((prev) => prev.filter((id) => id !== invoiceId));
-            setPendingDeleteCapture(null);
-            await fetchInvoices();
+            if (!response.ok || payload.success === false) throw new Error(payload.message || t('panel.capture.deleteError'));
+            setToDelete(null);
+            setView({ type: 'list' });
+            notify(payload.sinSucursal ? t('panel.capture.deleteOkNoStock') : t('panel.capture.deleteOk'));
+            loadInvoices();
         } catch (error) {
-            console.error('Error deleting capture:', error);
-            setActionError(error.message || 'No fue posible eliminar la captura.');
+            setSheetError(error.message);
         } finally {
-            setIsDeletingCapture(false);
+            setBusy(false);
         }
     };
 
-    const handleNewCapture = () => {
-        setIsAdding(true);
-        setIsEditing(false);
-        setActionError('');
-        setActionSuccess('');
+    const confirmCancel = async () => {
+        setBusy(true);
+        setSheetError('');
+        try {
+            const response = await fetch(buildApiUrl('/deletePolicy'), {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ idpoliza: toCancel.idpoliza }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.details || t('panel.capture.cancelError'));
+            setToCancel(null);
+            notify(t('panel.capture.cancelOk', { id: toCancel.idpoliza, count: payload.compras }));
+            loadInvoices();
+        } catch (error) {
+            setSheetError(error.message);
+        } finally {
+            setBusy(false);
+        }
     };
 
-    const onCancelEdit = () => {
-        setIsEditing(false);
-        setIsAdding(false);
-        setCaptureEditData(null);
-        setIsLoadingCaptureEdit(false);
-        setEditCaptureError(null);
-        setActionError('');
-        setActionSuccess('');
-        fetchInvoices();
+    const backToList = (refresh = false) => {
+        setView({ type: 'list' });
+        if (refresh) loadInvoices();
     };
 
-    const selectableProviders = useMemo(() => {
-        return providers.filter((provider) => {
-            const providerId = `${provider.idproveedor ?? provider.idProveedor ?? provider.id ?? ''}`;
-            return providerId && providerId !== '0';
-        });
-    }, [providers]);
-
-    const showMainView = !isEditing && !isAdding;
+    const defaultBranchId = (branches.find((b) => String(b.idsucursal) === String(userData?.idsucursal)) || branches[0])?.idsucursal;
+    const tabs = [
+        { id: 'pending', icon: FaReceipt, label: t('panel.capture.tabPending'), count: pending.length },
+        { id: 'policies', icon: FaFileSignature, label: t('panel.capture.tabPolicies'), count: policies.length },
+        { id: 'history', icon: FaClockRotateLeft, label: t('panel.capture.tabHistory'), count: history?.length ?? null },
+    ];
 
     return (
-        <div className="bg-gradient-to-b min-h-screen from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] backdrop-blur-md pt-28">
-            <Title
-                title="Reporte de compras"
-                icon={HiClipboardDocumentList}
-                back="Volver al panel"
-                path="/productivity"
+        <div className="min-h-screen bg-gradient-to-b from-[rgb(var(--color-bg))] via-[rgb(var(--color-card))] to-[rgb(var(--color-gray))] pb-28 pt-28">
+            <Title title={t('panel.capture.pageTitle')} icon={HiClipboardDocumentList} back={t('panel.common.back')} path="/productivity" />
+
+            {(view.type === 'new' || view.type === 'edit') && (
+                <div className="mx-auto max-w-[1700px]">
+                    <NewCapture
+                        branches={branches}
+                        defaultBranchId={defaultBranchId}
+                        captureToEdit={view.type === 'edit' ? view.data : null}
+                        prefill={view.prefill}
+                        onCancelEdit={() => backToList(true)}
+                    />
+                </div>
+            )}
+
+            {view.type === 'loading' && (
+                <p className="mx-auto mt-6 max-w-7xl px-4 text-center text-sm text-[rgb(var(--color-gray-base))]">{t('panel.capture.loadingDetail')}</p>
+            )}
+
+            {view.type === 'detail' && (
+                <div className="mx-auto mt-6 max-w-7xl px-2 sm:px-4 xl:px-8">
+                    <CaptureDetail
+                        header={view.data.header}
+                        detail={view.data.detail}
+                        onBack={() => backToList()}
+                        onEdit={() => setView({ type: 'edit', data: view.data })}
+                        onDelete={() => setToDelete(view.data.header)}
+                    />
+                </div>
+            )}
+
+            {view.type === 'list' && (
+                <div className="mx-auto mt-5 max-w-7xl space-y-4 px-2 sm:px-4 xl:px-8">
+                    <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+                        <Kpi label={t('panel.capture.kpiPending')} value={formatCurrency(kpis.pending.amount)} hint={t('panel.capture.kpiInvoices', { count: kpis.pending.count })} />
+                        <Kpi label={t('panel.capture.kpiOverdue')} value={formatCurrency(kpis.overdue.amount)} hint={t('panel.capture.kpiInvoices', { count: kpis.overdue.count })} tone={kpis.overdue.count ? 'text-[rgb(var(--color-error))]' : ''} />
+                        <Kpi label={t('panel.capture.kpiWeek')} value={formatCurrency(kpis.week.amount)} hint={t('panel.capture.kpiInvoices', { count: kpis.week.count })} />
+                        <Kpi label={t('panel.capture.kpiPaid')} value={formatCurrency(kpis.paid.amount)} hint={t('panel.capture.kpiPolicies', { count: kpis.paid.count })} />
+                    </div>
+
+                    <section className="flex flex-wrap items-end gap-3 rounded-2xl bg-[rgb(var(--color-card))] p-3 shadow shadow-[rgb(var(--color-galaxy))] sm:p-4">
+                        <label className="block min-w-48 flex-1 sm:flex-none">
+                            <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-[rgb(var(--color-gray-base))]">{t('panel.capture.provider')}</span>
+                            <select
+                                value={providerFilter}
+                                onChange={(e) => {
+                                    setProviderFilter(e.target.value);
+                                    setSelected(new Set());
+                                }}
+                                className="h-11 w-full rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] px-3 font-semibold focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            >
+                                <option value="">{t('panel.capture.allProviders')}</option>
+                                {providers.map((p) => <option key={p.idproveedor} value={p.idproveedor}>{p.empresa}</option>)}
+                            </select>
+                        </label>
+                        <label className="relative block min-w-0 flex-1">
+                            <span className="sr-only">{t(tab === 'pending' ? 'panel.capture.searchPending' : 'panel.capture.searchPolicies')}</span>
+                            <FaMagnifyingGlass className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[rgb(var(--color-gray-base))]" aria-hidden="true" />
+                            <input
+                                type="search"
+                                value={term}
+                                onChange={(e) => setTerm(e.target.value)}
+                                placeholder={t(tab === 'pending' ? 'panel.capture.searchPending' : 'panel.capture.searchPolicies')}
+                                className="h-11 w-full rounded-xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-bg))] pl-10 pr-3 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                            />
+                        </label>
+                        <button
+                            type="button"
+                            onClick={() => setView({ type: 'new' })}
+                            className="inline-flex h-11 items-center gap-2 rounded-xl bg-amber-500 px-4 font-semibold text-slate-900 shadow hover:bg-amber-400"
+                        >
+                            <FaPlus className="size-3.5" aria-hidden="true" />
+                            {t('panel.capture.newCapture')}
+                        </button>
+                    </section>
+
+                    <section className="space-y-3 rounded-2xl bg-[rgb(var(--color-card))] p-3 shadow shadow-[rgb(var(--color-galaxy))] sm:p-4">
+                        <div role="tablist" aria-label={t('panel.capture.title')} className="grid grid-cols-3 gap-1 rounded-xl bg-[rgb(var(--color-bg))] p-1">
+                            {tabs.map(({ id, icon: Icon, label, count }) => (
+                                <button
+                                    key={id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={tab === id}
+                                    onClick={() => setTab(id)}
+                                    className={`flex min-h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold transition ${tab === id ? 'bg-amber-500 text-slate-900 shadow' : 'text-[rgb(var(--color-gray-base))] hover:text-[rgb(var(--color-text))]'}`}
+                                >
+                                    <Icon className="size-3.5 shrink-0" aria-hidden="true" />
+                                    <span className="truncate">{label}</span>
+                                    {count !== null && <span className={`shrink-0 rounded-full px-1.5 text-xs tabular-nums ${tab === id ? 'bg-slate-900/15' : 'bg-[rgb(var(--color-gray))]'}`}>{count.toLocaleString('es-MX')}</span>}
+                                </button>
+                            ))}
+                        </div>
+
+                        {load.status === 'error' && (
+                            <div role="alert" className="flex flex-col items-center gap-3 p-6 text-center">
+                                <FaCircleExclamation className="size-6 text-[rgb(var(--color-error))]" aria-hidden="true" />
+                                <p className="text-sm">{load.message}</p>
+                                <button type="button" onClick={loadInvoices} className="h-11 rounded-xl bg-amber-500 px-5 font-semibold text-slate-900 shadow">{t('panel.common.retry')}</button>
+                            </div>
+                        )}
+
+                        {tab === 'pending' && load.status !== 'error' && (
+                            groups.length === 0 ? (
+                                <p className="flex flex-col items-center gap-2 py-12 text-center text-sm text-[rgb(var(--color-gray-base))]">
+                                    <FaCircleCheck className="size-6 text-[rgb(var(--color-success))]" aria-hidden="true" />
+                                    {load.status === 'loading' ? t('panel.capture.loading') : t('panel.capture.noPending')}
+                                </p>
+                            ) : (
+                                <ul className="space-y-3">
+                                    {groups.map((group) => {
+                                        const ids = group.invoices.map((invoice) => invoice.idcompra);
+                                        const count = ids.filter((id) => selected.has(id)).length;
+                                        return (
+                                            <li key={group.id} className="overflow-hidden rounded-2xl bg-[rgb(var(--color-bg))]">
+                                                <div className="flex flex-wrap items-center gap-3 p-3 sm:p-4">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={count === ids.length}
+                                                        ref={(el) => {
+                                                            if (el) el.indeterminate = count > 0 && count < ids.length;
+                                                        }}
+                                                        onChange={() => toggleGroup(group)}
+                                                        aria-label={t('panel.capture.selectProvider', { provider: group.name })}
+                                                        className="size-5 accent-amber-500"
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="truncate font-bold">{highlightText(group.name, searchTerm)}</p>
+                                                        <p className="text-xs text-[rgb(var(--color-gray-base))]">
+                                                            {t('panel.capture.kpiInvoices', { count: group.invoices.length })}
+                                                            {group.overdue > 0 && ` · ${t('panel.capture.overdueCount', { count: group.overdue })}`}
+                                                        </p>
+                                                    </div>
+                                                    <span className="text-lg font-bold tabular-nums">{formatCurrency(group.total)}</span>
+                                                    <button type="button" onClick={() => payGroup(group)} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-[rgb(var(--color-border))] px-3 text-sm font-semibold hover:border-amber-400">
+                                                        <FaFileSignature className="size-3.5" aria-hidden="true" />
+                                                        {t('panel.capture.payAll')}
+                                                    </button>
+                                                </div>
+                                                <ul className="divide-y divide-[rgb(var(--color-border))] border-t border-[rgb(var(--color-border))]">
+                                                    {group.invoices.map((invoice) => (
+                                                        <li key={invoice.idcompra} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 sm:px-4">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selected.has(invoice.idcompra)}
+                                                                onChange={() => toggle(invoice.idcompra)}
+                                                                aria-label={t('panel.capture.selectInvoice', { invoice: invoice.num_factura })}
+                                                                className="size-5 accent-amber-500"
+                                                            />
+                                                            <button type="button" onClick={() => openDetail(invoice.idcompra)} className="min-w-0 flex-1 text-left">
+                                                                <span className="block truncate font-semibold hover:underline">{highlightText(invoice.num_factura, searchTerm)}</span>
+                                                                <span className="block truncate text-xs text-[rgb(var(--color-gray-base))]">
+                                                                    {formatDate(invoice.fecha_compra)} · {highlightText(invoice.sucursal || t('panel.capture.noBranch'), searchTerm)} · {t('panel.capture.lines', { count: invoice.renglones })}
+                                                                </span>
+                                                            </button>
+                                                            <span className="text-right text-xs text-[rgb(var(--color-gray-base))]">
+                                                                <DueBadge date={invoice.fecha_pago} />
+                                                                <span className="block">{formatDate(invoice.fecha_pago)}</span>
+                                                            </span>
+                                                            <span className="w-28 text-right font-semibold tabular-nums">{formatCurrency(invoice.total)}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSheetError('');
+                                                                    setToDelete(invoice);
+                                                                }}
+                                                                aria-label={t('panel.capture.deleteInvoice', { invoice: invoice.num_factura })}
+                                                                title={t('panel.common.delete')}
+                                                                className="grid size-9 place-items-center rounded-full text-[rgb(var(--color-error))] hover:bg-[rgb(var(--color-error))]/10"
+                                                            >
+                                                                <FaTrashCan className="size-3.5" aria-hidden="true" />
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </li>
+                                        );
+                                    })}
+                                </ul>
+                            )
+                        )}
+
+                        {tab === 'policies' && load.status !== 'error' && (
+                            visiblePolicies.length === 0 ? (
+                                <p className="py-12 text-center text-sm text-[rgb(var(--color-gray-base))]">{t('panel.capture.noPolicies')}</p>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {visiblePolicies.map((policy) => (
+                                        <PolicyCard
+                                            key={policy.idpoliza}
+                                            policy={policy}
+                                            highlighted={policy.idpoliza === wantedPolicy}
+                                            term={highlightTerm}
+                                            onPrint={printReceipt}
+                                            onCancel={(p) => {
+                                                setSheetError('');
+                                                setToCancel(p);
+                                            }}
+                                        />
+                                    ))}
+                                </ul>
+                            )
+                        )}
+
+                        {tab === 'history' && (
+                            history === null ? (
+                                <p className="py-12 text-center text-sm text-[rgb(var(--color-gray-base))]">{t('panel.capture.loading')}</p>
+                            ) : (
+                                <>
+                                    <p className="text-xs text-[rgb(var(--color-gray-base))]">{t('panel.capture.historyHint')}</p>
+                                    <ul className="space-y-2">
+                                        {visibleHistory.slice(0, historyLimit).map((policy) => (
+                                            <PolicyCard key={policy.idpoliza} policy={policy} onPrint={printReceipt} highlighted={policy.idpoliza === wantedPolicy} term={highlightTerm} />
+                                        ))}
+                                    </ul>
+                                    {visibleHistory.length === 0 && <p className="py-8 text-center text-sm text-[rgb(var(--color-gray-base))]">{t('panel.capture.noHistory')}</p>}
+                                    {visibleHistory.length > historyLimit && (
+                                        <button type="button" onClick={() => setHistoryLimit((n) => n + HISTORY_PAGE)} className="h-11 w-full rounded-xl text-sm font-semibold text-[rgb(var(--color-gray-base))] hover:bg-[rgb(var(--color-text))]/10">
+                                            {t('panel.inventories.showMore', { shown: historyLimit, total: visibleHistory.length.toLocaleString('es-MX') })}
+                                        </button>
+                                    )}
+                                </>
+                            )
+                        )}
+                    </section>
+                </div>
+            )}
+
+            {view.type === 'list' && selectedInvoices.length > 0 && (
+                <PopPortal>
+                    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex justify-center px-3">
+                        <div className="pointer-events-auto flex w-full max-w-3xl flex-wrap items-center gap-2 rounded-2xl bg-[rgb(var(--color-text))] px-4 py-3 text-[rgb(var(--color-bg))] shadow-2xl">
+                            <div className="min-w-0 flex-1">
+                                <p className="font-semibold">{t('panel.capture.selection', { count: selectedInvoices.length, amount: formatCurrency(selectedTotal) })}</p>
+                                {selectedProviders.size > 1 && <p className="text-xs opacity-75">{t('panel.capture.oneProviderHint')}</p>}
+                            </div>
+                            <button type="button" onClick={() => setSelected(new Set())} className="h-10 rounded-xl px-3 text-sm font-semibold opacity-80 hover:opacity-100">
+                                {t('panel.capture.clearSelection')}
+                            </button>
+                            <button type="button" onClick={printReview} className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-[rgb(var(--color-bg))]/30 px-3 text-sm font-semibold hover:bg-[rgb(var(--color-bg))]/10">
+                                <FaPrint className="size-3.5" aria-hidden="true" />
+                                {t('panel.capture.review')}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setPaying(true)}
+                                disabled={selectedProviders.size !== 1}
+                                className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-amber-500 px-4 text-sm font-semibold text-slate-900 shadow hover:bg-amber-400 disabled:opacity-50"
+                            >
+                                <FaFileSignature className="size-3.5" aria-hidden="true" />
+                                {t('panel.capture.pay')}
+                            </button>
+                        </div>
+                    </div>
+                </PopPortal>
+            )}
+
+            <PolicySheet
+                open={paying}
+                invoices={selectedInvoices}
+                providerName={selectedInvoices[0]?.empresa || ''}
+                banks={banks}
+                onBankCreated={(bank) => setBanks((prev) => [...prev, bank].sort((a, b) => a.banco.localeCompare(b.banco)))}
+                onClose={() => setPaying(false)}
+                onPaid={() => {
+                    setSelected(new Set());
+                    loadInvoices();
+                }}
             />
 
-            {showMainView && (
-                <div className="mx-auto max-w-7xl px-4 lg:px-8 mt-6 space-y-6">
-                    <div className="bg-[rgb(var(--color-card))] rounded-2xl shadow shadow-[rgb(var(--color-galaxy))] p-4 sm:p-6">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <div>
-                                <label className="block text-xs text-[rgb(var(--color-muted))] mb-1">
-                                    Proveedor
-                                </label>
-                                <select
-                                    className="w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] p-2 text-sm"
-                                    value={providerFilter}
-                                    onChange={(event) => {
-                                        setProviderFilter(event.target.value);
-                                        setSelectedInvoices([]);
-                                        setActionError('');
-                                        setActionSuccess('');
-                                    }}
-                                >
-                                    <option value="0">Todos los proveedores</option>
-                                    {selectableProviders.map((provider) => (
-                                        <option key={provider.id || provider.idproveedor}
-                                            value={provider.idproveedor ?? provider.idProveedor ?? provider.id}>
-                                            {(provider.idproveedor ?? provider.idProveedor ?? provider.id) + ' | ' + provider.empresa}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-xs text-[rgb(var(--color-text))] mb-1">
-                                    Factura
-                                </label>
-                                <div className="relative">
-                                    <FaSearch className="absolute left-2 top-1/2 -translate-y-1/2 text-[rgb(var(--color-muted))]" />
-                                    <input
-                                        type="text"
-                                        className="w-full rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] pl-8 pr-3 py-2 text-sm"
-                                        value={partFilter}
-                                        placeholder="Busca por folio, proveedor o refacción"
-                                    onChange={(event) => {
-                                        setPartFilter(event.target.value);
-                                        setActionError('');
-                                        setActionSuccess('');
-                                    }}
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-xs text-[rgb(var(--color-muted))] mb-1">
-                                    Fecha
-                                </label>
-                                <div className="h-10 flex items-center rounded-md border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] px-3 text-sm">
-                                    {formatDate(today)}
-                                </div>
-                            </div>
-                            <div className="flex items-end justify-end gap-2">
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center rounded-md shadow bg-[rgb(var(--color-gray))] px-3 py-2 text-xs font-semibold text-[rgb(var(--color-text))] shadow-[rgb(var(--color-galaxy))]"
-                                    disabled={selectedInvoices.length === 0}
-                                    onClick={() => handlePrintDocument('revision')}
-                                >
-                                    <MdRateReview className="mr-1" /> Revisión
-                                </button>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center rounded-md shadow bg-[rgb(var(--color-gray))] px-3 py-2 text-xs font-semibold text-[rgb(var(--color-text))] shadow-[rgb(var(--color-galaxy))]"
-                                    disabled={selectedInvoices.length === 0}
-                                    onClick={() => handlePrintDocument('policy')}
-                                >
-                                    <FaSignature className="mr-1" /> Póliza
-                                </button>
-                                <button
-                                    type="button"
-                                    className="inline-flex items-center rounded-md bg-[rgb(var(--color-amber))] px-3 py-2 text-xs font-semibold text-white shadow"
-                                    onClick={handleNewCapture}
-                                >
-                                    <FaBox className="mr-1" /> Captura
-                                </button>
-                            </div>
-                    </div>
+            <Sheet isOpen={Boolean(toDelete)} onClose={() => !busy && setToDelete(null)} locked={busy} labelledBy={DELETE_TITLE_ID}>
+                <SheetHeader
+                    icon={FaTrashCan}
+                    title={t('panel.capture.deleteTitleInvoice', { invoice: toDelete?.num_factura || '' })}
+                    titleId={DELETE_TITLE_ID}
+                    subtitle={t('panel.capture.deleteHintStock')}
+                    onClose={() => setToDelete(null)}
+                    closeDisabled={busy}
+                />
+                {sheetError && <p role="alert" className="rounded-xl bg-[rgb(var(--color-error))]/10 px-3 py-2 text-sm text-[rgb(var(--color-error))]">{sheetError}</p>}
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setToDelete(null)} disabled={busy} className="h-11 rounded-xl px-4 font-semibold hover:bg-[rgb(var(--color-text))]/10">{t('panel.common.cancel')}</button>
+                    <button type="button" onClick={confirmDelete} disabled={busy} className="h-11 rounded-xl bg-red-600 px-5 font-semibold text-white shadow hover:bg-red-500 disabled:opacity-60">
+                        {busy ? t('panel.common.deleting') : t('panel.common.delete')}
+                    </button>
                 </div>
+            </Sheet>
 
-                    {(actionSuccess || actionError) && (
-                        <div className={`rounded-2xl border px-4 py-3 text-sm font-semibold shadow-sm ${actionSuccess
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-amber-200 bg-amber-50 text-amber-700'
-                        }`}>
-                            <div className="flex items-center gap-2">
-                                <span className={`inline-flex h-2.5 w-2.5 rounded-full ${actionSuccess ? 'bg-emerald-500' : 'bg-amber-500'}`} />
-                                <span>{actionSuccess || actionError}</span>
-                            </div>
-                        </div>
-                    )}
+            <Sheet isOpen={Boolean(toCancel)} onClose={() => !busy && setToCancel(null)} locked={busy} labelledBy={CANCEL_TITLE_ID}>
+                <SheetHeader
+                    icon={FaBox}
+                    title={t('panel.capture.cancelTitle', { id: toCancel?.idpoliza || '' })}
+                    titleId={CANCEL_TITLE_ID}
+                    subtitle={t('panel.capture.cancelHint', { count: toCancel?.compras.length || 0 })}
+                    onClose={() => setToCancel(null)}
+                    closeDisabled={busy}
+                />
+                {sheetError && <p role="alert" className="rounded-xl bg-[rgb(var(--color-error))]/10 px-3 py-2 text-sm text-[rgb(var(--color-error))]">{sheetError}</p>}
+                <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setToCancel(null)} disabled={busy} className="h-11 rounded-xl px-4 font-semibold hover:bg-[rgb(var(--color-text))]/10">{t('panel.common.goBack')}</button>
+                    <button type="button" onClick={confirmCancel} disabled={busy} className="h-11 rounded-xl bg-red-600 px-5 font-semibold text-white shadow hover:bg-red-500 disabled:opacity-60">
+                        {busy ? t('panel.common.updating') : t('panel.capture.cancelPolicy')}
+                    </button>
+                </div>
+            </Sheet>
 
-                    {error && (
-                        <div className="rounded-md border border-red-500 bg-red-100/30 text-red-800 px-4 py-2 text-sm">
-                            {error}
-                        </div>
-                    )}
-
-                    <div className="bg-[rgb(var(--color-card))] rounded-2xl shadow shadow-[rgb(var(--color-galaxy))]">
-                        <div className="flex border-b border-[rgb(var(--color-border))]">
-                            <button
-                                type="button"
-                                className={`flex-1 px-4 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${activeTab === 'purchases' ? 'bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text-base))]' : 'bg-transparent'}`}
-                                onClick={() => setActiveTab('purchases')}
-                            >
-                                <FaBox /> Compras
-                            </button>
-                            <button
-                                type="button"
-                                className={`flex-1 px-4 py-3 text-sm font-semibold flex items-center justify-center gap-2 ${activeTab === 'policies' ? 'bg-[rgb(var(--color-galaxy))] text-[rgb(var(--color-text-base))]' : 'bg-transparent'}`}
-                                onClick={() => setActiveTab('policies')}
-                            >
-                                <FaSignature /> Pólizas
-                            </button>
-                        </div>
-
-                        <div className="p-4">
-                            {isLoading ? (
-                                <div className="py-16 text-center text-sm text-[rgb(var(--color-muted))]">
-                                    Cargando información...
-                                </div>
-                            ) : activeTab === 'purchases' ? (
-                                <>
-                                    <PurchasesTable
-                                        groups={groupedPurchases}
-                                        selectedInvoices={selectedInvoices}
-                                        onToggleInvoice={toggleInvoiceSelection}
-                                        onToggleProvider={toggleProviderSelection}
-                                        onEdit={handleEdit}
-                                        onDelete={requestDeleteCapture}
-                                    />
-                                    <div className="flex justify-end border-t border-[rgb(var(--color-border))] mt-4 pt-4 text-sm font-semibold">
-                                        Total: {formatCurrency(purchaseTotal)}
-                                    </div>
-                                </>
-                            ) : (
-                                <PoliciesTable rows={filteredPolicies} />
-                            )}
+            {toast && (
+                <PopPortal>
+                    <div className="pointer-events-none fixed inset-x-0 top-24 z-[60] flex justify-center px-4">
+                        <div role="status" className="pointer-events-auto flex w-full max-w-md items-center gap-3 rounded-2xl bg-[rgb(var(--color-text))] px-4 py-3 text-sm text-[rgb(var(--color-bg))] shadow-2xl">
+                            {toast.error
+                                ? <FaCircleExclamation className="size-4 shrink-0 text-red-400" aria-hidden="true" />
+                                : <FaCircleCheck className="size-4 shrink-0 text-green-400" aria-hidden="true" />}
+                            <span className="min-w-0 flex-1 font-medium">{toast.message}</span>
                         </div>
                     </div>
-                </div>
-            )}
-
-            {isEditing && (
-                <div className="max-w-7xl mx-auto px-4">
-                    {isLoadingCaptureEdit ? (
-                        <div className="bg-white/70 rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                            Cargando información de la captura...
-                        </div>
-                    ) : editCaptureError ? (
-                        <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4">
-                            <p className="font-semibold">No se pudo cargar la captura.</p>
-                            <p className="text-sm">{editCaptureError}</p>
-                            <button
-                                type="button"
-                                className="mt-3 inline-flex items-center rounded-md bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white shadow hover:bg-slate-700"
-                                onClick={onCancelEdit}
-                            >
-                                Volver
-                            </button>
-                        </div>
-                    ) : (
-                        <CaptureDetailView
-                            header={captureEditData?.header}
-                            detail={captureEditData?.detail}
-                            onBack={onCancelEdit}
-                        />
-                    )}
-                </div>
-            )}
-
-            {isAdding && (
-                <div className="max-w-7xl mx-auto">
-                    <NewCapture onCancelEdit={onCancelEdit} />
-                </div>
-            )}
-
-            {pendingDeleteCapture && (
-                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
-                    <div className="w-full max-w-md rounded-2xl bg-[rgb(var(--color-card))] shadow-2xl border border-[rgb(var(--color-border))] p-6">
-                        <h3 className="text-lg font-semibold text-[rgb(var(--color-text))]">
-                            Eliminar captura
-                        </h3>
-                        <p className="text-sm text-[rgb(var(--color-muted))] mt-1">
-                            Esta acción regresará las existencias al estado anterior y eliminará definitivamente la captura.
-                        </p>
-                        <div className="mt-4 rounded-xl bg-[rgb(var(--color-card))] border border-[rgb(var(--color-border))] p-4 text-sm">
-                            <div className="flex justify-between mb-1">
-                                <span className="text-[rgb(var(--color-muted))]">Factura</span>
-                                <span className="font-semibold">
-                                    {pendingDeleteCapture?.num_factura ?? pendingDeleteCapture?.noFactura ?? '---'}
-                                </span>
-                            </div>
-                            <div className="flex justify-between mb-1">
-                                <span className="text-[rgb(var(--color-muted))]">Proveedor</span>
-                                <span className="font-semibold">
-                                    {pendingDeleteCapture?.empresa ?? pendingDeleteCapture?.proveedor ?? '---'}
-                                </span>
-                            </div>
-                            <div className="flex justify-between">
-                                <span className="text-[rgb(var(--color-muted))]">Total</span>
-                                <span className="font-semibold text-red-600">
-                                    {formatCurrency(getInvoiceAmount(pendingDeleteCapture))}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="mt-6 flex justify-end gap-3">
-                            <button
-                                type="button"
-                                onClick={cancelDeleteCapture}
-                                className="px-4 py-2 rounded-full bg-gray-200 text-gray-800 hover:bg-gray-300"
-                                disabled={isDeletingCapture}
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="button"
-                                onClick={confirmDeleteCapture}
-                                className="px-4 py-2 rounded-full bg-red-600 text-white hover:bg-red-700 disabled:opacity-70"
-                                disabled={isDeletingCapture}
-                            >
-                                {isDeletingCapture ? 'Eliminando...' : 'Eliminar'}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                </PopPortal>
             )}
         </div>
     );

@@ -10,8 +10,10 @@ import {
 } from 'react-icons/md';
 import { IoPhonePortraitOutline } from 'react-icons/io5';
 import { CgDanger } from 'react-icons/cg';
+import { useTranslation } from '@/app/lib/text/text-provider';
 
 export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
+    const { t } = useTranslation();
   const [hasAccount, setHasAccount] = useState(false);
   const [missingFieldsWarning, setMissingFieldsWarning] = useState(false);
   const [formData, setFormData] = useState({
@@ -86,7 +88,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
       <div className="fixed inset-0" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }} aria-hidden="true" />
       <div className="relative bg-[rgb(var(--color-card))] text-[rgb(var(--color-text))] rounded-lg overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full">
         <div className="px-4 py-5 sm:px-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">Solicitud de pedido</h3>
+          <h3 className="text-lg leading-6 font-medium text-gray-900">{t('panel.clientOrder.title')}</h3>
         </div>
         <div className="px-4 py-5 sm:p-6 space-y-6">
           <div className="flex items-center mb-8">
@@ -96,7 +98,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
                 hasAccount ? 'bg-amber-500 text-white' : 'bg-[rgb(var(--color-bg))]'
               }`}
             >
-              <MdStars className="w-6 h-6 mx-1" /> Tengo cuenta
+              <MdStars className="w-6 h-6 mx-1" /> {t('panel.clientOrder.hasAccount')}
             </button>
             <button
               onClick={() => setHasAccount(false)}
@@ -104,7 +106,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
                 !hasAccount ? 'bg-blue-500 text-white' : 'bg-[rgb(var(--color-bg))]'
               }`}
             >
-              <MdNoAccounts className="w-6 h-6 mx-1" /> No tengo
+              <MdNoAccounts className="w-6 h-6 mx-1" /> {t('panel.clientOrder.noAccount')}
             </button>
           </div>
 
@@ -113,7 +115,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
               <div className="flex items-center">
                 <label className="w-1/4 flex flex-row">
                   <MdDriveFileRenameOutline className="w-6 h-6 mx-1" />
-                  Nombre:
+                  {t('panel.clientOrder.name')}
                 </label>
                 <input
                   type="text"
@@ -126,7 +128,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
               <div className="flex items-center">
                 <label className="w-1/4 flex flex-row">
                   <MdOutlineCalendarMonth className="w-6 h-6 mx-1" />
-                  Entrega:
+                  {t('panel.clientOrder.delivery')}
                 </label>
                 <input
                   type="date"
@@ -139,7 +141,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
               <div className="flex items-center">
                 <label className="w-1/4 flex flex-row">
                   <IoPhonePortraitOutline className="w-6 h-6 mx-1" />
-                  Teléfono:
+                  {t('panel.clientOrder.phone')}
                 </label>
                 <input
                   type="text"
@@ -155,7 +157,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
               <div className="flex items-center">
                 <label className="w-1/4 flex flex-row">
                   <MdMarkEmailRead className="w-6 h-6 mx-1" />
-                  Correo:
+                  {t('panel.clientOrder.email')}
                 </label>
                 <input
                   type="email"
@@ -168,7 +170,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
               <div className="flex items-center">
                 <label className="w-1/4 flex flex-row">
                   <MdOutlineCalendarMonth className="w-6 h-6 mx-1" />
-                  Entrega:
+                  {t('panel.clientOrder.delivery')}
                 </label>
                 <input
                   type="date"
@@ -185,7 +187,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
             {missingFieldsWarning && (
               <div className="absolute flex bg-red-100 text-red-800 p-3 rounded mb-4 text-sm animate-out">
                 <CgDanger className="text-red-800 w-5 h-5 mr-1" />
-                <span>Para hacer pedido, llena todos los campos.</span>
+                <span>{t('panel.clientOrder.missingFields')}</span>
               </div>
             )}
           </div>
@@ -200,7 +202,7 @@ export default function ClientOrderModal({ isOpen, toggleModal, onSubmit }) {
               onClick={toggleModal}
               className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:w-auto sm:text-sm"
             >
-              Cancelar
+              {t('panel.common.cancel')}
             </button>
           </div>
         </div>
