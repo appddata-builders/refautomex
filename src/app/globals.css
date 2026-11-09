@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* `dark:` sigue el tema del sitio (data-theme en <html>, theme-context.jsx)
+   y no el del sistema operativo. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
 :root {
   --color-amber:  255 196 83;
   --color-bg: 255 255 255;

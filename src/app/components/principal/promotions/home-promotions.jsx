@@ -5,6 +5,7 @@ import { FaArrowRight } from 'react-icons/fa6';
 import { useOfertas } from '@/app/lib/ofertas-tienda';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import PromotionShowcase from './promotion-showcase';
+import { OFERTA } from '@/app/components/principal/promotions/oferta-estilos';
 
 const EN_INICIO = 4;
 
@@ -45,7 +46,7 @@ export default function HomePromotions({ inicial }) {
                 <div className="flex justify-center">
                     <Link
                         href={`/section/promotion?lang=${lang}`}
-                        className="inline-flex items-center gap-2 rounded-full bg-gradient-to-bl from-amber-500 via-yellow-400 to-amber-500 px-6 py-3 font-bold text-slate-900 shadow transition hover:scale-105"
+                        className={`inline-flex items-center gap-2 ${OFERTA.boton} rounded-full px-6 py-3 font-bold shadow transition hover:scale-105`}
                     >
                         {boton}
                         <FaArrowRight className="size-3.5" aria-hidden="true" />

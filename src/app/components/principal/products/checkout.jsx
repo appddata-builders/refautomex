@@ -23,6 +23,7 @@ import { getStorageValue } from '@/app/lib/storage-values';
 import { resolveMainProductImage } from '@/app/lib/product-images';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import OrderProgress from '@/app/components/principal/account/order-progress';
+import { OFERTA } from '@/app/components/principal/promotions/oferta-estilos';
 
 let stripePromise;
 const getStripe = () => {
@@ -439,9 +440,9 @@ export default function Checkout() {
                         <span className="text-xs text-[rgb(var(--color-text))]/60 line-through">
                           {currencyFormatter.format(product.precioRegular)}
                         </span>
-                        <span className="inline-flex items-center gap-2 text-base font-bold text-amber-600 dark:text-amber-400">
+                        <span className={`inline-flex items-center gap-2 text-base font-bold ${OFERTA.precio}`}>
                           {currencyFormatter.format(product.normalizedPrice)}
-                          <span className="rounded-full bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 px-2 text-[0.65rem] font-extrabold uppercase text-slate-900">
+                          <span className={`${OFERTA.banda} rounded-full px-2 text-[0.65rem] font-extrabold uppercase`}>
                             {t('promotions.ribbon')}
                           </span>
                         </span>

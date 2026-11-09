@@ -1,17 +1,15 @@
 'use client';
 
-import { MdDelete } from 'react-icons/md';
-import { FaCartPlus } from 'react-icons/fa6';
-import { useCart } from '@/app/lib/shopping-context';
-import { formatoPrecio } from '@/app/lib/ofertas-tienda';
-import { PRODUCT_FALLBACK_IMAGE, resolveProductImage } from '@/app/lib/product-images';
+import { useState } from 'react';
+import ProductCard, { useEsMovil } from '@/app/components/principal/products/product-card';
+import ProductDetailsModal from '@/app/components/principal/products/product-details-modal';
 import { useTranslation } from '@/app/lib/text/text-provider';
 import Countdown from './countdown';
-import OfferRibbon from './offer-ribbon';
 
-// Lo que se guarda en el carrito: la misma forma que el catalogo
-// (card-products), con el precio de oferta como `precio`.
-const paraCarrito = (producto, promocion) => ({
+// El producto de la promocion con la forma del catalogo (getProducts y
+// conOferta): asi ProductCard lo pinta y el carrito lo guarda igual que en
+// Productos, con el precio de oferta como `precio`.
+const paraTarjeta = (producto, promocion) => ({
     num_parte: producto.num_parte,
     descripcion: producto.descripcion,
     grupo: producto.grupo,
@@ -22,61 +20,6 @@ const paraCarrito = (producto, promocion) => ({
     precioRegular: producto.precioRegular,
     oferta: { idpromocion: promocion.idpromocion, titulo: promocion.titulo, fin: promocion.fin, ahorro: producto.ahorro },
 });
-
-function ProductoEnOferta({ producto, promocion }) {
-    const { t } = useTranslation();
-    const { cart, addToCart, removeFromCart } = useCart();
-    const enCarrito = cart.some((item) => item.num_parte === producto.num_parte);
-
-    return (
-        <li className="group relative flex flex-col overflow-hidden rounded-3xl bg-[rgb(var(--color-card))] shadow-lg transition hover:-translate-y-1 hover:shadow-[rgb(var(--color-med))]/30">
-            <OfferRibbon />
-            <div className="relative aspect-square overflow-hidden bg-white">
-                <img
-                    src={resolveProductImage(producto.rutas?.[0])}
-                    alt={producto.descripcion}
-                    loading="lazy"
-                    onError={(evento) => {
-                        if (!evento.currentTarget.src.endsWith('no-img.png')) evento.currentTarget.src = PRODUCT_FALLBACK_IMAGE;
-                    }}
-                    className="size-full object-contain transition duration-500 group-hover:scale-105"
-                />
-                <span className="absolute right-3 top-3 rounded-full bg-slate-900 px-2.5 py-1 text-sm font-extrabold tabular-nums text-amber-400 shadow">
-                    -{producto.ahorro} %
-                </span>
-            </div>
-            <div className="flex flex-1 flex-col gap-2 p-4 text-center">
-                <h4 className="line-clamp-2 text-base font-semibold linear-text-title" title={producto.descripcion}>{producto.descripcion}</h4>
-                <div className="mt-auto">
-                    <p className="text-sm tabular-nums text-[rgb(var(--color-text))]/60 line-through">{formatoPrecio(producto.precioRegular)}</p>
-                    <p className="text-2xl font-extrabold tabular-nums text-amber-600 dark:text-amber-400">{formatoPrecio(producto.precio)}</p>
-                    <p className="text-xs font-medium text-[rgb(var(--color-success))]">
-                        {t('promotions.youSave', { amount: formatoPrecio(producto.precioRegular - producto.precio) })}
-                    </p>
-                </div>
-                {enCarrito ? (
-                    <button
-                        type="button"
-                        onClick={() => removeFromCart(producto)}
-                        className="mt-2 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-red-500/90 px-4 text-sm font-semibold text-white transition hover:bg-red-600"
-                    >
-                        <MdDelete className="text-base" aria-hidden="true" />
-                        {t('products.remove')}
-                    </button>
-                ) : (
-                    <button
-                        type="button"
-                        onClick={() => addToCart(paraCarrito(producto, promocion), 1)}
-                        className="mt-2 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-gradient-to-bl from-amber-500 via-yellow-400 to-amber-500 px-4 text-sm font-bold text-slate-900 shadow transition hover:scale-[1.03]"
-                    >
-                        <FaCartPlus className="size-4" aria-hidden="true" />
-                        {t('products.add')}
-                    </button>
-                )}
-            </div>
-        </li>
-    );
-}
 
 /**
  * Una promocion vigente en el sitio: la foto de la temporada completa y, a su
@@ -89,23 +32,27 @@ function ProductoEnOferta({ producto, promocion }) {
  */
 export default function PromotionShowcase({ promocion, desfase, maxProductos }) {
     const { t } = useTranslation();
+    const esMovil = useEsMovil();
+    const [detalle, setDetalle] = useState(null);
     const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
     const foto = promocion.foto ? `${multimediaSrc}${promocion.foto}` : null;
     const mayorAhorro = Math.max(...promocion.productos.map((p) => p.ahorro));
 
     return (
         <article className="space-y-8">
-            <header className="relative isolate overflow-hidden rounded-[2rem] bg-slate-950 shadow-2xl">
+            {/* El fondo sigue al tema (claro u oscuro), como el resto del sitio;
+                la foto desenfocada detras solo le da el color de la temporada. */}
+            <header className="relative isolate overflow-hidden rounded-[2rem] bg-[rgb(var(--color-card))] shadow-2xl shadow-[rgb(var(--color-galaxy))]/20">
                 {foto && (
                     <img src={foto} alt="" aria-hidden="true" className="absolute inset-0 -z-10 size-full scale-125 object-cover opacity-60 blur-3xl" />
                 )}
-                <div className="absolute inset-0 -z-10 bg-slate-950/45" />
+                <div className="absolute inset-0 -z-10 bg-[rgb(var(--color-card))]/75" />
                 <div className={`grid items-center gap-6 p-4 sm:p-8 lg:gap-10 lg:p-10 ${foto ? 'lg:grid-cols-2' : ''}`}>
                     {foto && (
                         <img
                             src={foto}
                             alt={promocion.titulo}
-                            className="mx-auto max-h-[75vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/15"
+                            className="mx-auto max-h-[75vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-[rgb(var(--color-border))]"
                         />
                     )}
                     <div className="flex flex-col items-center gap-5 text-center lg:items-start lg:text-left">
@@ -115,9 +62,9 @@ export default function PromotionShowcase({ promocion, desfase, maxProductos }) 
                             </span>
                         )}
                         <div>
-                            <h3 className="text-3xl font-extrabold tracking-tight text-white sm:text-5xl">{promocion.titulo}</h3>
+                            <h3 className="py-1 text-3xl font-extrabold tracking-tight gradient-text-title sm:text-5xl">{promocion.titulo}</h3>
                             {promocion.descripcion && (
-                                <p className="mt-3 max-w-2xl text-base text-white/85 sm:text-lg">{promocion.descripcion}</p>
+                                <p className="mt-3 max-w-2xl text-base text-[rgb(var(--color-text))]/80 sm:text-lg">{promocion.descripcion}</p>
                             )}
                         </div>
                         <Countdown fin={promocion.fin} desfase={desfase} />
@@ -125,11 +72,18 @@ export default function PromotionShowcase({ promocion, desfase, maxProductos }) 
                 </div>
             </header>
 
-            <ul className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
                 {promocion.productos.slice(0, maxProductos).map((producto) => (
-                    <ProductoEnOferta key={producto.num_parte} producto={producto} promocion={promocion} />
+                    <ProductCard
+                        key={producto.num_parte}
+                        product={paraTarjeta(producto, promocion)}
+                        onOpenDetails={setDetalle}
+                        desfase={desfase}
+                        animado={!esMovil}
+                    />
                 ))}
-            </ul>
+            </div>
+            <ProductDetailsModal product={detalle} onClose={() => setDetalle(null)} />
         </article>
     );
 }

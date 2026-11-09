@@ -6,6 +6,7 @@ import Spinner from '@/app/components/principal/spinner';
 import PromotionShowcase from '@/app/components/principal/promotions/promotion-showcase';
 import { useOfertas } from '@/app/lib/ofertas-tienda';
 import { useTranslation } from '@/app/lib/text/text-provider';
+import { OFERTA } from '@/app/components/principal/promotions/oferta-estilos';
 
 /**
  * Promociones del sitio: las que estan vigentes en Servicios > Promociones,
@@ -36,12 +37,12 @@ export default function Promotion({ includeMeta = true, sectionId = 'promotions'
                         ))
                     ) : (
                         <div className="mx-auto flex max-w-xl flex-col items-center gap-4 rounded-3xl bg-[rgb(var(--color-card))] p-10 text-center shadow-lg">
-                            <PiSealPercentFill className="size-12 text-amber-500" aria-hidden="true" />
+                            <PiSealPercentFill className={`size-12 ${OFERTA.acento}`} aria-hidden="true" />
                             <p className="text-xl font-bold">{t('promotions.emptyTitle')}</p>
                             <p className="text-[rgb(var(--color-text))]/70">{t('promotions.emptyBody')}</p>
                             <Link
                                 href={`/section/products?lang=${lang}`}
-                                className="rounded-full bg-gradient-to-bl from-amber-500 via-yellow-400 to-amber-500 px-6 py-3 font-bold text-slate-900 shadow transition hover:scale-105"
+                                className={`${OFERTA.boton} rounded-full px-6 py-3 font-bold shadow transition hover:scale-105`}
                             >
                                 {t('promotions.emptyCta')}
                             </Link>
