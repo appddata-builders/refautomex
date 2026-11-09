@@ -4,8 +4,24 @@ import { FaPlayCircle, FaRegStopCircle } from "react-icons/fa";
 import { useTranslation } from '@/app/lib/text/text-provider';
 import { motion } from "framer-motion";
 
+// Pixeles de scroll, contados desde el inicio de este bloque, en los que el
+// video sigue fijo de fondo detras de las secciones que vienen despues.
+const FIJO_HASTA = 5000;
+
+/**
+ * El video del inicio: fijo a la pantalla, detras del contenido (-z-10), y se
+ * ve a traves de este bloque y de las secciones translucidas de abajo. Pasados
+ * FIJO_HASTA pixeles desde el bloque se suelta (absolute) y se va con el.
+ *
+ * Va fijo en top-0/left-0 a proposito. Sin ellos se fijaba donde caia el
+ * bloque al cargar: con el video primero eso era arriba, pero con las
+ * promociones vigentes antes (HomePromotions) quedaba debajo de la pantalla y
+ * no se veia nunca. El umbral tambien cuenta desde el bloque y no desde el
+ * inicio de la pagina, por lo mismo.
+ */
 export default function VideoComponent() {
     const videoRef = useRef(null);
+    const bloqueRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [videoError, setVideoError] = useState(false);
     const [videoPosition, setVideoPosition] = useState('fixed'); // Estado para controlar la posición del video
@@ -25,12 +41,14 @@ export default function VideoComponent() {
         }
 
         const handleScroll = () => {
-            const position = window.scrollY;
-            setVideoPosition(position > 5000 ? 'absolute' : 'fixed'); // Cambia la posición basado en el scroll
+            const bloque = bloqueRef.current;
+            const inicioBloque = bloque ? bloque.getBoundingClientRect().top + window.scrollY : 0;
+            setVideoPosition(window.scrollY - inicioBloque > FIJO_HASTA ? 'absolute' : 'fixed');
         };
 
-        // Agregar listener de scroll
-        window.addEventListener('scroll', handleScroll);
+        // Tambien al montar: al volver atras la pagina puede abrir ya con scroll.
+        handleScroll();
+        window.addEventListener('scroll', handleScroll, { passive: true });
 
         // Limpiar el listener al desmontar el componente
         return () => window.removeEventListener('scroll', handleScroll);
@@ -56,6 +74,7 @@ export default function VideoComponent() {
 
     return (
         <motion.div
+            ref={bloqueRef}
             initial="hidden"
             animate="visible"
             variants={fadeIn}
@@ -68,7 +87,7 @@ export default function VideoComponent() {
                 loop
                 muted
                 playsInline
-                className={`w-full h-full object-cover -z-10 ${videoPosition}`} // Aplica la clase basada en el estado
+                className={`left-0 top-0 w-full h-full object-cover -z-10 ${videoPosition}`}
                 onError={() => setVideoError(true)}
                 onPlay={() => setIsPlaying(true)}
                 onPause={() => setIsPlaying(false)}

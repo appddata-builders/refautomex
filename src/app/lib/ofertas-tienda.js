@@ -17,8 +17,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 const RECARGA_MS = 3 * 60 * 1000;
 const VACIO = { promociones: [], desfase: 0, cargando: true, error: null };
 
-export function useOfertas() {
-    const [estado, setEstado] = useState(VACIO);
+// `inicial` ({ ahora, promociones }) es lo que ya leyo el servidor al armar la
+// pagina (el inicio): se pinta de entrada, sin esperar al fetch.
+export function useOfertas({ inicial } = {}) {
+    const [estado, setEstado] = useState(() => (inicial
+        ? {
+            promociones: inicial.promociones || [],
+            desfase: Number.isFinite(Date.parse(inicial.ahora)) ? Date.parse(inicial.ahora) - Date.now() : 0,
+            cargando: false,
+            error: null,
+        }
+        : VACIO));
 
     const recargar = useCallback(async () => {
         try {

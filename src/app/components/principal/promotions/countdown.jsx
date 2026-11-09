@@ -5,9 +5,10 @@ import { tiempoRestante } from '@/app/lib/promociones';
 import { useTranslation } from '@/app/lib/text/text-provider';
 
 // Un solo reloj por conteo: cada segundo, con el desfase del servidor
-// (useOfertas). Se detiene al llegar a cero.
+// (useOfertas). Se detiene al llegar a cero. Empieza en null: lo que pinta el
+// servidor (el inicio) no lleva segundos, o no coincidiria con el navegador.
 const useAhora = (fin, desfase) => {
-    const [ahora, setAhora] = useState(() => Date.now() + desfase);
+    const [ahora, setAhora] = useState(null);
     useEffect(() => {
         setAhora(Date.now() + desfase);
         const timer = setInterval(() => {
@@ -20,7 +21,7 @@ const useAhora = (fin, desfase) => {
     return ahora;
 };
 
-const dos = (n) => String(n).padStart(2, '0');
+const dos = (n) => (n === null ? '--' : String(n).padStart(2, '0'));
 
 /**
  * Lo que falta para que termine una promocion.
@@ -30,33 +31,36 @@ const dos = (n) => String(n).padStart(2, '0');
 export default function Countdown({ fin, desfase = 0, variant = 'grande', className = '' }) {
     const { t } = useTranslation();
     const ahora = useAhora(fin, desfase);
-    const { total, dias, horas, minutos, segundos } = tiempoRestante(fin, ahora);
+    const listo = ahora !== null;
+    const { total, dias, horas, minutos, segundos } = tiempoRestante(fin, listo ? ahora : 0);
 
-    if (!total) {
+    if (listo && !total) {
         return <p className={`text-sm font-semibold ${className}`}>{t('promotions.ended')}</p>;
     }
 
     if (variant === 'chica') {
         return (
             <p className={`text-xs font-semibold tabular-nums ${className}`} aria-live="off">
-                {t('promotions.endsIn')} {dias > 0 && `${t('promotions.daysShort', { count: dias })} `}
-                {dos(horas)}:{dos(minutos)}:{dos(segundos)}
+                {t('promotions.endsIn')} {listo && dias > 0 && `${t('promotions.daysShort', { count: dias })} `}
+                {listo ? `${dos(horas)}:${dos(minutos)}:${dos(segundos)}` : '--:--:--'}
             </p>
         );
     }
 
     const partes = [
-        { valor: dias, etiqueta: t(dias === 1 ? 'promotions.dayOne' : 'promotions.days') },
-        { valor: horas, etiqueta: t('promotions.hours') },
-        { valor: minutos, etiqueta: t('promotions.minutes') },
-        { valor: segundos, etiqueta: t('promotions.seconds') },
+        { valor: listo ? dias : null, etiqueta: t(listo && dias === 1 ? 'promotions.dayOne' : 'promotions.days') },
+        { valor: listo ? horas : null, etiqueta: t('promotions.hours') },
+        { valor: listo ? minutos : null, etiqueta: t('promotions.minutes') },
+        { valor: listo ? segundos : null, etiqueta: t('promotions.seconds') },
     ];
     return (
         <div className={className}>
             <p className="mb-2 text-center text-xs font-bold uppercase tracking-[0.25em] text-white/80 lg:text-left">{t('promotions.endsIn')}</p>
             {/* El lector de pantalla no necesita cada segundo: se lee una vez. */}
             <span className="sr-only">
-                {t('promotions.endsAt', { date: new Date(fin).toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short' }) })}
+                {/* Con la zona de la tienda: el servidor corre en UTC y el texto
+                    tiene que salir igual alla y en el navegador. */}
+                {t('promotions.endsAt', { date: new Date(fin).toLocaleString('es-MX', { dateStyle: 'long', timeStyle: 'short', timeZone: 'America/Mexico_City' }) })}
             </span>
             <div className="flex justify-center gap-2 sm:gap-3 lg:justify-start" aria-hidden="true">
                 {partes.map(({ valor, etiqueta }) => (

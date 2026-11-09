@@ -87,7 +87,7 @@ function ProductoEnOferta({ producto, promocion }) {
  * temporada con su propio texto (cuadrado, horizontal o vertical). De fondo va
  * ella misma desenfocada, para que el banner tome sus colores.
  */
-export default function PromotionShowcase({ promocion, desfase }) {
+export default function PromotionShowcase({ promocion, desfase, maxProductos }) {
     const { t } = useTranslation();
     const multimediaSrc = process.env.NEXT_PUBLIC_S3 || '';
     const foto = promocion.foto ? `${multimediaSrc}${promocion.foto}` : null;
@@ -126,7 +126,7 @@ export default function PromotionShowcase({ promocion, desfase }) {
             </header>
 
             <ul className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-4">
-                {promocion.productos.map((producto) => (
+                {promocion.productos.slice(0, maxProductos).map((producto) => (
                     <ProductoEnOferta key={producto.num_parte} producto={producto} promocion={promocion} />
                 ))}
             </ul>
