@@ -18,6 +18,7 @@ import Promotions from '@/app/components/productivity/services/promotions';
 import Warehouse from '@/app/components/productivity/stock/warehouse';
 import Assignment from '@/app/components/productivity/stock/assignment';
 import Inventories from '@/app/components/productivity/stock/inventories';
+import Statistics from '@/app/components/productivity/stock/statistics';
 import Capture from '@/app/components/productivity/requirements/capture';
 import Providers from '@/app/components/productivity/requirements/providers';
 import Missing from '@/app/components/productivity/requirements/missing';
@@ -68,6 +69,7 @@ export default function Productivity() {
       case 'warehouse': return <Warehouse />;
       case 'assignment': return <Assignment />;
       case 'inventories': return <Inventories />;
+      case 'statistics': return <Statistics />;
       case 'missing': return <Missing />;
       case 'capture': return <Capture />;
       case 'providers': return <Providers />;

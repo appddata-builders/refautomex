@@ -15,6 +15,7 @@
  *   endpoints-procedimientos.js      lecturas que venian de un CALL
  *   endpoints-escrituras.js          transacciones, cursores y JSON
  *   compras.js                       capturas, polizas, bancos y Faltantes
+ *   estadistico.js                   Almacen -> Estadistico (pide sesion)
  *
  * La migracion esta completa: ningun endpoint sale ya a internet.
  *
@@ -35,6 +36,7 @@ import { PROCEDIMIENTOS } from './endpoints-procedimientos';
 import { ESCRITURAS } from './endpoints-escrituras';
 import { COMPRAS } from './compras';
 import { PRECIOS_WEB } from './precios-web';
+import { ESTADISTICO } from './estadistico';
 
 const faltan = (detalle) => ({
   estado: 400,
@@ -386,6 +388,7 @@ export const ENDPOINTS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].reduce(
       ...(ESCRITURAS[metodo] ?? {}),
       ...(COMPRAS[metodo] ?? {}),
       ...(PRECIOS_WEB[metodo] ?? {}),
+      ...(ESTADISTICO[metodo] ?? {}),
     },
   }),
   {}

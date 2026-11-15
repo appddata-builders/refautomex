@@ -61,6 +61,9 @@ export const MODULOS = [
   // Mueve inventario real al momento. Se le puede dar al almacenista desde
   // Permisos de perfil; quien no es admin solo ve y asigna en su sucursal.
   { clave: 'assignment', seccion: 'stock', admin: 'total', supervisor: 'no', empleado: 'no' },
+  // Ventas, ingresos y margenes de la tienda. Solo lee; la API vuelve a revisar
+  // que el perfil lo vea (estadistico.js).
+  { clave: 'statistics', seccion: 'stock', admin: 'total', supervisor: 'no', empleado: 'no' },
   // Faltantes estaba en Almacen; es el primer paso de una compra: que pedir y a quien.
   { clave: 'missing', seccion: 'purchases', admin: 'total', supervisor: 'total', empleado: 'total' },
   { clave: 'capture', seccion: 'purchases', admin: 'total', supervisor: 'no', empleado: 'no' },

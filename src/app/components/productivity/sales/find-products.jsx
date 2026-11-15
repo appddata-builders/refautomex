@@ -1,6 +1,6 @@
 'use client';
 import { buildApiUrl } from '@/app/lib/refautomex-api';
-import { forwardRef, useContext, useDeferredValue, useEffect, useImperativeHandle, useMemo, useState } from 'react';
+import { forwardRef, useContext, useDeferredValue, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '@/app/lib/auth-tracker';
 import { FaCheck, FaCircleExclamation, FaLock, FaMagnifyingGlass, FaPlus, FaStore, FaXmark } from 'react-icons/fa6';
 import { LuListPlus } from 'react-icons/lu';
@@ -152,6 +152,13 @@ const ACTION_TONES = {
  * con grupos cada bloque ocupa su propio renglon (Inventarios: Por asignar y,
  * abajo, Existentes: Productos, En sucursal). Se pueden controlar con `view` y
  * `onViewChange`.
+ *
+ * Para listas que no son un buscador (Estadistico: el ranking de ventas):
+ *   - sortProducts(a, b): el orden de la lista, tambien al buscar (sin el, lo
+ *     que empieza con lo buscado va primero).
+ *   - pageSize: paginas de ese tamano en lugar de "Mostrar mas".
+ *   - renderProductExtra(product): un renglon mas bajo las insignias. Va dentro
+ *     del boton del producto, asi que solo texto y graficas, nada que se toque.
  */
 const FindProducts = forwardRef(({
     onAddProduct,
@@ -182,6 +189,9 @@ const FindProducts = forwardRef(({
     view,
     onViewChange,
     productAction,
+    sortProducts,
+    pageSize,
+    renderProductExtra,
     listClassName = 'max-h-[34rem]',
 }, ref) => {
     const { t } = useTranslation();
@@ -191,6 +201,9 @@ const FindProducts = forwardRef(({
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
     const [limit, setLimit] = useState(PAGE);
+    // Con pageSize: la pagina que se ve, desde 0.
+    const [page, setPage] = useState(0);
+    const listRef = useRef(null);
     const [stockAlerts, setStockAlerts] = useState({});
     // Solo en el almacen: num_parte -> si su precio de WEB cubre Stripe.
     const [webPricing, setWebPricing] = useState(() => new Map());
@@ -215,6 +228,7 @@ const FindProducts = forwardRef(({
     const activeView = views?.find((item) => item.id === activeViewId) ?? views?.[0] ?? null;
     const changeView = (id) => {
         setLimit(PAGE);
+        setPage(0);
         if (onViewChange) onViewChange(id);
         else setOwnView(id);
     };
@@ -343,6 +357,7 @@ const FindProducts = forwardRef(({
 
     useEffect(() => {
         setLimit(PAGE);
+        setPage(0);
     }, [deferredTerm, searchType, isMissing]);
 
     // Lo que el modulo deja ver (filtro, decoracion y pestana) antes de buscar.
@@ -360,10 +375,21 @@ const FindProducts = forwardRef(({
 
     const filtered = useMemo(() => {
         const inView = activeView?.filter ? base.filter(activeView.filter) : base;
-        return filterProducts(inView, deferredTerm, searchType);
-    }, [base, activeView, deferredTerm, searchType]);
+        const found = filterProducts(inView, deferredTerm, searchType);
+        return sortProducts ? [...found].sort(sortProducts) : found;
+    }, [base, activeView, deferredTerm, searchType, sortProducts]);
 
-    const visible = filtered.slice(0, limit);
+    const pages = pageSize ? Math.max(1, Math.ceil(filtered.length / pageSize)) : 1;
+    // Si la lista se achica (otra pestana, menos resultados) la pagina no se queda fuera.
+    const currentPage = Math.min(page, pages - 1);
+    const visible = pageSize
+        ? filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
+        : filtered.slice(0, limit);
+
+    const goToPage = (next) => {
+        setPage(Math.max(0, Math.min(pages - 1, next)));
+        listRef.current?.scrollTo({ top: 0 });
+    };
 
     const isProductAdded = (product) => (isPickerMode
         ? selectedProducts.includes(product.num_parte)
@@ -553,7 +579,7 @@ const FindProducts = forwardRef(({
                 </div>
             </div>
 
-            <div className={`overflow-y-auto border-t border-[rgb(var(--color-border))] ${listClassName}`}>
+            <div ref={listRef} className={`overflow-y-auto border-t border-[rgb(var(--color-border))] ${listClassName}`}>
                 {isLoading ? (
                     <ul aria-hidden="true" className="divide-y divide-[rgb(var(--color-border))]">
                         {[0, 1, 2, 3, 4].map((key) => (
@@ -658,6 +684,9 @@ const FindProducts = forwardRef(({
                                                         </span>
                                                     )}
                                                 </span>
+                                                {renderProductExtra && (
+                                                    <span className="mt-1.5 block">{renderProductExtra(product)}</span>
+                                                )}
                                             </span>
                                             <span className="flex shrink-0 flex-col items-end gap-1">
                                                 <span className="text-base font-bold tabular-nums">{formatPrice(product.precio)}</span>
@@ -706,7 +735,40 @@ const FindProducts = forwardRef(({
                         })}
                     </ul>
                 )}
-                {!isLoading && filtered.length > limit && (
+                {!isLoading && pageSize && pages > 1 && (
+                    // Pegada abajo de la lista: con 50 renglones, al final no se veria.
+                    <nav
+                        aria-label={t('panel.findProducts.pages')}
+                        className="sticky bottom-0 flex items-center gap-2 border-t border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))] p-3"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => goToPage(currentPage - 1)}
+                            disabled={currentPage === 0}
+                            className="h-10 rounded-xl px-3 text-sm font-semibold text-[rgb(var(--color-text))] hover:bg-[rgb(var(--color-text))]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                            &larr; {t('panel.findProducts.pagePrev')}
+                        </button>
+                        <span className="min-w-0 flex-1 text-center text-xs tabular-nums text-[rgb(var(--color-gray-base))]" aria-live="polite">
+                            {t('panel.findProducts.pageStatus', {
+                                page: (currentPage + 1).toLocaleString('es-MX'),
+                                pages: pages.toLocaleString('es-MX'),
+                                from: (currentPage * pageSize + 1).toLocaleString('es-MX'),
+                                to: Math.min(filtered.length, (currentPage + 1) * pageSize).toLocaleString('es-MX'),
+                                total: filtered.length.toLocaleString('es-MX'),
+                            })}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => goToPage(currentPage + 1)}
+                            disabled={currentPage >= pages - 1}
+                            className="h-10 rounded-xl bg-amber-500 px-3 text-sm font-semibold text-slate-900 shadow hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-transparent disabled:text-[rgb(var(--color-text))] disabled:opacity-40 disabled:shadow-none"
+                        >
+                            {t('panel.findProducts.pageNext')} &rarr;
+                        </button>
+                    </nav>
+                )}
+                {!isLoading && !pageSize && filtered.length > limit && (
                     <div className="p-3">
                         <button
                             type="button"
