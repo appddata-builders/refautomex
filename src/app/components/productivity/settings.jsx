@@ -357,6 +357,9 @@ export default function Settings() {
                                     {t('account.backToDashboard')}
                                 </Link>
                             </div>
+                            {/* Foto de perfil: en pausa por ahora. Para reactivarla basta con quitar
+                                este comentario; handleSaveImage, HeicToJpgUploader y la ruta
+                                /api/upload-user-image siguen en su lugar.
                             <section className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 shadow-md my-5">
                                 <div className="flex flex-col gap-6 md:flex-row md:items-center">
                                     <div className="flex justify-center md:justify-start">
@@ -430,8 +433,12 @@ export default function Settings() {
                                     </div>
                                 </div>
                             </section>
+                            */}
 
-                            <UsernameField initial={usuarioDeAcceso} onSaved={handleUsernameSaved} />
+                            {/* El mt-5 lo daba el my-5 de la foto de perfil. */}
+                            <div className="mt-5">
+                                <UsernameField initial={usuarioDeAcceso} onSaved={handleUsernameSaved} />
+                            </div>
 
                             <section className="rounded-2xl sm:rounded-3xl border border-[rgb(var(--color-border))] bg-[rgb(var(--color-card))]/70 p-4 sm:p-6 shadow-md">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
